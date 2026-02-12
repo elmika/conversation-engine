@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
     max_input_chars: int = 32_000
     max_output_tokens: int = 4_096
     request_timeout_s: int = 60
