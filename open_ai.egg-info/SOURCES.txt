@@ -1,0 +1,17 @@
+pyproject.toml
+app/__init__.py
+app/main.py
+app/settings.py
+app/api/__init__.py
+app/api/middleware.py
+app/api/routes.py
+app/application/__init__.py
+app/domain/__init__.py
+app/infra/__init__.py
+app/infra/logging.py
+open_ai.egg-info/PKG-INFO
+open_ai.egg-info/SOURCES.txt
+open_ai.egg-info/dependency_links.txt
+open_ai.egg-info/requires.txt
+open_ai.egg-info/top_level.txt
+tests/test_health.py

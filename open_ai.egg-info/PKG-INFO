@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: open-ai
+Version: 0.1.0
+Summary: Low-latency conversational microservice with FastAPI and OpenAI Responses API
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn[standard]>=0.32.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: pydantic-settings>=2.0
+Requires-Dist: openai>=1.0
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: httpx>=0.28.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.24.0; extra == "dev"
+Requires-Dist: ruff>=0.8.0; extra == "dev"

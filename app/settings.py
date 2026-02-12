@@ -1,0 +1,20 @@
+"""Application configuration from environment."""
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Settings loaded from env and .env file."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    openai_api_key: str = ""
+    max_input_chars: int = 32_000
+    max_output_tokens: int = 4_096
+    request_timeout_s: int = 60
+    default_prompt_slug: str = "default"
+    database_url: str = "sqlite+aiosqlite:///./data/chat.db"
