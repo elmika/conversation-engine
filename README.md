@@ -49,6 +49,37 @@ The response looks like:
 }
 ```
 
+## Example streaming request (`POST /chat/stream`)
+
+To stream tokens from the model as they are generated:
+
+```bash
+curl -N -X POST http://127.0.0.1:8000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt_slug": "default",
+    "messages": [
+      { "role": "user", "content": "Stream a short answer." }
+    ]
+  }'
+```
+
+You will see Server-Sent Events like:
+
+```text
+event: meta
+data: {"conversation_id":"...","model":"gpt-4.1-mini","prompt_slug":"default"}
+
+event: chunk
+data: {"delta":"First part ..."}
+
+event: chunk
+data: {"delta":"Next part ..."}
+
+event: done
+data: {"conversation_id":"...","assistant_message":"Full answer ...","model":"gpt-4.1-mini","timings":{"ttfb_ms":10,"total_ms":120}}
+```
+
 ## Run and test with Docker (no local install)
 
 From the repo root:

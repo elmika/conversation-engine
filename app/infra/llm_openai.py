@@ -1,27 +1,29 @@
-"""OpenAI Responses API adapter (non-stream for Day 2; stream in Day 3)."""
+"""OpenAI Responses API adapter (non-stream + stream)."""
 
 import time
-from typing import Any
+from typing import Any, Iterable
 
 from openai import OpenAI
 
-from app.application.ports import LLMResult
+from app.application.ports import LLMResult, StreamEvent
 from app.settings import Settings
 
 
 def _build_input_items(messages: list[dict[str, str]]) -> list[dict[str, Any]]:
     """Convert [{role, content}] to Responses API input item list."""
-    items = []
+    items: list[dict[str, Any]] = []
     for msg in messages:
         role = msg.get("role", "user")
         content = (msg.get("content") or "").strip()
         if not content:
             continue
-        items.append({
-            "type": "message",
-            "role": role,
-            "content": [{"type": "input_text", "text": content}],
-        })
+        items.append(
+            {
+                "type": "message",
+                "role": role,
+                "content": [{"type": "input_text", "text": content}],
+            }
+        )
     return items
 
 
@@ -58,6 +60,56 @@ class OpenAILLMAdapter:
             text=text,
             model=getattr(response, "model", self._model) or self._model,
             ttfb_ms=total_ms,
+            total_ms=total_ms,
+        )
+
+    def stream(self, instructions: str, messages: list[dict[str, str]]) -> Iterable[StreamEvent]:
+        """
+        Run streaming completion; yield StreamEvent items.
+
+        TTFB is measured as time until first text delta; total_ms until final response.
+        """
+        input_items = _build_input_items(messages)
+        if not input_items:
+            return []
+
+        start = time.perf_counter()
+        first_delta_ms = 0
+        model = self._model
+
+        # The SDK exposes streaming via client.responses.stream().
+        with self._client.responses.stream(
+            model=self._model,
+            instructions=instructions,
+            input=input_items,
+            max_output_tokens=self._max_output_tokens,
+            timeout=self._timeout,
+        ) as stream:
+            for event in stream:
+                # Text comes as response.output_text.delta events.
+                if getattr(event, "type", None) == "response.output_text.delta":
+                    if not first_delta_ms:
+                        first_delta_ms = round((time.perf_counter() - start) * 1000)
+                    delta = getattr(event, "delta", "") or ""
+                    if not delta:
+                        continue
+                    yield StreamEvent(
+                        type="delta",
+                        delta=delta,
+                        model=self._model,
+                        ttfb_ms=first_delta_ms,
+                        total_ms=0,
+                    )
+            final_response = stream.get_final_response()
+
+        total_ms = round((time.perf_counter() - start) * 1000)
+        text = _extract_output_text(final_response)
+        model = getattr(final_response, "model", self._model) or self._model
+        yield StreamEvent(
+            type="final",
+            text=text,
+            model=model,
+            ttfb_ms=first_delta_ms or total_ms,
             total_ms=total_ms,
         )
 
