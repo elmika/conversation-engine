@@ -21,6 +21,41 @@ A feature is complete only when:
 
 Use the test command defined in the project (e.g. `pytest`) to verify correctness.
 
+## Documentation Gate (Mandatory)
+
+No task is considered complete unless documentation is consistent with the implemented changes.
+
+Before marking a task as complete:
+
+1. Identify all documentation impacted by the change:
+   - README
+   - API documentation (OpenAPI / docstrings)
+   - Architecture notes
+   - Configuration instructions
+   - Environment variables
+   - Runbooks (if relevant)
+
+2. Update documentation to reflect:
+   - New endpoints
+   - Changed behavior
+   - New environment variables
+   - New dependencies
+   - Breaking changes
+   - Updated workflows
+
+3. Ensure examples and code snippets (if any) match the current implementation.
+
+A task is complete only when:
+- All tests are green
+- Documentation reflects the current state of the system
+- No outdated references remain
+
+If documentation is missing or unclear, propose the minimal necessary addition.
+
+Documentation updates must be proportional to the change.
+Do not introduce unnecessary verbosity or redundant files.
+Prefer updating existing documents over creating new ones.
+
 ## Expected Stack & Practices
 - FastAPI with APIRouter and dependency injection (Depends)
 - Pydantic v2 + pydantic-settings for configuration (.env)
