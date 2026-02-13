@@ -1,23 +1,22 @@
-"""Request/response schemas for chat API."""
+"""Request/response schemas for conversation API."""
 
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
-class ChatMessage(BaseModel):
-    """Single message in a chat request."""
+class ConversationMessage(BaseModel):
+    """Single message in a conversation turn."""
 
     role: str = Field(..., pattern="^(user|assistant|system)$")
     content: str
 
 
-class ChatRequest(BaseModel):
-    """POST /chat request body."""
+class ConversationRequest(BaseModel):
+    """Request body for creating or extending a conversation."""
 
-    conversation_id: Optional[str] = None
     prompt_slug: Optional[str] = None
-    messages: list[ChatMessage] = Field(..., min_length=1)
+    messages: list[ConversationMessage] = Field(..., min_length=1)
 
 
 class TimingsSchema(BaseModel):
@@ -27,8 +26,8 @@ class TimingsSchema(BaseModel):
     total_ms: int
 
 
-class ChatResponse(BaseModel):
-    """POST /chat response envelope."""
+class ConversationResponse(BaseModel):
+    """Response envelope for a conversation turn."""
 
     conversation_id: str
     assistant_message: str

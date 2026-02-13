@@ -4,7 +4,7 @@ FastAPI backend integrating the OpenAI Responses API, with streaming, SQLite per
 
 ## Setup (OpenAI API key)
 
-To call the real `/chat` endpoint, the app needs an OpenAI API key. Tests use a mocked LLM and do **not** require a key.
+To call the real conversation endpoints, the app needs an OpenAI API key. Tests use a mocked LLM and do **not** require a key.
 
 1. Copy the example env file and add your key:
    ```bash
@@ -20,12 +20,12 @@ To call the real `/chat` endpoint, the app needs an OpenAI API key. Tests use a 
    - **`--env-file .env`** (recommended): passes all variables from `.env` into the container.
    - **`-e OPENAI_API_KEY=sk-...`**: pass the key explicitly.
 
-## Example request (`POST /chat`)
+## Example request (`POST /conversations`)
 
-Once the container is running on port 8000, you can send a chat request like:
+Once the container is running on port 8000, you can start a new conversation like:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/chat \
+curl -X POST http://127.0.0.1:8000/conversations \
   -H "Content-Type: application/json" \
   -d '{
     "prompt_slug": "default",
@@ -52,10 +52,9 @@ The response looks like:
 To continue a conversation, reuse the `conversation_id` from the first response:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/chat \
+curl -X POST http://127.0.0.1:8000/conversations/abc123 \
   -H "Content-Type: application/json" \
   -d '{
-    "conversation_id": "abc123",
     "prompt_slug": "default",
     "messages": [
       { "role": "user", "content": "Thanks, can you clarify that last point?" }
@@ -63,12 +62,12 @@ curl -X POST http://127.0.0.1:8000/chat \
   }'
 ```
 
-## Example streaming request (`POST /chat/stream`)
+## Example streaming request (`POST /conversations/{conversation_id}/stream`)
 
-To stream tokens from the model as they are generated:
+To stream tokens from the model for an **existing** conversation:
 
 ```bash
-curl -N -X POST http://127.0.0.1:8000/chat/stream \
+curl -N -X POST http://127.0.0.1:8000/conversations/abc123/stream \
   -H "Content-Type: application/json" \
   -d '{
     "prompt_slug": "default",
@@ -94,6 +93,23 @@ event: done
 data: {"conversation_id":"...","assistant_message":"Full answer ...","model":"gpt-4.1-mini","timings":{"ttfb_ms":10,"total_ms":120}}
 ```
 
+## Example first-turn streaming request (`POST /conversations/stream`)
+
+To create a **new** conversation and stream the very first response:
+
+```bash
+curl -N -X POST http://127.0.0.1:8000/conversations/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt_slug": "default",
+    "messages": [
+      { "role": "user", "content": "Stream from the very first message." }
+    ]
+  }'
+```
+
+The SSE shape is the same (`meta`, `chunk`, `done`), but `conversation_id` will be generated on this call and can be reused with `/conversations/{conversation_id}` or `/conversations/{conversation_id}/stream` for follow-up turns.
+
 ## Run and test with Docker (no local install)
 
 From the repo root:
@@ -104,7 +120,7 @@ From the repo root:
 docker build -t open-ai .
 ```
 
-**Run the app** (with API key so `/chat` works)
+**Run the app** (with API key so conversation endpoints work)
 
 ```bash
 docker run --rm -p 8000:8000 --env-file .env open-ai

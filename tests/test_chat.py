@@ -1,4 +1,4 @@
-"""Tests for POST /chat with mocked LLM."""
+"""Tests for conversation endpoints with mocked LLM."""
 
 from unittest.mock import MagicMock
 
@@ -31,10 +31,10 @@ def client_with_mock_llm(mock_llm):
     app.dependency_overrides.clear()
 
 
-def test_chat_returns_envelope(client_with_mock_llm, mock_llm) -> None:
-    """POST /chat returns conversation_id, assistant_message, model, timings."""
+def test_conversations_create_returns_envelope(client_with_mock_llm, mock_llm) -> None:
+    """POST /conversations returns conversation_id, assistant_message, model, timings."""
     response = client_with_mock_llm.post(
-        "/chat",
+        "/conversations",
         json={
             "messages": [{"role": "user", "content": "Hello"}],
         },
@@ -52,10 +52,10 @@ def test_chat_returns_envelope(client_with_mock_llm, mock_llm) -> None:
     assert call_args[0][1] == [{"role": "user", "content": "Hello"}]
 
 
-def test_chat_uses_prompt_slug(client_with_mock_llm, mock_llm) -> None:
-    """POST /chat with prompt_slug uses that prompt's system_prompt."""
+def test_conversations_create_uses_prompt_slug(client_with_mock_llm, mock_llm) -> None:
+    """POST /conversations with prompt_slug uses that prompt's system_prompt."""
     response = client_with_mock_llm.post(
-        "/chat",
+        "/conversations",
         json={
             "prompt_slug": "conflict-coach-v1",
             "messages": [{"role": "user", "content": "A colleague disagrees."}],
@@ -66,14 +66,24 @@ def test_chat_uses_prompt_slug(client_with_mock_llm, mock_llm) -> None:
     assert "workplace conflicts" in (call_args[0][0] or "")
 
 
-def test_chat_passes_conversation_id(client_with_mock_llm, mock_llm) -> None:
-    """POST /chat with conversation_id returns the same id."""
-    response = client_with_mock_llm.post(
-        "/chat",
+def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mock_llm) -> None:
+    """POST /conversations/{conversation_id} returns the same id."""
+    # First create a conversation to obtain a valid id.
+    create_resp = client_with_mock_llm.post(
+        "/conversations",
         json={
-            "conversation_id": "existing-123",
-            "messages": [{"role": "user", "content": "Hi"}],
+            "messages": [{"role": "user", "content": "First"}],
         },
     )
-    assert response.status_code == 200
-    assert response.json()["conversation_id"] == "existing-123"
+    assert create_resp.status_code == 200
+    cid = create_resp.json()["conversation_id"]
+
+    # Append a new turn to the same conversation.
+    append_resp = client_with_mock_llm.post(
+        f"/conversations/{cid}",
+        json={
+            "messages": [{"role": "user", "content": "Hi again"}],
+        },
+    )
+    assert append_resp.status_code == 200
+    assert append_resp.json()["conversation_id"] == cid

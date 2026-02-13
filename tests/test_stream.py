@@ -1,4 +1,4 @@
-"""Tests for POST /chat/stream with mocked streaming LLM."""
+"""Tests for streaming conversation endpoint with mocked LLM."""
 
 from typing import Iterable
 from unittest.mock import MagicMock
@@ -42,10 +42,23 @@ def client_with_mock_stream(mock_llm_streaming):
     app.dependency_overrides.clear()
 
 
-def test_chat_stream_sends_meta_chunk_done(client_with_mock_stream, mock_llm_streaming) -> None:
-    """POST /chat/stream emits meta, chunk, and done SSE events."""
+def test_conversation_stream_sends_meta_chunk_done(
+    client_with_mock_stream, mock_llm_streaming
+) -> None:
+    """POST /conversations/{conversation_id}/stream emits meta, chunk, and done SSE events."""
+    # First create a conversation to obtain a valid id.
+    create_resp = client_with_mock_stream.post(
+        "/conversations",
+        json={
+            "messages": [{"role": "user", "content": "First"}],
+        },
+    )
+    assert create_resp.status_code == 200
+    cid = create_resp.json()["conversation_id"]
+
+    # Stream a new turn on that conversation.
     response = client_with_mock_stream.post(
-        "/chat/stream",
+        f"/conversations/{cid}/stream",
         json={
             "messages": [{"role": "user", "content": "Hello"}],
         },
@@ -66,4 +79,24 @@ def test_chat_stream_sends_meta_chunk_done(client_with_mock_stream, mock_llm_str
     assert '"assistant_message": "Hello"' in body or '"assistant_message":"Hello"' in body
     assert '"ttfb_ms": 10' in body
     assert '"total_ms": 20' in body
+
+
+def test_conversation_stream_first_turn_creates_conversation(
+    client_with_mock_stream, mock_llm_streaming
+) -> None:
+    """POST /conversations/stream streams the first turn and creates a conversation."""
+    response = client_with_mock_stream.post(
+        "/conversations/stream",
+        json={
+            "messages": [{"role": "user", "content": "Hello from scratch"}],
+        },
+    )
+    assert response.status_code == 200
+    body = b"".join(response.iter_bytes()).decode("utf-8")
+
+    # Should emit meta, chunk, and done, with a conversation_id.
+    assert "event: meta" in body
+    assert "event: chunk" in body
+    assert "event: done" in body
+    assert '"assistant_message": "Hello"' in body or '"assistant_message":"Hello"' in body
 

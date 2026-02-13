@@ -23,6 +23,10 @@
   - Emit a final `done` SSE event containing `error` information (alongside timings and model metadata).  
   - Optionally surface an `error` SSE event type for clients that want to differentiate failures from normal completion.
 
+- **Multiple streaming entrypoints**  
+  We now expose both `POST /conversations/stream` (first turn) and `POST /conversations/{conversation_id}/stream` (subsequent turns).  
+  The SSE contract is intentionally identical, but there is still a risk of behavioral drift between the two; any changes to streaming semantics should be applied consistently to both endpoints.
+
 ## Persistence – Risks and Future Improvements
 
 - **Conversation history in prompts**  
