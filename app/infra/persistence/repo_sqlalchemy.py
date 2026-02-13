@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,7 +25,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self._session.commit()
         return conv_id
 
-    def get_messages(self, conversation_id: str) -> List[dict[str, str]]:
+    def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
         stmt = (
             select(Message)
             .where(Message.conversation_id == conversation_id)

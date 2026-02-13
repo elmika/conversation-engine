@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,10 +19,10 @@ class Conversation(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    messages: Mapped[List["Message"]] = relationship(
+    messages: Mapped[list[Message]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
     )
-    runs: Mapped[List["Run"]] = relationship(
+    runs: Mapped[list[Run]] = relationship(
         "Run", back_populates="conversation", cascade="all, delete-orphan"
     )
 
@@ -41,7 +41,7 @@ class Message(Base):
     )
 
     conversation: Mapped[Conversation] = relationship("Conversation", back_populates="messages")
-    runs: Mapped[List["Run"]] = relationship("Run", back_populates="assistant_message")
+    runs: Mapped[list[Run]] = relationship("Run", back_populates="assistant_message")
 
 
 class Run(Base):

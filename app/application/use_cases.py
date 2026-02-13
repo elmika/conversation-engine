@@ -1,7 +1,8 @@
 """Chat use cases; depend only on ports and domain."""
 
 import uuid
-from typing import Callable, Iterable, Optional
+from collections.abc import Iterable
+from typing import Callable, Optional
 
 from app.application.ports import LLMResult, StreamEvent
 from app.domain.prompt_registry import get_prompt

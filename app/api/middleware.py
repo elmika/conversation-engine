@@ -25,9 +25,22 @@ class RequestIdAndTimingMiddleware(BaseHTTPMiddleware):
         request_id = get_request_id(request)
         request.state.request_id = request_id
         start = time.perf_counter()
-        response = await call_next(request)
-        latency_ms = round((time.perf_counter() - start) * 1000)
         endpoint = f"{request.method} {request.url.path}"
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            latency_ms = round((time.perf_counter() - start) * 1000)
+            logger.exception(
+                "request failed",
+                extra={
+                    "request_id": request_id,
+                    "endpoint": endpoint,
+                    "latency_ms": latency_ms,
+                    "error": str(exc),
+                },
+            )
+            raise
+        latency_ms = round((time.perf_counter() - start) * 1000)
         logger.info(
             "request",
             extra={

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
-from typing import Generator, Optional
+from collections.abc import Generator
+from typing import Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class Base(DeclarativeBase):
@@ -31,7 +33,15 @@ def init_engine(database_url: str) -> None:
         if directory:
             os.makedirs(directory, exist_ok=True)
 
-    _engine = create_engine(database_url, future=True)
+    connect_args = {}
+    poolclass = None
+    if database_url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+    if ":memory:" in database_url:
+        poolclass = StaticPool
+    _engine = create_engine(
+        database_url, future=True, connect_args=connect_args, poolclass=poolclass
+    )
     SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
 

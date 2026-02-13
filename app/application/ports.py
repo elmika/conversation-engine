@@ -1,6 +1,7 @@
 """Application ports: abstract interfaces for infra adapters."""
 
-from typing import Iterable, Optional, Protocol, TypedDict
+from collections.abc import Iterable
+from typing import Optional, Protocol, TypedDict
 
 
 class Timings(TypedDict):

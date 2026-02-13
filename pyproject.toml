@@ -36,3 +36,6 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4"]
+ignore = ["UP045"]  # Optional[X] kept for Python 3.9 compatibility
+[tool.ruff.lint.per-file-ignores]
+"app/api/routes.py" = ["B008"]

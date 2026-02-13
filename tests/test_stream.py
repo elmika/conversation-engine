@@ -1,6 +1,6 @@
 """Tests for streaming conversation endpoint with mocked LLM."""
 
-from typing import Iterable
+from collections.abc import Iterable
 from unittest.mock import MagicMock
 
 import pytest

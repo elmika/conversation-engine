@@ -9,7 +9,12 @@ from app.application.ports import LLMResult
 from app.main import app
 
 
-def _make_llm_result(text: str = "Hi there", model: str = "gpt-4.1-mini", ttfb_ms: int = 50, total_ms: int = 100) -> LLMResult:
+def _make_llm_result(
+    text: str = "Hi there",
+    model: str = "gpt-4.1-mini",
+    ttfb_ms: int = 50,
+    total_ms: int = 100,
+) -> LLMResult:
     return LLMResult(text=text, model=model, ttfb_ms=ttfb_ms, total_ms=total_ms)
 
 

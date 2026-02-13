@@ -2,9 +2,10 @@
 
 import asyncio
 import json
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import ConversationRequest, ConversationResponse, TimingsSchema
@@ -115,15 +116,20 @@ async def create_conversation_stream(
                     total_ms = ev["total_ms"]
 
                 # Persist assistant message and run metadata in a worker thread.
-                def _inner() -> None:
-                    assistant_message_id = repo.append_message(conv_id, "assistant", full_text)
+                def _inner(
+                    _ft: str = full_text,
+                    _m: str = model,
+                    _ttfb: int = ttfb_ms,
+                    _total: int = total_ms,
+                ) -> None:
+                    assistant_message_id = repo.append_message(conv_id, "assistant", _ft)
                     repo.record_run(
                         conversation_id=conv_id,
                         assistant_message_id=assistant_message_id,
                         prompt_slug=used_prompt_slug,
-                        model=model,
-                        ttfb_ms=ttfb_ms,
-                        total_ms=total_ms,
+                        model=_m,
+                        ttfb_ms=_ttfb,
+                        total_ms=_total,
                     )
 
                 await asyncio.to_thread(_inner)
@@ -325,15 +331,20 @@ async def append_conversation_turn_stream(
                     total_ms = ev["total_ms"]
 
                 # Persist assistant message and run metadata in a worker thread.
-                def _inner() -> None:
-                    assistant_message_id = repo.append_message(conv_id, "assistant", full_text)
+                def _inner(
+                    _ft: str = full_text,
+                    _m: str = model,
+                    _ttfb: int = ttfb_ms,
+                    _total: int = total_ms,
+                ) -> None:
+                    assistant_message_id = repo.append_message(conv_id, "assistant", _ft)
                     repo.record_run(
                         conversation_id=conv_id,
                         assistant_message_id=assistant_message_id,
                         prompt_slug=used_prompt_slug,
-                        model=model,
-                        ttfb_ms=ttfb_ms,
-                        total_ms=total_ms,
+                        model=_m,
+                        ttfb_ms=_ttfb,
+                        total_ms=_total,
                     )
 
                 await asyncio.to_thread(_inner)
