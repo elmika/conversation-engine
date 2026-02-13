@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.application.ports import LLMResult
 from app.main import app
+from app.settings import Settings
 
 
 def _make_llm_result(
@@ -92,3 +93,22 @@ def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mo
     )
     assert append_resp.status_code == 200
     assert append_resp.json()["conversation_id"] == cid
+
+
+def test_conversations_reject_input_over_max_chars(client_with_mock_llm) -> None:
+    """POST /conversations returns 400 when total message content exceeds max_input_chars."""
+    from app.api import routes
+
+    # Override settings so a short message is over the limit.
+    app.dependency_overrides[routes.get_settings] = lambda: Settings(max_input_chars=10)
+    try:
+        response = client_with_mock_llm.post(
+            "/conversations",
+            json={
+                "messages": [{"role": "user", "content": "this is way over ten chars"}],
+            },
+        )
+        assert response.status_code == 400
+        assert "max_input_chars" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(routes.get_settings, None)

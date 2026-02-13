@@ -5,7 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import ConversationRequest, ConversationResponse, TimingsSchema
@@ -33,6 +33,16 @@ def get_repo(db=Depends(get_session)) -> SQLAlchemyConversationRepo:
     return SQLAlchemyConversationRepo(db)
 
 
+def _check_input_length(messages: list[dict[str, str]], max_chars: int) -> None:
+    """Raise 400 if total message content length exceeds max_chars."""
+    total = sum(len(m.get("content") or "") for m in messages)
+    if total > max_chars:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total message content length ({total}) exceeds max_input_chars ({max_chars})",
+        )
+
+
 @router.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Health check."""
@@ -58,6 +68,7 @@ async def create_conversation_stream(
       - done: final assistant message + timings
     """
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    _check_input_length(messages, settings.max_input_chars)
 
     # Run domain logic and streaming adapter in a thread so we don't block the event loop.
     def _stream_setup() -> tuple[str, Any, str]:
@@ -153,6 +164,7 @@ async def create_conversation(
     ) -> ConversationResponse:
     """Create a new conversation and handle the first turn (non-streaming)."""
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    _check_input_length(messages, settings.max_input_chars)
     prompt_slug = body.prompt_slug or settings.default_prompt_slug
 
     def _run() -> tuple[str, str, str, int, int]:
@@ -273,6 +285,7 @@ async def append_conversation_turn_stream(
       - done: final assistant message + timings
     """
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    _check_input_length(messages, settings.max_input_chars)
 
     # Run domain logic and streaming adapter in a thread so we don't block the event loop.
     def _stream_setup() -> tuple[str, Any, str]:

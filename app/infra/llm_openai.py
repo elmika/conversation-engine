@@ -1,13 +1,25 @@
 """OpenAI Responses API adapter (non-stream + stream)."""
 
+import logging
 import time
 from collections.abc import Iterable
 from typing import Any
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 from app.application.ports import LLMResult, StreamEvent
 from app.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+# Transient errors we retry with backoff.
+RETRYABLE_EXCEPTIONS = (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError)
 
 
 def _build_input_items(messages: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -36,6 +48,8 @@ class OpenAILLMAdapter:
         self._model = settings.openai_model
         self._timeout = settings.request_timeout_s
         self._max_output_tokens = settings.max_output_tokens
+        self._max_retries = settings.max_retries
+        self._retry_backoff_s = settings.retry_backoff_s
 
     def complete(self, instructions: str, messages: list[dict[str, str]]) -> LLMResult:
         """Run non-streaming completion; return assistant text, model, timings."""
@@ -47,22 +61,40 @@ class OpenAILLMAdapter:
                 ttfb_ms=0,
                 total_ms=0,
             )
-        start = time.perf_counter()
-        response = self._client.responses.create(
-            model=self._model,
-            instructions=instructions,
-            input=input_items,
-            max_output_tokens=self._max_output_tokens,
-            timeout=self._timeout,
-        )
-        total_ms = round((time.perf_counter() - start) * 1000)
-        text = _extract_output_text(response)
-        return LLMResult(
-            text=text,
-            model=getattr(response, "model", self._model) or self._model,
-            ttfb_ms=total_ms,
-            total_ms=total_ms,
-        )
+        last_exc = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                start = time.perf_counter()
+                response = self._client.responses.create(
+                    model=self._model,
+                    instructions=instructions,
+                    input=input_items,
+                    max_output_tokens=self._max_output_tokens,
+                    timeout=self._timeout,
+                )
+                total_ms = round((time.perf_counter() - start) * 1000)
+                text = _extract_output_text(response)
+                return LLMResult(
+                    text=text,
+                    model=getattr(response, "model", self._model) or self._model,
+                    ttfb_ms=total_ms,
+                    total_ms=total_ms,
+                )
+            except RETRYABLE_EXCEPTIONS as exc:
+                last_exc = exc
+                if attempt < self._max_retries:
+                    delay = self._retry_backoff_s * (2**attempt)
+                    logger.warning(
+                        "OpenAI request failed (attempt %s/%s), retrying in %.1fs: %s",
+                        attempt + 1,
+                        self._max_retries + 1,
+                        delay,
+                        exc,
+                    )
+                    time.sleep(delay)
+                else:
+                    raise
+        raise last_exc  # type: ignore[misc]
 
     def stream(self, instructions: str, messages: list[dict[str, str]]) -> Iterable[StreamEvent]:
         """
@@ -74,11 +106,35 @@ class OpenAILLMAdapter:
         if not input_items:
             return []
 
+        last_exc = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                yield from self._stream_once(instructions, input_items)
+                return
+            except RETRYABLE_EXCEPTIONS as exc:
+                last_exc = exc
+                if attempt < self._max_retries:
+                    delay = self._retry_backoff_s * (2**attempt)
+                    logger.warning(
+                        "OpenAI stream failed (attempt %s/%s), retrying in %.1fs: %s",
+                        attempt + 1,
+                        self._max_retries + 1,
+                        delay,
+                        exc,
+                    )
+                    time.sleep(delay)
+                else:
+                    raise
+        raise last_exc  # type: ignore[misc]
+
+    def _stream_once(
+        self, instructions: str, input_items: list[dict[str, Any]]
+    ) -> Iterable[StreamEvent]:
+        """Single attempt at streaming; used by stream() with retry wrapper."""
         start = time.perf_counter()
         first_delta_ms = 0
         model = self._model
 
-        # The SDK exposes streaming via client.responses.stream().
         with self._client.responses.stream(
             model=self._model,
             instructions=instructions,
@@ -87,7 +143,6 @@ class OpenAILLMAdapter:
             timeout=self._timeout,
         ) as stream:
             for event in stream:
-                # Text comes as response.output_text.delta events.
                 if getattr(event, "type", None) == "response.output_text.delta":
                     if not first_delta_ms:
                         first_delta_ms = round((time.perf_counter() - start) * 1000)

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.application.ports import StreamEvent
 from app.main import app
+from app.settings import Settings
 
 
 def _make_events() -> Iterable[StreamEvent]:
@@ -99,4 +100,22 @@ def test_conversation_stream_first_turn_creates_conversation(
     assert "event: chunk" in body
     assert "event: done" in body
     assert '"assistant_message": "Hello"' in body or '"assistant_message":"Hello"' in body
+
+
+def test_conversation_stream_rejects_input_over_max_chars(client_with_mock_stream) -> None:
+    """POST /conversations/stream returns 400 when total message content exceeds max_input_chars."""
+    from app.api import routes
+
+    app.dependency_overrides[routes.get_settings] = lambda: Settings(max_input_chars=10)
+    try:
+        response = client_with_mock_stream.post(
+            "/conversations/stream",
+            json={
+                "messages": [{"role": "user", "content": "way over ten chars here"}],
+            },
+        )
+        assert response.status_code == 400
+        assert "max_input_chars" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(routes.get_settings, None)
 

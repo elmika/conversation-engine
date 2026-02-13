@@ -55,3 +55,14 @@
 
 - **GET endpoint for conversations**  
   Consider adding e.g. `GET /conversations/{id}/messages` for easier integration tests and debugging; not required for current test gate.
+
+## Input caps, timeout, and retry (Day 6+)
+
+- **Stream retry semantics**  
+  On a transient error during streaming, we retry from the start (new request). The client cannot “resume” the same stream; they see a new connection. Acceptable for current scope; for stricter guarantees we could document this or add an SSE error event before closing.
+
+- **Input cap is character-based**  
+  `max_input_chars` is enforced as total character count of message contents only (no system prompt, no tokenization). For strict token limits or cost control, consider a token-based check or delegating to the API’s own limits.
+
+- **Timeout and SDK behaviour**  
+  We pass `request_timeout_s` to the OpenAI client for both `create` and `stream`. The SDK has known quirks where timeouts are not always honoured; monitor and consider client-level timeouts or wrapping in `asyncio.wait_for` if needed.

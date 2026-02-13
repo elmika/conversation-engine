@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     max_input_chars: int = 32_000
     max_output_tokens: int = 4_096
     request_timeout_s: int = 60
+    max_retries: int = 2
+    retry_backoff_s: float = 1.0
     default_prompt_slug: str = "default"
     # Sync SQLAlchemy engine; we offload DB work to worker threads.
     database_url: str = "sqlite:///./data/chat.db"
