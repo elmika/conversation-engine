@@ -18,4 +18,5 @@ class Settings(BaseSettings):
     max_output_tokens: int = 4_096
     request_timeout_s: int = 60
     default_prompt_slug: str = "default"
-    database_url: str = "sqlite+aiosqlite:///./data/chat.db"
+    # Sync SQLAlchemy engine; we offload DB work to worker threads.
+    database_url: str = "sqlite:///./data/chat.db"

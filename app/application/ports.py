@@ -1,6 +1,6 @@
 """Application ports: abstract interfaces for infra adapters."""
 
-from typing import Iterable, Protocol, TypedDict
+from typing import Iterable, Optional, Protocol, TypedDict
 
 
 class Timings(TypedDict):
@@ -46,16 +46,31 @@ class LLMPort(Protocol):
 
 
 class ConversationRepo(Protocol):
-    """Port for conversation persistence. Implemented in Day 4."""
+    """Port for conversation and run persistence."""
 
     def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
         """Return messages ordered by id (role, content)."""
         ...
 
-    def append_message(self, conversation_id: str, role: str, content: str) -> None:
-        """Append a message to the conversation."""
+    def append_message(self, conversation_id: str, role: str, content: str) -> int:
+        """Append a message to the conversation and return its id."""
         ...
 
     def create_conversation(self) -> str:
         """Create a new conversation; return its id."""
+        ...
+
+    def record_run(
+        self,
+        conversation_id: str,
+        assistant_message_id: int,
+        prompt_slug: str,
+        model: str,
+        ttfb_ms: int,
+        total_ms: int,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None,
+        finish_reason: Optional[str] = None,
+    ) -> None:
+        """Persist run metadata describing how an assistant message was generated."""
         ...

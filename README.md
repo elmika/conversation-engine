@@ -49,6 +49,20 @@ The response looks like:
 }
 ```
 
+To continue a conversation, reuse the `conversation_id` from the first response:
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation_id": "abc123",
+    "prompt_slug": "default",
+    "messages": [
+      { "role": "user", "content": "Thanks, can you clarify that last point?" }
+    ]
+  }'
+```
+
 ## Example streaming request (`POST /chat/stream`)
 
 To stream tokens from the model as they are generated:
@@ -122,3 +136,11 @@ uvicorn app.main:app --reload
 ```
 
 Tests: `pytest` or `pytest -v`.
+
+---
+
+## Risks and future improvements
+
+For a deeper discussion of streaming and persistence risks, see:
+
+- [`RISKS-AND-IMPROVEMENTS.md`](RISKS-AND-IMPROVEMENTS.md)
