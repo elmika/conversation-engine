@@ -22,12 +22,18 @@ To call the real conversation endpoints, the app needs an OpenAI API key. Tests 
 
 ## Run and test with Docker (no local install)
 
-From the repo root:
+From the repo root. The image runs as a non-root user and uses a multi-stage build.
 
-**Build the image**
+**Build the image** (default: includes app + tests)
 
 ```bash
 docker build -t open-ai .
+```
+
+Optional: build a slimmer production-only image (no pytest):
+
+```bash
+docker build --target prod -t open-ai:prod .
 ```
 
 **Run the app** (with API key so conversation endpoints work)
@@ -41,7 +47,7 @@ If you prefer not to use a file: `docker run --rm -p 8000:8000 -e OPENAI_API_KEY
 - Health: http://127.0.0.1:8000/healthz  
 - API docs: http://127.0.0.1:8000/docs  
 
-**Run tests** (no API key needed)
+**Run tests** (no API key needed; use default image, not `open-ai:prod`)
 
 ```bash
 docker run --rm open-ai pytest -v
