@@ -5,12 +5,12 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import ConversationRequest, ConversationResponse, TimingsSchema
+from app.application.ports import ConversationRepo, LLMPort
 from app.application.use_cases import chat, stream_chat
-from app.infra.llm_openai import OpenAILLMAdapter
 from app.infra.persistence.db import get_session
 from app.infra.persistence.repo_sqlalchemy import SQLAlchemyConversationRepo
 from app.settings import Settings
@@ -18,18 +18,18 @@ from app.settings import Settings
 router = APIRouter()
 
 
-def get_settings() -> Settings:
-    """Load settings (inject in main with overrides if needed)."""
-    return Settings()
+def get_settings(request: Request) -> Settings:
+    """Provide settings from app.state (injected in main lifespan)."""
+    return request.app.state.settings
 
 
-def get_llm(settings: Settings = Depends(get_settings)) -> OpenAILLMAdapter:
-    """Provide LLM adapter."""
-    return OpenAILLMAdapter(settings)
+def get_llm(request: Request) -> LLMPort:
+    """Provide LLM adapter from app.state (injected in main lifespan)."""
+    return request.app.state.llm
 
 
-def get_repo(db=Depends(get_session)) -> SQLAlchemyConversationRepo:
-    """Provide conversation repository backed by SQLAlchemy."""
+def get_repo(db=Depends(get_session)) -> ConversationRepo:
+    """Provide conversation repository (SQLAlchemy impl, session from app engine)."""
     return SQLAlchemyConversationRepo(db)
 
 
@@ -56,8 +56,8 @@ async def healthz() -> dict[str, str]:
 async def create_conversation_stream(
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
-    llm: OpenAILLMAdapter = Depends(get_llm),
-    repo: SQLAlchemyConversationRepo = Depends(get_repo),
+    llm: LLMPort = Depends(get_llm),
+    repo: ConversationRepo = Depends(get_repo),
 ) -> StreamingResponse:
     """
     Create a new conversation and stream the first turn as SSE.
@@ -159,8 +159,8 @@ async def create_conversation_stream(
 async def create_conversation(
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
-    llm: OpenAILLMAdapter = Depends(get_llm),
-    repo: SQLAlchemyConversationRepo = Depends(get_repo),
+    llm: LLMPort = Depends(get_llm),
+    repo: ConversationRepo = Depends(get_repo),
     ) -> ConversationResponse:
     """Create a new conversation and handle the first turn (non-streaming)."""
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
@@ -222,8 +222,8 @@ async def append_conversation_turn(
     conversation_id: str,
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
-    llm: OpenAILLMAdapter = Depends(get_llm),
-    repo: SQLAlchemyConversationRepo = Depends(get_repo),
+    llm: LLMPort = Depends(get_llm),
+    repo: ConversationRepo = Depends(get_repo),
 ) -> ConversationResponse:
     """Append a new turn to an existing conversation (non-streaming)."""
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
@@ -273,8 +273,8 @@ async def append_conversation_turn_stream(
     conversation_id: str,
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
-    llm: OpenAILLMAdapter = Depends(get_llm),
-    repo: SQLAlchemyConversationRepo = Depends(get_repo),
+    llm: LLMPort = Depends(get_llm),
+    repo: ConversationRepo = Depends(get_repo),
 ) -> StreamingResponse:
     """
     Append a new turn to an existing conversation with streaming SSE output.

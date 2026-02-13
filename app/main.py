@@ -1,4 +1,4 @@
-"""Application entrypoint."""
+"""Application entrypoint. Infra is created here and injected via app.state."""
 
 import logging
 from contextlib import asynccontextmanager
@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.middleware import RequestIdAndTimingMiddleware
 from app.api.routes import router
+from app.infra.llm_openai import OpenAILLMAdapter
 from app.infra.logging import setup_logging
 from app.infra.persistence.db import Base, get_engine, init_engine
 from app.settings import Settings
@@ -31,14 +32,17 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan: setup logging and database."""
+    """Lifespan: setup logging, database, and inject infra into app.state."""
     setup_logging()
 
-    # Initialise DB engine and create tables.
     settings = Settings()
     init_engine(settings.database_url)
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+
+    # Inject infra so routes depend on app.state instead of constructing adapters.
+    app.state.settings = settings
+    app.state.llm = OpenAILLMAdapter(settings)
 
     yield
     # teardown if any
