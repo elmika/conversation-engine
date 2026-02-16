@@ -67,7 +67,13 @@ def _build_input_items(messages: list[dict[str, str]]) -> list[dict[str, Any]]:
             {
                 "type": "message",
                 "role": role,
-                "content": [{"type": "input_text", "text": content}],
+                # NOTE: The Responses API currently expects text content parts
+                # with type "output_text" or "refusal". Using "input_text"
+                # results in a 400 Bad Request:
+                #   Invalid value: 'input_text'. Supported values are:
+                #   'output_text' and 'refusal'.
+                # For simple text-only interactions we always use "output_text".
+                "content": [{"type": "output_text", "text": content}],
             }
         )
     return items
