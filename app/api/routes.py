@@ -234,6 +234,9 @@ async def append_conversation_turn(
 
         # Build conversation history before adding this turn so we don't double-count.
         history = repo.get_messages(cid)
+        if not history:
+            # No existing conversation or no prior messages: treat as not found.
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
         # Persist user messages for this turn.
         for msg in messages:
@@ -299,6 +302,9 @@ async def append_conversation_turn_stream(
 
         # Build conversation history before adding this turn so we don't double-count.
         history = repo.get_messages(cid)
+        if not history:
+            # No existing conversation or no prior messages: treat as not found.
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
         # Persist user messages for this turn.
         for msg in messages:
