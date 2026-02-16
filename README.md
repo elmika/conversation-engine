@@ -67,6 +67,58 @@ uvicorn app.main:app --reload
 
 Tests: `pytest` or `pytest -v`.
 
+## Light load testing & TTFB
+
+These examples assume the app is running on `http://127.0.0.1:8000` (locally or via Docker).
+
+- **Single streaming request (measure client-side TTFB and total time)**  
+  ```bash
+  curl -w 'TTFB=%{time_starttransfer}s TOTAL=%{time_total}s\n' \
+    -N -X POST http://127.0.0.1:8000/conversations/stream \
+    -H "Content-Type: application/json" \
+    -d '{"messages":[{"role":"user","content":"Say hello briefly."}]}'
+  ```  
+  This shows wall-clock TTFB and total duration from the client’s perspective; compare it with the `timings` we return in the final `done` event.
+
+- **Light load on non-streaming endpoint (example with `hey`)**  
+  ```bash
+  hey -n 50 -c 5 -m POST \
+    -H "Content-Type: application/json" \
+    -d '{"messages":[{"role":"user","content":"Hello"}]}' \
+    http://127.0.0.1:8000/conversations
+  ```  
+  This issues 50 requests with up to 5 in flight; use the reported p50/p90 latencies alongside the `timings` fields in responses to get a feel for behaviour under small concurrent load.
+
+- **Light load without extra tools (Python snippet)**  
+  ```bash
+  python - << 'EOF'
+  import asyncio
+  import time
+
+  import httpx
+
+  URL = "http://127.0.0.1:8000/conversations"
+  PAYLOAD = {"messages": [{"role": "user", "content": "Ping"}]}
+
+  async def one_call(client: httpx.AsyncClient) -> float:
+      start = time.perf_counter()
+      r = await client.post(URL, json=PAYLOAD)
+      r.raise_for_status()
+      return (time.perf_counter() - start) * 1000
+
+  async def main() -> None:
+      async with httpx.AsyncClient(timeout=10.0) as client:
+          tasks = [one_call(client) for _ in range(20)]
+          latencies = await asyncio.gather(*tasks)
+      latencies_rounded = [round(x) for x in latencies]
+      print("latencies_ms:", latencies_rounded)
+      print("avg_ms:", round(sum(latencies) / len(latencies)))
+
+  asyncio.run(main())
+  EOF
+  ```  
+  This sends a small burst of requests and prints per-call and average latency; for deeper analysis, you can also inspect each response’s `timings` field.
+
 ## Architecture overview
 
 - **Entry point**: `app/main.py` creates the FastAPI app, sets up logging and the SQLite engine in a lifespan hook, creates a single `Settings` instance and OpenAI adapter, and stores them on `app.state` so the rest of the app can reuse them.

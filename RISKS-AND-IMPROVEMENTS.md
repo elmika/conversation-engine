@@ -66,3 +66,14 @@
 
 - **Timeout and SDK behaviour**  
   We pass `request_timeout_s` to the OpenAI client for both `create` and `stream`. The SDK has known quirks where timeouts are not always honoured; monitor and consider client-level timeouts or wrapping in `asyncio.wait_for` if needed.
+
+## Load testing and performance (Day 10+)
+
+- **Light-load focus only**  
+  Current guidance and examples target light load (dozens of requests, small concurrency). They are useful for smoke-testing and getting a feel for TTFB/latency but are not a substitute for proper performance and capacity testing.
+
+- **No dedicated monitoring/metrics yet**  
+  We rely on structured logs (request_id, endpoint, status, latency) and per-request `timings` fields to reason about performance. For higher loads or production use, we would want real metrics (e.g. Prometheus, tracing) and dashboards.
+
+- **OpenAI limits and upstream variability**  
+  Under heavier load, OpenAI rate limits or upstream variability (queueing, retries) may dominate latency and error patterns. The current retry/backoff is basic; a more robust setup would combine backoff with better observability and, if needed, workload shaping or queuing.
