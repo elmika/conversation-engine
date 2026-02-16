@@ -35,6 +35,50 @@ def test_adapter_retries_on_rate_limit_then_succeeds() -> None:
     assert mock_create.call_count == 2
 
 
+def test_adapter_builds_responses_input_payload_shape() -> None:
+    """
+    complete() should build Responses API `input` items with the correct shape.
+
+    This test documents the expected schema for text inputs, and will fail as
+    long as _build_input_items constructs a payload that does not match it
+    (e.g. wrong content[type] value), which is currently causing upstream
+    400 Bad Request errors.
+    """
+    # Arrange a minimal successful Responses object so complete() can finish.
+    block = MagicMock(type="output_text", text="ok")
+    item = MagicMock(type="message", content=[block])
+    mock_response = MagicMock(output=[item], model="gpt-4.1-mini")
+
+    settings = Settings(max_retries=0, retry_backoff_s=0.0)
+    with patch("app.infra.llm_openai.OpenAI") as mock_openai_class:
+        mock_client = MagicMock()
+        mock_client.responses.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        adapter = OpenAILLMAdapter(settings)
+        adapter.complete("instructions", [{"role": "user", "content": "Hi"}])
+
+    # Assert: the payload we send to Responses matches the expected schema.
+    kwargs = mock_client.responses.create.call_args.kwargs
+    input_items = kwargs["input"]
+    assert isinstance(input_items, list)
+    assert input_items, "input items should not be empty"
+
+    first = input_items[0]
+    assert first["type"] == "message"
+    assert first["role"] == "user"
+    assert isinstance(first["content"], list)
+    assert first["content"], "message content list should not be empty"
+
+    content0 = first["content"][0]
+    # Expected behaviour (will currently FAIL): content type should be
+    # the correct Responses API text content type, not the value that is
+    # currently rejected upstream with:
+    #   Invalid value: 'input_text'. Supported values are: 'output_text' and 'refusal'.
+    assert content0["type"] == "output_text"
+    assert content0["text"] == "Hi"
+
+
 def _make_adapter_with_exception(exc: Exception) -> OpenAILLMAdapter:
     """Create an adapter whose client always raises the given exception."""
     settings = Settings(max_retries=0, retry_backoff_s=0.0)
