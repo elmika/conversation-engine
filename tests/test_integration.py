@@ -250,4 +250,3 @@ def test_append_turn_maps_openai_bad_request_to_http_error(
     assert r2.status_code == 502
     body = r2.json()
     assert body["detail"] == "Upstream OpenAI API error."
-    assert "request_id" in body

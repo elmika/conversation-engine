@@ -33,22 +33,22 @@ def _map_openai_error(exc: Exception) -> HTTPException:
         )
     if isinstance(exc, APITimeoutError):
         return HTTPException(
-            status_code=status.HTTP_GATEWAY_TIMEOUT,
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Upstream OpenAI request timed out.",
         )
     if isinstance(exc, APIConnectionError):
         return HTTPException(
-            status_code=status.HTTP_BAD_GATEWAY,
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Unable to reach upstream OpenAI service.",
         )
     if isinstance(exc, InternalServerError):
         return HTTPException(
-            status_code=status.HTTP_BAD_GATEWAY,
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Upstream OpenAI service returned an internal error.",
         )
     if isinstance(exc, APIError):
         return HTTPException(
-            status_code=status.HTTP_BAD_GATEWAY,
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Upstream OpenAI API error.",
         )
     # Fallback: unknown error type, treat as generic upstream failure.
@@ -95,38 +95,43 @@ class OpenAILLMAdapter:
                 total_ms=0,
             )
         last_exc: Exception | None = None
-        for attempt in range(self._max_retries + 1):
-            try:
-                start = time.perf_counter()
-                response = self._client.responses.create(
-                    model=self._model,
-                    instructions=instructions,
-                    input=input_items,
-                    max_output_tokens=self._max_output_tokens,
-                    timeout=self._timeout,
-                )
-                total_ms = round((time.perf_counter() - start) * 1000)
-                text = _extract_output_text(response)
-                return LLMResult(
-                    text=text,
-                    model=getattr(response, "model", self._model) or self._model,
-                    ttfb_ms=total_ms,
-                    total_ms=total_ms,
-                )
-            except RETRYABLE_EXCEPTIONS as exc:
-                last_exc = exc
-                if attempt < self._max_retries:
-                    delay = self._retry_backoff_s * (2**attempt)
-                    logger.warning(
-                        "OpenAI request failed (attempt %s/%s), retrying in %.1fs (%s)",
-                        attempt + 1,
-                        self._max_retries + 1,
-                        delay,
-                        exc.__class__.__name__,
+        try:
+            for attempt in range(self._max_retries + 1):
+                try:
+                    start = time.perf_counter()
+                    response = self._client.responses.create(
+                        model=self._model,
+                        instructions=instructions,
+                        input=input_items,
+                        max_output_tokens=self._max_output_tokens,
+                        timeout=self._timeout,
                     )
-                    time.sleep(delay)
-                else:
-                    raise _map_openai_error(exc)
+                    total_ms = round((time.perf_counter() - start) * 1000)
+                    text = _extract_output_text(response)
+                    return LLMResult(
+                        text=text,
+                        model=getattr(response, "model", self._model) or self._model,
+                        ttfb_ms=total_ms,
+                        total_ms=total_ms,
+                    )
+                except RETRYABLE_EXCEPTIONS as exc:
+                    last_exc = exc
+                    if attempt < self._max_retries:
+                        delay = self._retry_backoff_s * (2**attempt)
+                        logger.warning(
+                            "OpenAI request failed (attempt %s/%s), retrying in %.1fs (%s)",
+                            attempt + 1,
+                            self._max_retries + 1,
+                            delay,
+                            exc.__class__.__name__,
+                        )
+                        time.sleep(delay)
+                    else:
+                        raise _map_openai_error(exc)
+        except APIError as exc:
+            # Non-retryable OpenAI API errors (e.g. BadRequestError) should be
+            # mapped to HTTP errors rather than bubbling up as 500s.
+            raise _map_openai_error(exc)
         # Should never be reached, but keep mypy happy.
         raise _map_openai_error(last_exc or Exception("Unknown OpenAI error"))
 
@@ -141,24 +146,29 @@ class OpenAILLMAdapter:
             return []
 
         last_exc: Exception | None = None
-        for attempt in range(self._max_retries + 1):
-            try:
-                yield from self._stream_once(instructions, input_items)
-                return
-            except RETRYABLE_EXCEPTIONS as exc:
-                last_exc = exc
-                if attempt < self._max_retries:
-                    delay = self._retry_backoff_s * (2**attempt)
-                    logger.warning(
-                        "OpenAI stream failed (attempt %s/%s), retrying in %.1fs (%s)",
-                        attempt + 1,
-                        self._max_retries + 1,
-                        delay,
-                        exc.__class__.__name__,
-                    )
-                    time.sleep(delay)
-                else:
-                    raise _map_openai_error(exc)
+        try:
+            for attempt in range(self._max_retries + 1):
+                try:
+                    yield from self._stream_once(instructions, input_items)
+                    return
+                except RETRYABLE_EXCEPTIONS as exc:
+                    last_exc = exc
+                    if attempt < self._max_retries:
+                        delay = self._retry_backoff_s * (2**attempt)
+                        logger.warning(
+                            "OpenAI stream failed (attempt %s/%s), retrying in %.1fs (%s)",
+                            attempt + 1,
+                            self._max_retries + 1,
+                            delay,
+                            exc.__class__.__name__,
+                        )
+                        time.sleep(delay)
+                    else:
+                        raise _map_openai_error(exc)
+        except APIError as exc:
+            # Non-retryable OpenAI API errors during streaming should also be
+            # mapped consistently to HTTP errors.
+            raise _map_openai_error(exc)
         # Should never be reached, but keep mypy happy.
         raise _map_openai_error(last_exc or Exception("Unknown OpenAI error"))
 

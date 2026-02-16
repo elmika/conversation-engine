@@ -13,10 +13,10 @@ This project follows strict test gating.
 
 2. Post-condition:
    - Run the full test suite after implementing changes.
-   - Do not consider the task complete if any test fails.
+   - Do not consider the task complete if any test fails. (Unless we are explicitly creating a failing test while applying the TDD methodology)
 
 A feature is complete only when:
-- All tests pass
+- All tests pass 
 - No new warnings or regressions are introduced
 
 Use the test command defined in the project (e.g. `pytest`) to verify correctness.
@@ -46,7 +46,7 @@ Before marking a task as complete:
 3. Ensure examples and code snippets (if any) match the current implementation.
 
 A task is complete only when:
-- All tests are green
+- All tests are green (Unless we are explicitly creating a failing test while applying the TDD methodology)
 - Documentation reflects the current state of the system
 - No outdated references remain
 
