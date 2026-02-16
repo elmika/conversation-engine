@@ -48,6 +48,15 @@
   **Done:** We use a **snapshot-style test** for the Responses API payload: `test_adapter_builds_responses_input_payload_shape` asserts that `_build_input_items` produces the correct role-based content types (user/system → `input_text`, assistant → `output_text`). That catches accidental changes to the payload shape without any network call.  
   **Recommendation:** Keep this test as the single source of truth for “what we send”. Optionally add an **opt-in smoke test** (e.g. `@pytest.mark.smoke`, skipped unless `OPENAI_SMOKE=1` and `OPENAI_API_KEY` are set) that performs one minimal create and optionally one append against the real API; run locally or in a nightly job, not on every CI run.
 
+- **Validating against OpenAI’s published OpenAPI spec**  
+  **Confirmed:** OpenAI publishes an OpenAPI 3.0 spec. The **Responses API is described** there: paths `POST /responses`, `GET/PATCH /responses/{response_id}`, and `GET /responses/{response_id}/input_items` are present in the manual spec.  
+  - **Spec location:** [openai/openai-openapi](https://github.com/openai/openai-openapi) — `openapi.yaml` on branch **manual_spec**; “most recent” documented version at `https://app.stainless.com/api/spec/documented/openai/openapi.documented.yml` (see repo README).  
+  - **We are not using it today:** we do not fetch or validate our request payload against this spec; we rely only on the snapshot test above.  
+  - **Recommended workflow (future improvement):**  
+    1. **CI (no API key):** Keep the snapshot test; optionally add a step that fetches the published spec (e.g. from `manual_spec` or Stainless URL), resolves the request body schema for `POST /responses`, and validates that the output of `_build_input_items` (for a few representative message lists) conforms to that schema via a JSON Schema validator. That would catch drift from OpenAI’s contract without calling the live API.  
+    2. **Optional smoke (when enabled):** Run one real create (and optionally append) against the API when `OPENAI_SMOKE=1` and `OPENAI_API_KEY` are set; run locally or in a nightly job only.  
+  Before adding schema validation, confirm the spec’s `POST /responses` request body schema exists and matches the Responses API docs (input message content types, etc.).
+
 - **Append turn context**  
   The integration test documents current behaviour: append sends only the new user message to the LLM, not prior messages.  
   For full history on append, the route (or use case) should call `ConversationRepo.get_messages(cid)`, prepend that to the new messages, and pass the combined list to the LLM.  
