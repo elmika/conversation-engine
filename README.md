@@ -128,9 +128,9 @@ These examples assume the app is running on `http://127.0.0.1:8000` (locally or 
 - **Infra layer**: `app/infra/llm_openai.py` wraps the OpenAI Responses API; `app/infra/persistence/db.py`, `models.py`, and `repo_sqlalchemy.py` implement SQLite persistence for conversations, messages, and runs; `app/infra/logging.py` sets up structured logging.
 
 **Request flow (non-streaming)**:
-- **1.** Client calls `POST /conversations` or `POST /conversations/{conversation_id}` with messages (and optional `prompt_slug`).
+- **1.** Client calls `POST /conversations` (first turn) or `POST /conversations/{conversation_id}` (append) with new messages (and optional `prompt_slug`).
 - **2.** Route validates the body, enforces `max_input_chars`, and asks the `ConversationRepo` to persist the new user messages.
-- **3.** Route calls the `chat` use case with the prompt instructions, messages, and `LLMPort.complete`.
+- **3.** For appends, the use case is invoked with the full conversation history (`get_messages(...)` + new messages) so the LLM sees previous user and assistant turns as context; for first turns, only the new messages are sent.
 - **4.** The OpenAI adapter calls the Responses API with timeout, output cap, and retry; the use case returns assistant text + timings.
 - **5.** Route persists the assistant message and run metadata, then returns a `ConversationResponse` envelope.
 

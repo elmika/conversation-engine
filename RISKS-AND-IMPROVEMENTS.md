@@ -30,8 +30,8 @@
 ## Persistence – Risks and Future Improvements
 
 - **Conversation history in prompts**  
-  We now persist all messages in SQLite, but the LLM context is still built only from the messages included in each request.  
-  A next step is to load prior messages via `ConversationRepo.get_messages()` and use them when constructing the Responses API `input` for true multi-turn conversations.
+  **Done:** Append turns now load prior messages via `ConversationRepo.get_messages()` and pass full history (previous user + assistant messages plus the new user turn) to the LLM for both non-streaming and streaming endpoints.  
+  **Pending:** Conversation history can grow without bound, and we do not yet cap or trim old turns when building the LLM input; long-running conversations may hit model context limits unless we introduce summarisation or history truncation.
 
 - **Token / finish_reason metadata**  
   The `runs` table has columns for `input_tokens`, `output_tokens`, and `finish_reason`, but the adapter does not yet populate them from the Responses object.  
@@ -62,7 +62,7 @@
   On a transient error during streaming, we retry from the start (new request). The client cannot “resume” the same stream; they see a new connection. Acceptable for current scope; for stricter guarantees we could document this or add an SSE error event before closing.
 
 - **Input cap is character-based**  
-  `max_input_chars` is enforced as total character count of message contents only (no system prompt, no tokenization). For strict token limits or cost control, consider a token-based check or delegating to the API’s own limits.
+  `max_input_chars` is enforced as total character count of message contents only (no system prompt, no tokenization), and is currently applied only to the new turn's messages. For strict token limits, cost control, or very long histories, we should consider a token-based check on the full prompt (history + new turn) and possibly summarisation/truncation of older context.
 
 - **Timeout and SDK behaviour**  
   We pass `request_timeout_s` to the OpenAI client for both `create` and `stream`. The SDK has known quirks where timeouts are not always honoured; monitor and consider client-level timeouts or wrapping in `asyncio.wait_for` if needed.

@@ -73,7 +73,7 @@ def test_conversations_create_uses_prompt_slug(client_with_mock_llm, mock_llm) -
 
 
 def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mock_llm) -> None:
-    """POST /conversations/{conversation_id} returns the same id."""
+    """POST /conversations/{conversation_id} returns the same id and includes history."""
     # First create a conversation to obtain a valid id.
     create_resp = client_with_mock_llm.post(
         "/conversations",
@@ -93,6 +93,16 @@ def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mo
     )
     assert append_resp.status_code == 200
     assert append_resp.json()["conversation_id"] == cid
+
+    # Second LLM call should see prior user + assistant messages as history.
+    assert mock_llm.complete.call_count == 2
+    first_call_messages = mock_llm.complete.call_args_list[0][0][1]
+    second_call_messages = mock_llm.complete.call_args_list[1][0][1]
+    assert [m["role"] for m in first_call_messages] == ["user"]
+    assert [m["content"] for m in first_call_messages] == ["First"]
+    # History for second call: user \"First\", assistant \"Hi there\", plus new user \"Hi again\".
+    assert [m["role"] for m in second_call_messages] == ["user", "assistant", "user"]
+    assert [m["content"] for m in second_call_messages] == ["First", "Hi there", "Hi again"]
 
 
 def test_conversations_reject_input_over_max_chars(client_with_mock_llm) -> None:

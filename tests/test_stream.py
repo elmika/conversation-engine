@@ -46,7 +46,7 @@ def client_with_mock_stream(mock_llm_streaming):
 def test_conversation_stream_sends_meta_chunk_done(
     client_with_mock_stream, mock_llm_streaming
 ) -> None:
-    """POST /conversations/{conversation_id}/stream emits meta, chunk, and done SSE events."""
+    """POST /conversations/{conversation_id}/stream emits meta, chunk, done, and includes history."""
     # First create a conversation to obtain a valid id.
     create_resp = client_with_mock_stream.post(
         "/conversations",
@@ -80,6 +80,15 @@ def test_conversation_stream_sends_meta_chunk_done(
     assert '"assistant_message": "Hello"' in body or '"assistant_message":"Hello"' in body
     assert '"ttfb_ms": 10' in body
     assert '"total_ms": 20' in body
+
+    # LLM stream call should see prior user + assistant messages as history.
+    assert mock_llm_streaming.stream.call_count == 1
+    _, messages_arg = mock_llm_streaming.stream.call_args[0]
+    roles = [m["role"] for m in messages_arg]
+    contents = [m["content"] for m in messages_arg]
+    # History for streaming append: user \"First\", assistant \"Hi there\", plus new user \"Hello\".
+    assert roles == ["user", "assistant", "user"]
+    assert contents == ["First", "Hi there", "Hello"]
 
 
 def test_conversation_stream_first_turn_creates_conversation(

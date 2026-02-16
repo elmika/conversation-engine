@@ -232,12 +232,17 @@ async def append_conversation_turn(
     def _run() -> tuple[str, str, str, int, int]:
         cid = conversation_id
 
+        # Build conversation history before adding this turn so we don't double-count.
+        history = repo.get_messages(cid)
+
         # Persist user messages for this turn.
         for msg in messages:
             repo.append_message(cid, msg["role"], msg["content"])
 
+        combined_messages = history + messages
+
         conv_id, assistant_message, model, ttfb_ms, total_ms = chat(
-            messages=messages,
+            messages=combined_messages,
             prompt_slug=body.prompt_slug,
             default_slug=settings.default_prompt_slug,
             llm_complete=llm.complete,
@@ -292,12 +297,17 @@ async def append_conversation_turn_stream(
         used_prompt_slug = body.prompt_slug or settings.default_prompt_slug
         cid = conversation_id
 
+        # Build conversation history before adding this turn so we don't double-count.
+        history = repo.get_messages(cid)
+
         # Persist user messages for this turn.
         for msg in messages:
             repo.append_message(cid, msg["role"], msg["content"])
 
+        combined_messages = history + messages
+
         cid2, events = stream_chat(
-            messages=messages,
+            messages=combined_messages,
             prompt_slug=body.prompt_slug,
             default_slug=settings.default_prompt_slug,
             llm_stream=llm.stream,

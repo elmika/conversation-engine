@@ -15,9 +15,9 @@ def chat(
     llm_complete: Callable[[str, list[dict[str, str]]], LLMResult],
     conversation_id: Optional[str] = None,
 ) -> tuple[str, str, str, int, int]:
-    """
-    Run non-streaming chat. No persistence yet (Day 4).
+    """Run non-streaming chat over the provided message history.
 
+    `messages` should already contain any prior turns plus the new user message(s).
     Returns (conversation_id, assistant_message, model, ttfb_ms, total_ms).
     """
     cid = conversation_id or str(uuid.uuid4())
@@ -42,9 +42,7 @@ def stream_chat(
     conversation_id: Optional[str] = None,
 ) -> tuple[str, Iterable[StreamEvent]]:
     """
-    Streaming chat: returns (conversation_id, streaming iterator).
-
-    No persistence yet (Day 4); we just stream assistant text.
+    Streaming chat over the provided message history; returns (conversation_id, streaming iterator).
     """
     cid = conversation_id or str(uuid.uuid4())
     slug = prompt_slug or default_slug

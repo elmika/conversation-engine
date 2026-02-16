@@ -65,8 +65,9 @@ def test_integration_create_then_append_turn(client_with_mock_llm, mock_llm) -> 
 
     # LLM was called twice: once for create, once for append.
     assert mock_llm.complete.call_count == 2
-    # Second call receives the new turn only (current API does not pass prior messages).
+    # Second call receives full history: user + assistant from first turn, then new user.
     second_call_messages = mock_llm.complete.call_args_list[1][0][1]
-    assert len(second_call_messages) == 1
-    assert second_call_messages[0]["role"] == "user"
-    assert second_call_messages[0]["content"] == "Second"
+    roles = [m["role"] for m in second_call_messages]
+    contents = [m["content"] for m in second_call_messages]
+    assert roles == ["user", "assistant", "user"]
+    assert contents == ["Hi", "Hello back!", "Second"]
