@@ -56,24 +56,25 @@ def _map_openai_error(exc: Exception) -> HTTPException:
 
 
 def _build_input_items(messages: list[dict[str, str]]) -> list[dict[str, Any]]:
-    """Convert [{role, content}] to Responses API input item list."""
+    """Convert [{role, content}] to Responses API input item list.
+
+    Content type is role-based: user/system messages use "input_text";
+    assistant messages (prior model output in history) use "output_text".
+    See Responses API docs; mismatch causes 400 on append (input[1].content[0]).
+    """
     items: list[dict[str, Any]] = []
     for msg in messages:
         role = msg.get("role", "user")
         content = (msg.get("content") or "").strip()
         if not content:
             continue
+        # User and system are inputs; assistant is model output.
+        content_type = "output_text" if role == "assistant" else "input_text"
         items.append(
             {
                 "type": "message",
                 "role": role,
-                # NOTE: The Responses API currently expects text content parts
-                # with type "output_text" or "refusal". Using "input_text"
-                # results in a 400 Bad Request:
-                #   Invalid value: 'input_text'. Supported values are:
-                #   'output_text' and 'refusal'.
-                # For simple text-only interactions we always use "output_text".
-                "content": [{"type": "output_text", "text": content}],
+                "content": [{"type": content_type, "text": content}],
             }
         )
     return items

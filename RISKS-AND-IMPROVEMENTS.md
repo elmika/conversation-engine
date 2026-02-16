@@ -44,6 +44,10 @@
 
 ## Observability and tests (Day 5+)
 
+- **Testing the OpenAI contract without hitting the API every run**  
+  **Done:** We use a **snapshot-style test** for the Responses API payload: `test_adapter_builds_responses_input_payload_shape` asserts that `_build_input_items` produces the correct role-based content types (user/system → `input_text`, assistant → `output_text`). That catches accidental changes to the payload shape without any network call.  
+  **Recommendation:** Keep this test as the single source of truth for “what we send”. Optionally add an **opt-in smoke test** (e.g. `@pytest.mark.smoke`, skipped unless `OPENAI_SMOKE=1` and `OPENAI_API_KEY` are set) that performs one minimal create and optionally one append against the real API; run locally or in a nightly job, not on every CI run.
+
 - **Append turn context**  
   The integration test documents current behaviour: append sends only the new user message to the LLM, not prior messages.  
   For full history on append, the route (or use case) should call `ConversationRepo.get_messages(cid)`, prepend that to the new messages, and pass the combined list to the LLM.  

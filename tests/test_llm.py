@@ -37,14 +37,13 @@ def test_adapter_retries_on_rate_limit_then_succeeds() -> None:
 
 def test_adapter_builds_responses_input_payload_shape() -> None:
     """
-    complete() should build Responses API `input` items with the correct shape.
+    complete() should build Responses API input with role-based content types.
 
-    This test documents the expected schema for text inputs, and will fail as
-    long as _build_input_items constructs a payload that does not match it
-    (e.g. wrong content[type] value), which is currently causing upstream
-    400 Bad Request errors.
+    - User/system messages: content type "input_text" (first turn and user
+      turns in history).
+    - Assistant messages: content type "output_text" (model output in history).
+    This snapshot catches regressions without calling the live API.
     """
-    # Arrange a minimal successful Responses object so complete() can finish.
     block = MagicMock(type="output_text", text="ok")
     item = MagicMock(type="message", content=[block])
     mock_response = MagicMock(output=[item], model="gpt-4.1-mini")
@@ -56,27 +55,33 @@ def test_adapter_builds_responses_input_payload_shape() -> None:
         mock_openai_class.return_value = mock_client
 
         adapter = OpenAILLMAdapter(settings)
-        adapter.complete("instructions", [{"role": "user", "content": "Hi"}])
+        adapter.complete(
+            "instructions",
+            [
+                {"role": "user", "content": "Hi"},
+                {"role": "assistant", "content": "Hello!"},
+                {"role": "user", "content": "Bye"},
+            ],
+        )
 
-    # Assert: the payload we send to Responses matches the expected schema.
     kwargs = mock_client.responses.create.call_args.kwargs
     input_items = kwargs["input"]
-    assert isinstance(input_items, list)
-    assert input_items, "input items should not be empty"
+    assert len(input_items) == 3
 
-    first = input_items[0]
-    assert first["type"] == "message"
-    assert first["role"] == "user"
-    assert isinstance(first["content"], list)
-    assert first["content"], "message content list should not be empty"
+    # User message: input_text (first turn).
+    assert input_items[0]["role"] == "user"
+    assert input_items[0]["content"][0]["type"] == "input_text"
+    assert input_items[0]["content"][0]["text"] == "Hi"
 
-    content0 = first["content"][0]
-    # Expected behaviour (will currently FAIL): content type should be
-    # the correct Responses API text content type, not the value that is
-    # currently rejected upstream with:
-    #   Invalid value: 'input_text'. Supported values are: 'output_text' and 'refusal'.
-    assert content0["type"] == "output_text"
-    assert content0["text"] == "Hi"
+    # Assistant message: output_text (history).
+    assert input_items[1]["role"] == "assistant"
+    assert input_items[1]["content"][0]["type"] == "output_text"
+    assert input_items[1]["content"][0]["text"] == "Hello!"
+
+    # User message again: input_text.
+    assert input_items[2]["role"] == "user"
+    assert input_items[2]["content"][0]["type"] == "input_text"
+    assert input_items[2]["content"][0]["text"] == "Bye"
 
 
 def _make_adapter_with_exception(exc: Exception) -> OpenAILLMAdapter:

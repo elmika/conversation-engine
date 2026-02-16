@@ -17,7 +17,7 @@ curl -X POST http://127.0.0.1:8000/conversations \
   -d '{
     "prompt_slug": "default",
     "messages": [
-      { "role": "user", "content": "Hello" }
+      { "role": "user", "content": "Hello my name is John" }
     ]
   }'
 ```
@@ -44,7 +44,7 @@ curl -X POST http://127.0.0.1:8000/conversations/abc123 \
   -d '{
     "prompt_slug": "default",
     "messages": [
-      { "role": "user", "content": "Thanks, can you clarify that last point?" }
+      { "role": "user", "content": "Can you tell me my name?" }
     ]
   }'
 ```
