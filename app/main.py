@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.api.middleware import RequestIdAndTimingMiddleware
@@ -18,12 +18,22 @@ logger = logging.getLogger(__name__)
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Log unhandled exception with request_id and return 500 envelope."""
+    """Log unhandled exception with request_id and return an error envelope.
+
+    We preserve HTTPException status codes/details, and fall back to 500 for unknown errors.
+    """
     request_id = getattr(request.state, "request_id", None)
     logger.exception(
         "unhandled exception",
         extra={"request_id": request_id, "path": request.url.path},
     )
+
+    if isinstance(exc, HTTPException):
+        body: dict[str, Any] = {"detail": exc.detail}
+        if request_id:
+            body["request_id"] = request_id
+        return JSONResponse(status_code=exc.status_code, content=body)
+
     body: dict[str, Any] = {"detail": "Internal server error"}
     if request_id:
         body["request_id"] = request_id

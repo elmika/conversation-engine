@@ -1,6 +1,10 @@
-"""Tests for OpenAI LLM adapter (retry, etc.)."""
+"""Tests for OpenAI LLM adapter (retry + error mapping)."""
 
 from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi import HTTPException
+from openai import APIConnectionError, APITimeoutError, RateLimitError
 
 from app.infra.llm_openai import OpenAILLMAdapter
 from app.settings import Settings
@@ -29,3 +33,30 @@ def test_adapter_retries_on_rate_limit_then_succeeds() -> None:
 
     assert result["text"] == "ok"
     assert mock_create.call_count == 2
+
+
+def _make_adapter_with_exception(exc: Exception) -> OpenAILLMAdapter:
+    """Create an adapter whose client always raises the given exception."""
+    settings = Settings(max_retries=0, retry_backoff_s=0.0)
+    with patch("app.infra.llm_openai.OpenAI") as mock_openai_class:
+        mock_client = MagicMock()
+        mock_client.responses.create.side_effect = exc
+        mock_openai_class.return_value = mock_client
+        return OpenAILLMAdapter(settings)
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected_status"),
+    [
+        (RateLimitError("rate limit", response=MagicMock(), body=MagicMock()), 429),
+        (APITimeoutError("timeout", request=MagicMock()), 504),
+        (APIConnectionError("conn", request=MagicMock()), 502),
+    ],
+)
+def test_adapter_maps_openai_errors_to_http_exception(
+    exc: Exception, expected_status: int
+) -> None:
+    adapter = _make_adapter_with_exception(exc)
+    with pytest.raises(HTTPException) as ctx:
+        adapter.complete("instructions", [{"role": "user", "content": "hi"}])
+    assert ctx.value.status_code == expected_status

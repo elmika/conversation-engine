@@ -49,6 +49,8 @@ curl -X POST http://127.0.0.1:8000/conversations/abc123 \
   }'
 ```
 
+For `POST /conversations/{conversation_id}`, the service automatically loads all previous `user` and `assistant` messages for that conversation and prepends them to the new `messages` you send before calling the model. You only need to send the **new** user turn(s); you do not need to resend history.
+
 ---
 
 ## Example: streaming (existing conversation)
@@ -81,6 +83,8 @@ data: {"delta":"Next part ..."}
 event: done
 data: {"conversation_id":"...","assistant_message":"Full answer ...","model":"gpt-4.1-mini","timings":{"ttfb_ms":10,"total_ms":120}}
 ```
+
+For `POST /conversations/{conversation_id}/stream`, the model sees the full conversation history (all previous `user` and `assistant` messages) plus the new `messages` you send in this request.
 
 ---
 

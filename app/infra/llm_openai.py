@@ -5,9 +5,11 @@ import time
 from collections.abc import Iterable
 from typing import Any
 
+from fastapi import HTTPException, status
 from openai import (
     APIConnectionError,
     APITimeoutError,
+    APIError,
     InternalServerError,
     OpenAI,
     RateLimitError,
@@ -18,8 +20,39 @@ from app.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-# Transient errors we retry with backoff.
+# Transient errors we retry with backoff before mapping to HTTP errors.
 RETRYABLE_EXCEPTIONS = (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError)
+
+
+def _map_openai_error(exc: Exception) -> HTTPException:
+    """Map known OpenAI errors to HTTP errors without leaking prompt content."""
+    if isinstance(exc, RateLimitError):
+        return HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upstream OpenAI rate limit exceeded. Please retry later.",
+        )
+    if isinstance(exc, APITimeoutError):
+        return HTTPException(
+            status_code=status.HTTP_GATEWAY_TIMEOUT,
+            detail="Upstream OpenAI request timed out.",
+        )
+    if isinstance(exc, APIConnectionError):
+        return HTTPException(
+            status_code=status.HTTP_BAD_GATEWAY,
+            detail="Unable to reach upstream OpenAI service.",
+        )
+    if isinstance(exc, InternalServerError):
+        return HTTPException(
+            status_code=status.HTTP_BAD_GATEWAY,
+            detail="Upstream OpenAI service returned an internal error.",
+        )
+    if isinstance(exc, APIError):
+        return HTTPException(
+            status_code=status.HTTP_BAD_GATEWAY,
+            detail="Upstream OpenAI API error.",
+        )
+    # Fallback: unknown error type, treat as generic upstream failure.
+    return HTTPException(status_code=status.HTTP_BAD_GATEWAY, detail="Upstream error.")
 
 
 def _build_input_items(messages: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -61,7 +94,7 @@ class OpenAILLMAdapter:
                 ttfb_ms=0,
                 total_ms=0,
             )
-        last_exc = None
+        last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
             try:
                 start = time.perf_counter()
@@ -85,16 +118,17 @@ class OpenAILLMAdapter:
                 if attempt < self._max_retries:
                     delay = self._retry_backoff_s * (2**attempt)
                     logger.warning(
-                        "OpenAI request failed (attempt %s/%s), retrying in %.1fs: %s",
+                        "OpenAI request failed (attempt %s/%s), retrying in %.1fs (%s)",
                         attempt + 1,
                         self._max_retries + 1,
                         delay,
-                        exc,
+                        exc.__class__.__name__,
                     )
                     time.sleep(delay)
                 else:
-                    raise
-        raise last_exc  # type: ignore[misc]
+                    raise _map_openai_error(exc)
+        # Should never be reached, but keep mypy happy.
+        raise _map_openai_error(last_exc or Exception("Unknown OpenAI error"))
 
     def stream(self, instructions: str, messages: list[dict[str, str]]) -> Iterable[StreamEvent]:
         """
@@ -106,7 +140,7 @@ class OpenAILLMAdapter:
         if not input_items:
             return []
 
-        last_exc = None
+        last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
             try:
                 yield from self._stream_once(instructions, input_items)
@@ -116,16 +150,17 @@ class OpenAILLMAdapter:
                 if attempt < self._max_retries:
                     delay = self._retry_backoff_s * (2**attempt)
                     logger.warning(
-                        "OpenAI stream failed (attempt %s/%s), retrying in %.1fs: %s",
+                        "OpenAI stream failed (attempt %s/%s), retrying in %.1fs (%s)",
                         attempt + 1,
                         self._max_retries + 1,
                         delay,
-                        exc,
+                        exc.__class__.__name__,
                     )
                     time.sleep(delay)
                 else:
-                    raise
-        raise last_exc  # type: ignore[misc]
+                    raise _map_openai_error(exc)
+        # Should never be reached, but keep mypy happy.
+        raise _map_openai_error(last_exc or Exception("Unknown OpenAI error"))
 
     def _stream_once(
         self, instructions: str, input_items: list[dict[str, Any]]
