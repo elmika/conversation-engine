@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from openai import APIConnectionError, APITimeoutError, RateLimitError
+from openai import APIConnectionError, APITimeoutError, BadRequestError, RateLimitError
 
 from app.infra.llm_openai import OpenAILLMAdapter
 from app.settings import Settings
@@ -49,8 +49,23 @@ def _make_adapter_with_exception(exc: Exception) -> OpenAILLMAdapter:
     ("exc", "expected_status"),
     [
         (RateLimitError("rate limit", response=MagicMock(), body=MagicMock()), 429),
-        (APITimeoutError("timeout", request=MagicMock()), 504),
-        (APIConnectionError("conn", request=MagicMock()), 502),
+        # For these HTTPX-based errors, a simple message argument is enough; we
+        # don't need to construct a real httpx.Request instance for the test.
+        (APITimeoutError("timeout"), 504),
+        # APIConnectionError in the current SDK version requires a keyword-only
+        # `request` argument; we can satisfy it with a simple MagicMock.
+        (APIConnectionError(request=MagicMock()), 502),
+        # Non-retryable invalid request from OpenAI (e.g. bad input payload).
+        # We expect this to be surfaced as a 502 "Upstream OpenAI API error."
+        # via _map_openai_error(), not as an unhandled 500.
+        (
+            BadRequestError(
+                "bad request",
+                response=MagicMock(),
+                body={"error": {"message": "invalid", "type": "invalid_request_error"}},
+            ),
+            502,
+        ),
     ],
 )
 def test_adapter_maps_openai_errors_to_http_exception(
