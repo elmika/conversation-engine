@@ -67,6 +67,37 @@ uvicorn app.main:app --reload
 
 Tests: `pytest` or `pytest -v`.
 
+## Architecture overview
+
+- **Entry point**: `app/main.py` creates the FastAPI app, sets up logging and the SQLite engine in a lifespan hook, creates a single `Settings` instance and OpenAI adapter, and stores them on `app.state` so the rest of the app can reuse them.
+- **API layer**: `app/api/routes.py` defines HTTP endpoints and uses `app/api/schemas.py` for request/response models. `app/api/middleware.py` adds a `request_id` to each request and logs endpoint, status code, and latency.
+- **Application layer**: `app/application/use_cases.py` contains the “chat” and “stream_chat” use cases; `app/application/ports.py` defines the `LLMPort` and `ConversationRepo` interfaces so routes and use cases depend on abstractions, not concrete infra.
+- **Domain layer**: `app/domain/prompt_registry.py` holds prompt specs keyed by `prompt_slug` (e.g. default vs. conflict-coach prompts).
+- **Infra layer**: `app/infra/llm_openai.py` wraps the OpenAI Responses API; `app/infra/persistence/db.py`, `models.py`, and `repo_sqlalchemy.py` implement SQLite persistence for conversations, messages, and runs; `app/infra/logging.py` sets up structured logging.
+
+**Request flow (non-streaming)**:
+- **1.** Client calls `POST /conversations` or `POST /conversations/{conversation_id}` with messages (and optional `prompt_slug`).
+- **2.** Route validates the body, enforces `max_input_chars`, and asks the `ConversationRepo` to persist the new user messages.
+- **3.** Route calls the `chat` use case with the prompt instructions, messages, and `LLMPort.complete`.
+- **4.** The OpenAI adapter calls the Responses API with timeout, output cap, and retry; the use case returns assistant text + timings.
+- **5.** Route persists the assistant message and run metadata, then returns a `ConversationResponse` envelope.
+
+**Request flow (streaming)**:
+- **1.** Client calls `POST /conversations/stream` or `POST /conversations/{conversation_id}/stream`.
+- **2.** Route validates input, persists user messages, and calls the `stream_chat` use case with `LLMPort.stream` in a worker thread so the event loop stays responsive.
+- **3.** As the OpenAI adapter yields `StreamEvent` items, the route converts them into SSE events (`meta`, `chunk`, `done`) and streams them back to the client.
+- **4.** When the stream finishes, the final assistant message and run metadata are persisted in the background.
+
+## Design choices & rationale
+
+- **Hexagonal-ish structure**: Keep HTTP concerns in `api/`, business logic in `application/`, prompts in `domain/`, and infrastructure details in `infra/`, so it’s easy to swap out infra (LLM provider, database) without rewriting the core flows.
+- **Ports and adapters, wired from `main`**: Routes and use cases depend on `LLMPort` and `ConversationRepo` interfaces; `app/main.py` is the single place that decides “use OpenAI + SQLite” and injects concrete adapters via `app.state`, which simplifies testing and future changes.
+- **Sync SQLAlchemy with thread offload**: The app is async at the HTTP layer but uses the sync SQLAlchemy engine; DB work is done in worker threads (`asyncio.to_thread`) to avoid blocking the event loop while keeping the persistence layer simple.
+- **OpenAI Responses adapter**: A thin wrapper around the Responses API that normalizes both non-streaming and streaming calls into typed results (`LLMResult`, `StreamEvent`), and centralizes timeouts, max output tokens, basic retry with backoff, and response parsing.
+- **Error handling and observability**: A middleware assigns `request_id` and logs endpoint, status, and latency; a global exception handler logs unhandled errors (including `request_id`) and returns a consistent 500 envelope, while streaming paths are designed to evolve toward structured SSE error events.
+- **Persistence and analytics hooks**: Conversations, messages, and runs are stored in SQLite for local/demo use; the `runs` table tracks timing now and is ready to record token counts and finish reasons once they’re wired from the OpenAI responses.
+- **Containerization**: The Dockerfile uses a multi-stage build; the default image includes dev tools so you can both run the app and `pytest`, and there’s an optional slimmer `prod` target. Containers run as a non-root user with a writable `/app/data` directory for SQLite.
+
 ## More
 
 - **[API.md](API.md)** — Example requests, response shapes, and quick command-line tests for all endpoints.
