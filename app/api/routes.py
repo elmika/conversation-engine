@@ -45,6 +45,8 @@ def get_conversation_service(
         uow_factory=uow_factory,
         llm=llm,
         default_prompt_slug=settings.default_prompt_slug,
+        max_history_turns=settings.max_history_turns,
+        max_history_tokens=settings.max_history_tokens,
     )
 
 

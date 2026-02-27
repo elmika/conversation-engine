@@ -5,6 +5,7 @@ from typing import Optional
 
 from app.application.ports import LLMPort, LLMResult, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
+from app.domain.history import trim_history
 from app.domain.value_objects import ConversationId
 
 
@@ -12,7 +13,7 @@ class ConversationService:
     """
     Service layer for conversation workflows.
     
-    Orchestrates: load history → call LLM → persist → return result.
+    Orchestrates: load history → trim history → call LLM → persist → return result.
     Each service method defines a transaction boundary using UnitOfWork.
     Routes become thin glue that validates input and formats HTTP/SSE responses.
     """
@@ -22,10 +23,14 @@ class ConversationService:
         uow_factory: Callable[[], UnitOfWork],
         llm: LLMPort,
         default_prompt_slug: str,
+        max_history_turns: Optional[int] = None,
+        max_history_tokens: Optional[int] = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
         self._default_prompt_slug = default_prompt_slug
+        self._max_history_turns = max_history_turns
+        self._max_history_tokens = max_history_tokens
 
     def create_and_chat(
         self,
@@ -87,7 +92,7 @@ class ConversationService:
         Append a new turn to an existing conversation (non-streaming).
         
         Transaction boundary: all operations commit atomically.
-        Loads history, combines with new messages, calls LLM, persists response.
+        Loads history, trims to limits, combines with new messages, calls LLM, persists response.
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         Raises: ValueError if conversation not found.
         """
@@ -103,10 +108,17 @@ class ConversationService:
             for msg in messages:
                 uow.repo.append_message(conversation_id, msg["role"], msg["content"])
             
-            # Combine history with new messages
-            combined_messages = history + messages
+            # Trim history to stay within limits (prevents context overflow)
+            trimmed_history = trim_history(
+                history,
+                max_turns=self._max_history_turns,
+                max_tokens=self._max_history_tokens,
+            )
             
-            # Call LLM with full history
+            # Combine trimmed history with new messages
+            combined_messages = trimmed_history + messages
+            
+            # Call LLM with trimmed history
             conv_id, assistant_message, model, ttfb_ms, total_ms = chat(
                 messages=combined_messages,
                 prompt_slug=prompt_slug,
@@ -183,7 +195,7 @@ class ConversationService:
         Transaction boundary: user messages are committed immediately.
         The UoW is returned for the caller to persist the final assistant message + run.
         
-        Loads history, combines with new messages, starts streaming.
+        Loads history, trims to limits, combines with new messages, starts streaming.
         Returns: (conversation_id, event_iterator, used_prompt_slug, uow)
         Raises: ValueError if conversation not found.
         """
@@ -200,8 +212,15 @@ class ConversationService:
                 uow_setup.repo.append_message(conversation_id, msg["role"], msg["content"])
             uow_setup.commit()
         
-        # Combine history with new messages
-        combined_messages = history + messages
+        # Trim history to stay within limits (prevents context overflow)
+        trimmed_history = trim_history(
+            history,
+            max_turns=self._max_history_turns,
+            max_tokens=self._max_history_tokens,
+        )
+        
+        # Combine trimmed history with new messages
+        combined_messages = trimmed_history + messages
         
         # Start streaming with full history
         conv_id, events = stream_chat(

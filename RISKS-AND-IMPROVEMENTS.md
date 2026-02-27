@@ -31,15 +31,25 @@ Fix: move “load history → call LLM → persist → format response” into a
 
 Fix: introduce UoW; remove repo commits.
 
-3.Conversation history growth / token limits (cost + failure mode)
+3.Conversation history growth / token limits (cost + failure mode) ✅ FIXED
 
-This is a guaranteed future failure.
+**Status:** Resolved by implementing configurable history capping with both turn and token limits.
 
--Long conversations will break context limits
--Costs can explode silently
--Latency increases
+**What changed:**
+- Added `max_history_turns` (default: 20) and `max_history_tokens` (default: 100,000) to settings
+- Created `trim_history()` utility in `app/domain/history.py` that keeps most recent N turns within token budget
+- Services automatically trim history before calling LLM
+- Token estimation uses 4 chars/token heuristic (conservative, safe for limits)
 
-Fix (minimal): cap history (last N turns or token budget). Later: summarization.
+**Practical limits for gpt-4.1-mini (128K context):**
+- **20 turns:** Keeps conversations focused (10 back-and-forth exchanges)
+- **100K tokens:** ~75% of 128K context, leaves room for system prompt + new turn + response + safety margin
+
+**Benefits:**
+- **Prevents context overflow:** Never hit the 128K token limit
+- **Cost control:** Limits max tokens per request, preventing cost explosion
+- **Latency control:** Smaller context = faster responses
+- **Configurable:** Can adjust limits via environment variables for different use cases
 
 4.Streaming non-happy-path events + client contract
 
