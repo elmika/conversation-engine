@@ -5,6 +5,7 @@ from typing import Optional
 
 from app.application.ports import ConversationRepo, LLMPort, LLMResult, StreamEvent
 from app.application.use_cases import chat, stream_chat
+from app.domain.value_objects import ConversationId
 
 
 class ConversationService:
@@ -37,20 +38,22 @@ class ConversationService:
         """
         used_prompt_slug = prompt_slug or self._default_prompt_slug
         
-        # Create conversation
-        cid = self._repo.create_conversation()
+        # Create conversation with domain-generated ID
+        conv_id = ConversationId.generate()
+        cid_str = str(conv_id)
+        self._repo.create_conversation_with_id(cid_str)
         
         # Persist user messages for this turn
         for msg in messages:
-            self._repo.append_message(cid, msg["role"], msg["content"])
+            self._repo.append_message(cid_str, msg["role"], msg["content"])
         
-        # Call LLM
+        # Call LLM (use case now uses domain ConversationId internally)
         conversation_id, assistant_message, model, ttfb_ms, total_ms = chat(
             messages=messages,
             prompt_slug=prompt_slug,
             default_slug=self._default_prompt_slug,
             llm_complete=self._llm.complete,
-            conversation_id=cid,
+            conversation_id=conv_id,
         )
         
         # Persist assistant message and run metadata

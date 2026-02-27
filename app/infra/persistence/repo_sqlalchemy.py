@@ -19,11 +19,16 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self._session = session
 
     def create_conversation(self) -> str:
+        """Create a new conversation with a generated ID; return its id."""
         conv_id = str(uuid.uuid4())
-        conv = Conversation(id=conv_id)
+        self.create_conversation_with_id(conv_id)
+        return conv_id
+
+    def create_conversation_with_id(self, conversation_id: str) -> None:
+        """Create a new conversation with a specific ID (domain-generated)."""
+        conv = Conversation(id=conversation_id)
         self._session.add(conv)
         self._session.commit()
-        return conv_id
 
     def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
         stmt = (

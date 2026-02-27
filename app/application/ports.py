@@ -58,7 +58,11 @@ class ConversationRepo(Protocol):
         ...
 
     def create_conversation(self) -> str:
-        """Create a new conversation; return its id."""
+        """Create a new conversation with a generated ID; return its id."""
+        ...
+
+    def create_conversation_with_id(self, conversation_id: str) -> None:
+        """Create a new conversation with a specific ID (domain-generated)."""
         ...
 
     def record_run(
