@@ -1,7 +1,7 @@
 [project]
-name = "open-ai"
+name = "conversation-engine"
 version = "0.1.0"
-description = "Low-latency conversational microservice with FastAPI and OpenAI Responses API"
+description = "Production-ready conversation engine with dynamic prompts, streaming, and quality controls"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -20,6 +20,9 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "ruff>=0.8.0",
 ]
+
+[tool.setuptools]
+packages = ["app"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

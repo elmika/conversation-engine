@@ -1,6 +1,6 @@
-# Low-Latency Conversational Microservice
+# Conversation Engine
 
-FastAPI backend integrating the OpenAI Responses API, with streaming, SQLite persistence, and prompt governance via `prompt_slug`. Light hexagonal layout: `api/`, `domain/`, `application/`, `infra/`.
+Production-ready conversation engine built with FastAPI and OpenAI. Features dynamic prompts, streaming responses, conversation history management, and clean hexagonal architecture. Designed for flexibility, quality control, and maintainability.
 
 ## Setup (OpenAI API key)
 
@@ -27,30 +27,30 @@ From the repo root. The image runs as a non-root user and uses a multi-stage bui
 **Build the image** (default: includes app + tests)
 
 ```bash
-docker build -t open-ai .
+docker build -t conversation-engine .
 ```
 
 Optional: build a slimmer production-only image (no pytest):
 
 ```bash
-docker build --target prod -t open-ai:prod .
+docker build --target prod -t conversation-engine:prod .
 ```
 
 **Run the app** (with API key so conversation endpoints work)
 
 ```bash
-docker run --rm -p 8000:8000 --env-file .env open-ai
+docker run --rm -p 8000:8000 --env-file .env conversation-engine
 ```
 
-If you prefer not to use a file: `docker run --rm -p 8000:8000 -e OPENAI_API_KEY=sk-your-key open-ai`.
+If you prefer not to use a file: `docker run --rm -p 8000:8000 -e OPENAI_API_KEY=sk-your-key conversation-engine`.
 
 - Health: http://127.0.0.1:8000/healthz  
 - API docs: http://127.0.0.1:8000/docs  
 
-**Run tests** (no API key needed; use default image, not `open-ai:prod`)
+**Run tests** (no API key needed; use default image, not `conversation-engine:prod`)
 
 ```bash
-docker run --rm open-ai pytest -v
+docker run --rm conversation-engine pytest -v
 ```
 
 Test gate: fix any failing tests before considering a change complete.

@@ -1,6 +1,6 @@
 # Multi-stage: builder (deps + app + tests), prod (slim, app only), runner (default: app + tests, non-root).
-# Build default (run app or tests):  docker build -t open-ai .
-# Build slimmer prod image:          docker build --target prod -t open-ai:prod .
+# Build default (run app or tests):  docker build -t conversation-engine .
+# Build slimmer prod image:          docker build --target prod -t conversation-engine:prod .
 
 # ---- Builder ----
 FROM python:3.11-slim AS builder

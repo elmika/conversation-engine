@@ -1,2 +1,11 @@
 data
 .env
+
+# Python build artifacts
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+dist/
+build/
