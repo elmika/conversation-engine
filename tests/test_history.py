@@ -1,5 +1,7 @@
 """Tests for conversation history trimming."""
 
+import logging
+
 from app.domain.history import estimate_tokens, get_history_stats, trim_history
 
 
@@ -20,7 +22,10 @@ def test_trim_history_no_limits():
         {"role": "assistant", "content": "I'm good"},
     ]
     result = trim_history(messages, max_turns=None, max_tokens=None)
-    assert result == messages
+    assert result["messages"] == messages
+    assert result["was_trimmed"] is False
+    assert result["original_count"] == 4
+    assert result["trimmed_count"] == 4
 
 
 def test_trim_history_by_turns():
@@ -36,15 +41,20 @@ def test_trim_history_by_turns():
     
     # Keep only last turn
     result = trim_history(messages, max_turns=1)
-    assert len(result) == 2
-    assert result[0]["content"] == "Turn 3"
-    assert result[1]["content"] == "Response 3"
+    assert len(result["messages"]) == 2
+    assert result["messages"][0]["content"] == "Turn 3"
+    assert result["messages"][1]["content"] == "Response 3"
+    assert result["was_trimmed"] is True
+    assert result["original_turns"] == 3
+    assert result["trimmed_turns"] == 1
     
     # Keep last 2 turns
     result = trim_history(messages, max_turns=2)
-    assert len(result) == 4
-    assert result[0]["content"] == "Turn 2"
-    assert result[3]["content"] == "Response 3"
+    assert len(result["messages"]) == 4
+    assert result["messages"][0]["content"] == "Turn 2"
+    assert result["messages"][3]["content"] == "Response 3"
+    assert result["was_trimmed"] is True
+    assert result["trimmed_turns"] == 2
 
 
 def test_trim_history_by_tokens():
@@ -58,9 +68,11 @@ def test_trim_history_by_tokens():
     
     # Keep only messages that fit in ~60 tokens (should keep last turn = 2 messages)
     result = trim_history(messages, max_tokens=60)
-    assert len(result) == 2
-    assert result[0]["content"] == "c" * 100
-    assert result[1]["content"] == "d" * 100
+    assert len(result["messages"]) == 2
+    assert result["messages"][0]["content"] == "c" * 100
+    assert result["messages"][1]["content"] == "d" * 100
+    assert result["was_trimmed"] is True
+    assert result["trimmed_tokens"] <= 60
 
 
 def test_trim_history_preserves_turn_pairs():
@@ -75,17 +87,19 @@ def test_trim_history_preserves_turn_pairs():
     # With reasonable token limit, should keep complete turn
     result = trim_history(messages, max_tokens=60)
     # Should keep the last turn (user + assistant)
-    assert len(result) == 2
-    assert result[0]["role"] == "user"
-    assert result[1]["role"] == "assistant"
-    assert result[0]["content"] == "c" * 100
-    assert result[1]["content"] == "d" * 100
+    assert len(result["messages"]) == 2
+    assert result["messages"][0]["role"] == "user"
+    assert result["messages"][1]["role"] == "assistant"
+    assert result["messages"][0]["content"] == "c" * 100
+    assert result["messages"][1]["content"] == "d" * 100
+    assert result["was_trimmed"] is True
 
 
 def test_trim_history_empty_messages():
-    """Trimming empty message list returns empty list."""
+    """Trimming empty message list returns empty result."""
     result = trim_history([], max_turns=10, max_tokens=1000)
-    assert result == []
+    assert result["messages"] == []
+    assert result["was_trimmed"] is False
 
 
 def test_trim_history_both_limits():
@@ -99,10 +113,11 @@ def test_trim_history_both_limits():
         {"role": "assistant", "content": "f" * 100},  # ~26 tokens
     ]
     
-    # Turn limit would allow 2 turns (4 messages), but token limit only allows ~2 messages
-    result = trim_history(messages, max_turns=2, max_tokens=50)
-    assert len(result) <= 4  # Turn limit
-    # Token limit should be more restrictive here
+    # Turn limit would allow 2 turns (4 messages), but token limit only allows 1 turn
+    result = trim_history(messages, max_turns=2, max_tokens=60)
+    assert len(result["messages"]) == 2  # Token limit is more restrictive
+    assert result["was_trimmed"] is True
+    assert result["trimmed_turns"] == 1
 
 
 def test_get_history_stats():
@@ -138,7 +153,55 @@ def test_trim_history_realistic_conversation():
     
     # Trim to last 5 turns
     result = trim_history(messages, max_turns=5)
-    assert len(result) == 10  # 5 turns = 10 messages
+    assert len(result["messages"]) == 10  # 5 turns = 10 messages
     # Should keep turns 11-15
-    assert "User message 11" in result[0]["content"]
-    assert "Assistant response 15" in result[-1]["content"]
+    assert "User message 11" in result["messages"][0]["content"]
+    assert "Assistant response 15" in result["messages"][-1]["content"]
+    assert result["was_trimmed"] is True
+    assert result["original_turns"] == 15
+    assert result["trimmed_turns"] == 5
+
+
+def test_trim_history_logs_when_trimmed(caplog):
+    """Verify that trimming is logged for monitoring."""
+    messages = [
+        {"role": "user", "content": "Turn 1"},
+        {"role": "assistant", "content": "Response 1"},
+        {"role": "user", "content": "Turn 2"},
+        {"role": "assistant", "content": "Response 2"},
+        {"role": "user", "content": "Turn 3"},
+        {"role": "assistant", "content": "Response 3"},
+    ]
+    
+    with caplog.at_level(logging.WARNING):
+        result = trim_history(messages, max_turns=1, conversation_id="test-conv-123")
+    
+    # Should have logged the trimming event
+    assert len(caplog.records) == 1
+    log_record = caplog.records[0]
+    assert log_record.levelname == "WARNING"
+    assert "History trimmed" in log_record.message
+    assert "6 → 2 messages" in log_record.message
+    assert "3 → 1 turns" in log_record.message
+    
+    # Check structured log fields
+    assert log_record.conversation_id == "test-conv-123"
+    assert log_record.original_messages == 6
+    assert log_record.trimmed_messages == 2
+    assert log_record.original_turns == 3
+    assert log_record.trimmed_turns == 1
+
+
+def test_trim_history_no_log_when_not_trimmed(caplog):
+    """Verify that no log is emitted when history fits within limits."""
+    messages = [
+        {"role": "user", "content": "Hi"},
+        {"role": "assistant", "content": "Hello"},
+    ]
+    
+    with caplog.at_level(logging.WARNING):
+        result = trim_history(messages, max_turns=10, max_tokens=10000)
+    
+    # Should not log anything when no trimming occurred
+    assert len(caplog.records) == 0
+    assert result["was_trimmed"] is False

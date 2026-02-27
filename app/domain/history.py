@@ -1,6 +1,22 @@
 """Domain logic for conversation history management."""
 
-from typing import Optional
+import logging
+from typing import Optional, TypedDict
+
+logger = logging.getLogger(__name__)
+
+
+class HistoryTrimResult(TypedDict):
+    """Result of trimming history with statistics."""
+
+    messages: list[dict[str, str]]
+    was_trimmed: bool
+    original_count: int
+    trimmed_count: int
+    original_turns: int
+    trimmed_turns: int
+    original_tokens: int
+    trimmed_tokens: int
 
 
 def estimate_tokens(text: str) -> int:
@@ -19,7 +35,8 @@ def trim_history(
     messages: list[dict[str, str]],
     max_turns: Optional[int] = None,
     max_tokens: Optional[int] = None,
-) -> list[dict[str, str]]:
+    conversation_id: Optional[str] = None,
+) -> HistoryTrimResult:
     """
     Trim conversation history to stay within turn and token limits.
     
@@ -28,13 +45,16 @@ def trim_history(
     2. Count in pairs (user + assistant = 1 turn)
     3. Stop when either limit is exceeded
     
+    Logs when trimming occurs for monitoring and alerting.
+    
     Args:
         messages: List of message dicts with 'role' and 'content'
         max_turns: Maximum number of turns (user+assistant pairs) to keep
         max_tokens: Maximum total tokens to keep
+        conversation_id: Optional conversation ID for logging context
         
     Returns:
-        Trimmed list of messages (most recent N that fit within limits)
+        HistoryTrimResult with trimmed messages and statistics
         
     Examples:
         >>> msgs = [
@@ -43,15 +63,38 @@ def trim_history(
         ...     {"role": "user", "content": "How are you?"},
         ...     {"role": "assistant", "content": "I'm good"},
         ... ]
-        >>> trim_history(msgs, max_turns=1)  # Keep only last turn
+        >>> result = trim_history(msgs, max_turns=1)
+        >>> result["messages"]  # Keep only last turn
         [{"role": "user", "content": "How are you?"}, {"role": "assistant", "content": "I'm good"}]
+        >>> result["was_trimmed"]
+        True
     """
+    # Calculate original stats
+    original_stats = get_history_stats(messages)
     if not messages:
-        return []
+        return HistoryTrimResult(
+            messages=[],
+            was_trimmed=False,
+            original_count=0,
+            trimmed_count=0,
+            original_turns=0,
+            trimmed_turns=0,
+            original_tokens=0,
+            trimmed_tokens=0,
+        )
     
     # If no limits, return all messages
     if max_turns is None and max_tokens is None:
-        return messages
+        return HistoryTrimResult(
+            messages=messages,
+            was_trimmed=False,
+            original_count=original_stats["message_count"],
+            trimmed_count=original_stats["message_count"],
+            original_turns=original_stats["turn_count"],
+            trimmed_turns=original_stats["turn_count"],
+            original_tokens=original_stats["estimated_tokens"],
+            trimmed_tokens=original_stats["estimated_tokens"],
+        )
     
     # Work backwards from most recent message
     kept_messages: list[dict[str, str]] = []
@@ -96,7 +139,42 @@ def trim_history(
             token_count += user_tokens
     
     # Reverse back to chronological order
-    return list(reversed(kept_messages))
+    trimmed_messages = list(reversed(kept_messages))
+    
+    # Calculate trimmed stats
+    trimmed_stats = get_history_stats(trimmed_messages)
+    was_trimmed = len(trimmed_messages) < len(messages)
+    
+    # Log if trimming occurred
+    if was_trimmed:
+        log_extra = {
+            "conversation_id": conversation_id,
+            "original_messages": original_stats["message_count"],
+            "trimmed_messages": trimmed_stats["message_count"],
+            "original_turns": original_stats["turn_count"],
+            "trimmed_turns": trimmed_stats["turn_count"],
+            "original_tokens": original_stats["estimated_tokens"],
+            "trimmed_tokens": trimmed_stats["estimated_tokens"],
+            "max_turns": max_turns,
+            "max_tokens": max_tokens,
+        }
+        logger.warning(
+            f"History trimmed: {original_stats['message_count']} → {trimmed_stats['message_count']} messages, "
+            f"{original_stats['turn_count']} → {trimmed_stats['turn_count']} turns, "
+            f"{original_stats['estimated_tokens']} → {trimmed_stats['estimated_tokens']} tokens",
+            extra=log_extra,
+        )
+    
+    return HistoryTrimResult(
+        messages=trimmed_messages,
+        was_trimmed=was_trimmed,
+        original_count=original_stats["message_count"],
+        trimmed_count=trimmed_stats["message_count"],
+        original_turns=original_stats["turn_count"],
+        trimmed_turns=trimmed_stats["turn_count"],
+        original_tokens=original_stats["estimated_tokens"],
+        trimmed_tokens=trimmed_stats["estimated_tokens"],
+    )
 
 
 def get_history_stats(messages: list[dict[str, str]]) -> dict[str, int]:

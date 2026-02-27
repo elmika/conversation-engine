@@ -109,14 +109,15 @@ class ConversationService:
                 uow.repo.append_message(conversation_id, msg["role"], msg["content"])
             
             # Trim history to stay within limits (prevents context overflow)
-            trimmed_history = trim_history(
+            trim_result = trim_history(
                 history,
                 max_turns=self._max_history_turns,
                 max_tokens=self._max_history_tokens,
+                conversation_id=conversation_id,
             )
             
             # Combine trimmed history with new messages
-            combined_messages = trimmed_history + messages
+            combined_messages = trim_result["messages"] + messages
             
             # Call LLM with trimmed history
             conv_id, assistant_message, model, ttfb_ms, total_ms = chat(
@@ -213,14 +214,15 @@ class ConversationService:
             uow_setup.commit()
         
         # Trim history to stay within limits (prevents context overflow)
-        trimmed_history = trim_history(
+        trim_result = trim_history(
             history,
             max_turns=self._max_history_turns,
             max_tokens=self._max_history_tokens,
+            conversation_id=conversation_id,
         )
         
         # Combine trimmed history with new messages
-        combined_messages = trimmed_history + messages
+        combined_messages = trim_result["messages"] + messages
         
         # Start streaming with full history
         conv_id, events = stream_chat(
