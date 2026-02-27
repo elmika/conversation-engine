@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import ConversationRequest, ConversationResponse, TimingsSchema
-from app.application.ports import ConversationRepo, LLMPort
+from app.application.ports import LLMPort, UnitOfWork
 from app.application.services import ConversationService
 from app.infra.persistence.db import get_session
-from app.infra.persistence.repo_sqlalchemy import SQLAlchemyConversationRepo
+from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from app.settings import Settings
 
 router = APIRouter()
@@ -28,19 +28,21 @@ def get_llm(request: Request) -> LLMPort:
     return request.app.state.llm
 
 
-def get_repo(db=Depends(get_session)) -> ConversationRepo:
-    """Provide conversation repository (SQLAlchemy impl, session from app engine)."""
-    return SQLAlchemyConversationRepo(db)
+def get_uow_factory(db=Depends(get_session)):
+    """Provide a UnitOfWork factory that creates UoW instances with the current session."""
+    def _factory() -> UnitOfWork:
+        return SQLAlchemyUnitOfWork(db)
+    return _factory
 
 
 def get_conversation_service(
-    repo: ConversationRepo = Depends(get_repo),
+    uow_factory=Depends(get_uow_factory),
     llm: LLMPort = Depends(get_llm),
     settings: Settings = Depends(get_settings),
 ) -> ConversationService:
     """Provide conversation service with injected dependencies."""
     return ConversationService(
-        repo=repo,
+        uow_factory=uow_factory,
         llm=llm,
         default_prompt_slug=settings.default_prompt_slug,
     )
@@ -83,7 +85,7 @@ async def create_conversation_stream(
     _check_input_length(messages, settings.max_input_chars)
 
     async def event_generator() -> AsyncIterator[str]:
-        conv_id, events, used_prompt_slug = await asyncio.to_thread(
+        conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(
             service.create_and_stream,
             messages,
             body.prompt_slug,
@@ -125,6 +127,7 @@ async def create_conversation_stream(
 
                 await asyncio.to_thread(
                     service.persist_stream_result,
+                    uow,
                     conv_id,
                     full_text,
                     used_prompt_slug,
@@ -223,13 +226,13 @@ async def append_conversation_turn_stream(
     _check_input_length(messages, settings.max_input_chars)
 
     async def event_generator() -> AsyncIterator[str]:
-        def _stream_setup() -> tuple[str, Any, str]:
+        def _stream_setup() -> tuple[str, Any, str, UnitOfWork]:
             try:
                 return service.append_and_stream(conversation_id, messages, body.prompt_slug)
             except ValueError as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
-        conv_id, events, used_prompt_slug = await asyncio.to_thread(_stream_setup)
+        conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(_stream_setup)
 
         meta = {
             "conversation_id": conv_id,
@@ -267,6 +270,7 @@ async def append_conversation_turn_stream(
 
                 await asyncio.to_thread(
                     service.persist_stream_result,
+                    uow,
                     conv_id,
                     full_text,
                     used_prompt_slug,

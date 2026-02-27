@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from typing import Optional, Protocol, TypedDict
+from types import TracebackType
 
 
 class Timings(TypedDict):
@@ -78,4 +79,43 @@ class ConversationRepo(Protocol):
         finish_reason: Optional[str] = None,
     ) -> None:
         """Persist run metadata describing how an assistant message was generated."""
+        ...
+
+
+class UnitOfWork(Protocol):
+    """
+    Unit of Work pattern: manages transaction boundaries.
+    
+    The UoW owns the session lifecycle and controls commit/rollback.
+    Repositories should only add/flush, never commit.
+    
+    Usage:
+        with uow:
+            uow.repo.create_conversation_with_id(cid)
+            uow.repo.append_message(cid, "user", "Hello")
+            # ... more operations ...
+            uow.commit()  # Atomic commit of all operations
+    """
+
+    repo: ConversationRepo
+
+    def commit(self) -> None:
+        """Commit the current transaction."""
+        ...
+
+    def rollback(self) -> None:
+        """Rollback the current transaction."""
+        ...
+
+    def __enter__(self) -> "UnitOfWork":
+        """Enter context manager."""
+        ...
+
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        """Exit context manager; rollback on exception."""
         ...

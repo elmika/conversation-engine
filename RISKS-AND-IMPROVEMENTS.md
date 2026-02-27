@@ -21,9 +21,9 @@ Fix: move “load history → call LLM → persist → format response” into a
 - Easier to test: service methods can be unit-tested independently of HTTP
 - Prepares for transaction boundaries: UoW can be introduced in the service layer without touching routes
 
-2.Transaction boundaries / UoW (commit discipline)
+2.Transaction boundaries / UoW (commit discipline) ✅ FIXED
 
-This is the biggest correctness win.
+**Status:** Resolved by implementing the Unit of Work pattern. Repository no longer commits; service methods define transaction boundaries.
 
 -Prevents partial persistence (especially around streaming + errors)
 -Makes retries + error handling sane

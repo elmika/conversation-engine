@@ -28,7 +28,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         """Create a new conversation with a specific ID (domain-generated)."""
         conv = Conversation(id=conversation_id)
         self._session.add(conv)
-        self._session.commit()
+        # No commit - UnitOfWork handles transaction boundaries
 
     def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
         stmt = (
@@ -42,8 +42,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
     def append_message(self, conversation_id: str, role: str, content: str) -> int:
         msg = Message(conversation_id=conversation_id, role=role, content=content)
         self._session.add(msg)
-        self._session.commit()
-        self._session.refresh(msg)
+        self._session.flush()  # Flush to get the auto-generated ID
         return msg.id
 
     def record_run(
@@ -70,5 +69,5 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             finish_reason=finish_reason,
         )
         self._session.add(run)
-        self._session.commit()
+        # No commit - UnitOfWork handles transaction boundaries
 
