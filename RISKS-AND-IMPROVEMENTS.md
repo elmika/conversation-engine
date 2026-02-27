@@ -1,3 +1,58 @@
+
+# Top Risks and Improvements
+
+1.Routes too fat (duplication + orchestration in API layer) ✅ FIXED
+
+This is the biggest “complexity multiplier”.
+
+-It drives bugs (create vs append drift, stream vs non-stream drift)
+-It makes tests harder
+-It blocks clean transaction boundaries
+
+Fix: move “load history → call LLM → persist → format response” into application services/use cases. Routes become glue.
+
+**Implementation details:**
+- Created `ConversationService` in `app/application/services.py` with methods: `create_and_chat()`, `append_and_chat()`, `create_and_stream()`, `append_and_stream()`, `persist_stream_result()`
+- Routes now delegate all orchestration to the service layer
+- Service encapsulates: conversation creation, message persistence, history loading, LLM invocation, response persistence
+- Routes handle only: input validation, calling service methods, formatting HTTP/SSE responses
+- Eliminated code duplication between create/append and stream/non-stream endpoints
+- Clearer separation of concerns: routes = HTTP layer, service = business workflow orchestration
+- Easier to test: service methods can be unit-tested independently of HTTP
+- Prepares for transaction boundaries: UoW can be introduced in the service layer without touching routes
+
+2.Transaction boundaries / UoW (commit discipline)
+
+This is the biggest correctness win.
+
+-Prevents partial persistence (especially around streaming + errors)
+-Makes retries + error handling sane
+-Enables future “atomic: messages + run + conversation state”
+
+Fix: introduce UoW; remove repo commits.
+
+3.Conversation history growth / token limits (cost + failure mode)
+
+This is a guaranteed future failure.
+
+-Long conversations will break context limits
+-Costs can explode silently
+-Latency increases
+
+Fix (minimal): cap history (last N turns or token budget). Later: summarization.
+
+4.Streaming non-happy-path events + client contract
+
+You already flagged this, and it’s high leverage because it affects UX + debuggability.
+
+-response.failed / incomplete must translate into a consistent terminal SSE done with error
+-otherwise clients “hang” or misinterpret completion
+
+Fix: standardize SSE end-of-stream semantics and error envelope.
+
+
+# Exhaustive Risks and Improvements
+
 ## Streaming – Risks and Future Improvements
 
 - **OpenAI SDK streaming shape**  
@@ -41,6 +96,26 @@
   SQLite is appropriate for this local demo, but:  
   - High write concurrency or large datasets may require a server-grade database.  
   - We may want simple retention policies (e.g. deleting old conversations) to keep the database small in long-running environments.
+
+- **Real database for production**  
+  Setting up a “real” database (e.g. PostgreSQL) is a worthwhile improvement for production or once we store more than conversations/runs (e.g. prompts). Enables better concurrency, tooling, and backups; SQLite remains fine for local/dev and tests.
+
+## Architecture
+
+- **Routes too fat** ✅ FIXED  
+  **Done:** Introduced `ConversationService` in `app/application/services.py`. Routes are now thin—they validate input, call service methods (`create_and_chat`, `append_and_chat`, `create_and_stream`, `append_and_stream`), and format HTTP/SSE responses. All orchestration (conversation creation, message persistence, history loading, LLM invocation, response persistence) lives in the service layer. This eliminates duplication between create/append and stream/non-stream endpoints and makes the API layer easier to test and change.
+
+- **Domain very thin**  
+  The domain layer is mostly a small prompt registry and little else; core logic lives in application use cases and infra. **Improvement:** Strengthen the domain where it adds clarity: e.g. explicit types or value objects for “prompt spec”, “conversation identity”, or rules that belong to the business (e.g. “what is a valid prompt_slug”). Keep use cases in application and infra at the edges, but let domain hold invariants and shared concepts so the hexagon has a clear “centre” instead of a thin pass-through.
+
+- **Prompts from infrastructure with a contract**  
+  See **Prompts and configuration** below: load prompts from the database via a port (PromptRepo) and define a clear schema/contract for prompt definitions so the rest of the app depends on the contract, not on a concrete registry or file format.
+
+## Prompts and configuration
+
+- **Prompts from database (no YAML)**  
+  **Current:** Prompts live in an in-code registry (`domain/prompt_registry.py`).  
+  **Improvement:** Load prompts from infrastructure—ideally the **database**—as soon as practical. Avoid introducing YAML (or other file-based config) as an intermediate step; it adds indirection without much benefit if the goal is DB-backed prompts. Introduce a **PromptRepo** (or similar) port, a schema/contract for prompt definitions (e.g. slug, name, system_prompt, optional metadata), and an infra implementation that reads from a `prompts` table. Use cases keep depending on a port; swap the in-code registry for the DB-backed adapter. Enables runtime management and auditing of prompts without code deploys.
 
 ## Observability and tests (Day 5+)
 
@@ -90,3 +165,17 @@
 
 - **OpenAI limits and upstream variability**  
   Under heavier load, OpenAI rate limits or upstream variability (queueing, retries) may dominate latency and error patterns. The current retry/backoff is basic; a more robust setup would combine backoff with better observability and, if needed, workload shaping or queuing.
+
+
+## Persistence – Transaction boundaries (Unit of Work)
+
+-Current risk: repo_sqlalchemy.py commits inside repository methods. This makes it hard to keep multi-step workflows atomic (e.g., create conversation + create messages + record run) and complicates error handling (partial writes).
+-Improvement: Introduce a Unit of Work abstraction that owns the SQLAlchemy Session lifecycle and controls commit() / rollback() at the use-case boundary (or request scope). Repositories should only add()/flush() and never commit.
+-Outcome: Clear transaction boundaries, easier testing, fewer partial-write bugs, and cleaner hexagonal layering.
+
+
+## Persistence – Async/sync boundary
+
+-Current risk: SQLAlchemy session usage is synchronous (and SQLite is sync). If used directly on the event loop, it can block under load.
+-Current mitigation: persistence during streaming is offloaded via asyncio.to_thread (good).
+-Improvement: enforce a rule: all DB operations in async endpoints must be offloaded (or migrate to SQLAlchemy async engine + async driver when moving to Postgres). Add a small test or lint guideline to prevent accidental sync DB calls on the event loop.
