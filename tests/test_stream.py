@@ -128,3 +128,72 @@ def test_conversation_stream_rejects_input_over_max_chars(client_with_mock_strea
     finally:
         app.dependency_overrides.pop(routes.get_settings, None)
 
+
+def test_conversation_stream_emits_done_on_llm_error(client_with_mock_stream) -> None:
+    """POST /conversations/stream emits done event with error when LLM adapter raises HTTPException."""
+    from app.api import routes
+    from fastapi import HTTPException
+
+    mock_llm = MagicMock()
+    mock_llm.stream.side_effect = HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    app.dependency_overrides[routes.get_llm] = lambda: mock_llm
+    try:
+        response = client_with_mock_stream.post(
+            "/conversations/stream",
+            json={
+                "messages": [{"role": "user", "content": "Hello"}],
+            },
+        )
+        assert response.status_code == 200
+        body = b"".join(response.iter_bytes()).decode("utf-8")
+
+        # Should emit done event with error
+        assert "event: done" in body
+        assert '"error"' in body
+        assert '"type": "http_error"' in body or '"type":"http_error"' in body
+        assert '"status_code": 429' in body or '"status_code":429' in body
+        assert "Rate limit exceeded" in body
+    finally:
+        app.dependency_overrides.pop(routes.get_llm, None)
+
+
+def test_conversation_stream_append_emits_done_on_llm_error(client_with_mock_stream) -> None:
+    """POST /conversations/{id}/stream emits done event with error when LLM adapter raises HTTPException."""
+    from app.api import routes
+    from fastapi import HTTPException
+
+    # First create a conversation
+    create_resp = client_with_mock_stream.post(
+        "/conversations",
+        json={
+            "messages": [{"role": "user", "content": "First"}],
+        },
+    )
+    assert create_resp.status_code == 200
+    cid = create_resp.json()["conversation_id"]
+
+    # Now mock LLM to raise error on append
+    mock_llm = MagicMock()
+    mock_llm.stream.side_effect = HTTPException(status_code=504, detail="Upstream timeout")
+
+    app.dependency_overrides[routes.get_llm] = lambda: mock_llm
+    try:
+        response = client_with_mock_stream.post(
+            f"/conversations/{cid}/stream",
+            json={
+                "messages": [{"role": "user", "content": "Hello"}],
+            },
+        )
+        assert response.status_code == 200
+        body = b"".join(response.iter_bytes()).decode("utf-8")
+
+        # Should emit done event with error
+        assert "event: done" in body
+        assert '"error"' in body
+        assert '"type": "http_error"' in body or '"type":"http_error"' in body
+        assert '"status_code": 504' in body or '"status_code":504' in body
+        assert "Upstream timeout" in body
+    finally:
+        app.dependency_overrides.pop(routes.get_llm, None)
+

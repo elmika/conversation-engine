@@ -87,63 +87,85 @@ async def create_conversation_stream(
     _check_input_length(messages, settings.max_input_chars)
 
     async def event_generator() -> AsyncIterator[str]:
-        conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(
-            service.create_and_stream,
-            messages,
-            body.prompt_slug,
-        )
+        try:
+            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(
+                service.create_and_stream,
+                messages,
+                body.prompt_slug,
+            )
 
-        meta = {
-            "conversation_id": conv_id,
-            "model": settings.openai_model,
-            "prompt_slug": used_prompt_slug,
-        }
-        yield _sse_event("meta", meta)
+            meta = {
+                "conversation_id": conv_id,
+                "model": settings.openai_model,
+                "prompt_slug": used_prompt_slug,
+            }
+            yield _sse_event("meta", meta)
 
-        assistant_text_parts: list[str] = []
-        ttfb_ms = 0
-        total_ms = 0
-        model = settings.openai_model
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = settings.openai_model
 
-        for ev in events:
-            if ev.get("type") == "delta":
-                delta = ev.get("delta", "")
-                if not delta:
-                    continue
-                assistant_text_parts.append(delta)
-                if ev.get("ttfb_ms"):
-                    ttfb_ms = ev["ttfb_ms"]
-                if ev.get("model"):
-                    model = ev["model"]
-                if ev.get("total_ms"):
-                    total_ms = ev["total_ms"]
-                yield _sse_event("chunk", {"delta": delta})
-            elif ev.get("type") == "final":
-                full_text = ev.get("text", "") or "".join(assistant_text_parts)
-                if ev.get("model"):
-                    model = ev["model"]
-                if ev.get("ttfb_ms"):
-                    ttfb_ms = ev["ttfb_ms"]
-                if ev.get("total_ms"):
-                    total_ms = ev["total_ms"]
+            for ev in events:
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
 
-                await asyncio.to_thread(
-                    service.persist_stream_result,
-                    uow,
-                    conv_id,
-                    full_text,
-                    used_prompt_slug,
-                    model,
-                    ttfb_ms,
-                    total_ms,
-                )
-                done_payload = {
-                    "conversation_id": conv_id,
-                    "assistant_message": full_text,
-                    "model": model,
-                    "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
+                    )
+                    done_payload = {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    }
+                    yield _sse_event("done", done_payload)
+        except HTTPException as exc:
+            # Map HTTP exceptions to SSE error events
+            error_payload = {
+                "error": {
+                    "type": "http_error",
+                    "status_code": exc.status_code,
+                    "message": exc.detail,
                 }
-                yield _sse_event("done", done_payload)
+            }
+            yield _sse_event("done", error_payload)
+        except Exception as exc:
+            # Catch any other errors and emit terminal done event
+            error_payload = {
+                "error": {
+                    "type": "internal_error",
+                    "message": "An unexpected error occurred during streaming",
+                }
+            }
+            yield _sse_event("done", error_payload)
+            # Re-raise so middleware can log it
+            raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -228,64 +250,86 @@ async def append_conversation_turn_stream(
     _check_input_length(messages, settings.max_input_chars)
 
     async def event_generator() -> AsyncIterator[str]:
-        def _stream_setup() -> tuple[str, Any, str, UnitOfWork]:
-            try:
-                return service.append_and_stream(conversation_id, messages, body.prompt_slug)
-            except ValueError as e:
-                raise HTTPException(status_code=404, detail=str(e))
+        try:
+            def _stream_setup() -> tuple[str, Any, str, UnitOfWork]:
+                try:
+                    return service.append_and_stream(conversation_id, messages, body.prompt_slug)
+                except ValueError as e:
+                    raise HTTPException(status_code=404, detail=str(e))
 
-        conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(_stream_setup)
+            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(_stream_setup)
 
-        meta = {
-            "conversation_id": conv_id,
-            "model": settings.openai_model,
-            "prompt_slug": used_prompt_slug,
-        }
-        yield _sse_event("meta", meta)
+            meta = {
+                "conversation_id": conv_id,
+                "model": settings.openai_model,
+                "prompt_slug": used_prompt_slug,
+            }
+            yield _sse_event("meta", meta)
 
-        assistant_text_parts: list[str] = []
-        ttfb_ms = 0
-        total_ms = 0
-        model = settings.openai_model
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = settings.openai_model
 
-        for ev in events:
-            if ev.get("type") == "delta":
-                delta = ev.get("delta", "")
-                if not delta:
-                    continue
-                assistant_text_parts.append(delta)
-                if ev.get("ttfb_ms"):
-                    ttfb_ms = ev["ttfb_ms"]
-                if ev.get("model"):
-                    model = ev["model"]
-                if ev.get("total_ms"):
-                    total_ms = ev["total_ms"]
-                yield _sse_event("chunk", {"delta": delta})
-            elif ev.get("type") == "final":
-                full_text = ev.get("text", "") or "".join(assistant_text_parts)
-                if ev.get("model"):
-                    model = ev["model"]
-                if ev.get("ttfb_ms"):
-                    ttfb_ms = ev["ttfb_ms"]
-                if ev.get("total_ms"):
-                    total_ms = ev["total_ms"]
+            for ev in events:
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
 
-                await asyncio.to_thread(
-                    service.persist_stream_result,
-                    uow,
-                    conv_id,
-                    full_text,
-                    used_prompt_slug,
-                    model,
-                    ttfb_ms,
-                    total_ms,
-                )
-                done_payload = {
-                    "conversation_id": conv_id,
-                    "assistant_message": full_text,
-                    "model": model,
-                    "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
+                    )
+                    done_payload = {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    }
+                    yield _sse_event("done", done_payload)
+        except HTTPException as exc:
+            # Map HTTP exceptions to SSE error events
+            error_payload = {
+                "error": {
+                    "type": "http_error",
+                    "status_code": exc.status_code,
+                    "message": exc.detail,
                 }
-                yield _sse_event("done", done_payload)
+            }
+            yield _sse_event("done", error_payload)
+        except Exception as exc:
+            # Catch any other errors and emit terminal done event
+            error_payload = {
+                "error": {
+                    "type": "internal_error",
+                    "message": "An unexpected error occurred during streaming",
+                }
+            }
+            yield _sse_event("done", error_payload)
+            # Re-raise so middleware can log it
+            raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

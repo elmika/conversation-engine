@@ -53,19 +53,6 @@ Fix: introduce UoW; remove repo commits.
 
 4.Streaming non-happy-path events + client contract ✅ FIXED
 
-**Done:** Standardized SSE end-of-stream semantics with error envelope.
-- All streaming endpoints (`/conversations/stream` and `/conversations/{id}/stream`) now wrap event generation in try/catch
-- HTTPException and general exceptions emit terminal `done` event with `error` field instead of `assistant_message`
-- Error payload includes `type` (http_error/internal_error), `status_code` (if applicable), and `message`
-- Clients always receive a terminal event, preventing hangs or ambiguous completion states
-- Tests verify error scenarios for both create and append streaming endpoints
-- API.md documents the error contract with examples
-
-**Benefits:**
-- Clients never hang waiting for more data
-- Clear distinction between successful completion and failures
-- Structured error information for client-side handling
-- Consistent UX across all error types (rate limits, timeouts, internal errors)
 
 
 # Exhaustive Risks and Improvements
@@ -89,17 +76,11 @@ Fix: introduce UoW; remove repo commits.
   For very long responses or many concurrent streams, we may want to move the entire streaming loop into a worker thread (or a dedicated task with backpressure) so the event loop remains as responsive as possible.
 
 - **Error handling and non-happy-path events**  
-  **Done:** Streaming endpoints now emit terminal `done` events with structured error payloads.
-  - Both streaming endpoints wrap event generation in try/catch
-  - HTTPException and general exceptions emit `done` event with `error` field
-  - Error payload includes `type` (http_error/internal_error), `status_code`, and `message`
-  - General exceptions are re-raised after emitting error event for middleware logging
-  
-  **Future improvements:**
-  - **Error classification granularity**: Add more specific error types (e.g., `validation_error`, `not_found`, `rate_limit`) instead of generic `http_error` for better client-side handling
-  - **Partial content recovery**: If stream fails mid-way after emitting chunks, include partial `assistant_message` in error payload so clients can show what was received before failure
-  - **Retry hints**: Include `retry_after` seconds in rate limit errors to guide client retry behavior
-  - **Conversation ID in early errors**: For errors before meta event is emitted, still include `conversation_id` in error payload if available (e.g., for append endpoints where ID is known upfront)
+  **Done:** Request-level error handling is in place: middleware logs request failures (request_id, endpoint, latency) and re-raises; a global exception handler logs unhandled exceptions and returns a 500 JSON envelope (with optional `request_id`).  
+  **Pending:** Non-happy-path streaming events (e.g. `response.failed`, `response.incomplete`) are not yet translated into SSE error events or a terminal `done` with an `error` field. Next steps:  
+  - Wrap adapter and OpenAI errors in a structured error payload.  
+  - Emit a final `done` SSE event containing `error` information (alongside timings and model metadata).  
+  - Optionally surface an `error` SSE event type for clients that want to differentiate failures from normal completion.
 
 - **Multiple streaming entrypoints**  
   We now expose both `POST /conversations/stream` (first turn) and `POST /conversations/{conversation_id}/stream` (subsequent turns).  

@@ -24,7 +24,7 @@ class LLMResult(TypedDict):
 class StreamEvent(TypedDict, total=False):
     """Event from a streaming LLM call."""
 
-    # "delta" for incremental text, "final" for completion metadata.
+    # "delta" for incremental text, "final" for completion metadata, "error" for failures.
     type: str
     # Present when type == "delta".
     delta: str
@@ -33,6 +33,9 @@ class StreamEvent(TypedDict, total=False):
     model: str
     ttfb_ms: int
     total_ms: int
+    # Present when type == "error".
+    error_type: str  # e.g., "rate_limit", "timeout", "api_error"
+    error_message: str  # Human-readable error description
 
 
 class LLMPort(Protocol):
