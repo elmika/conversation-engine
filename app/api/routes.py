@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import ConversationRequest, ConversationResponse, TimingsSchema
-from app.application.ports import ConversationRepo, LLMPort
-from app.application.use_cases import chat, stream_chat
+from app.application.ports import LLMPort, UnitOfWork
+from app.application.services import ConversationService
 from app.infra.persistence.db import get_session
-from app.infra.persistence.repo_sqlalchemy import SQLAlchemyConversationRepo
+from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from app.settings import Settings
 
 router = APIRouter()
@@ -28,9 +28,26 @@ def get_llm(request: Request) -> LLMPort:
     return request.app.state.llm
 
 
-def get_repo(db=Depends(get_session)) -> ConversationRepo:
-    """Provide conversation repository (SQLAlchemy impl, session from app engine)."""
-    return SQLAlchemyConversationRepo(db)
+def get_uow_factory(db=Depends(get_session)):
+    """Provide a UnitOfWork factory that creates UoW instances with the current session."""
+    def _factory() -> UnitOfWork:
+        return SQLAlchemyUnitOfWork(db)
+    return _factory
+
+
+def get_conversation_service(
+    uow_factory=Depends(get_uow_factory),
+    llm: LLMPort = Depends(get_llm),
+    settings: Settings = Depends(get_settings),
+) -> ConversationService:
+    """Provide conversation service with injected dependencies."""
+    return ConversationService(
+        uow_factory=uow_factory,
+        llm=llm,
+        default_prompt_slug=settings.default_prompt_slug,
+        max_history_turns=settings.max_history_turns,
+        max_history_tokens=settings.max_history_tokens,
+    )
 
 
 def _check_input_length(messages: list[dict[str, str]], max_chars: int) -> None:
@@ -56,8 +73,7 @@ async def healthz() -> dict[str, str]:
 async def create_conversation_stream(
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
-    llm: LLMPort = Depends(get_llm),
-    repo: ConversationRepo = Depends(get_repo),
+    service: ConversationService = Depends(get_conversation_service),
 ) -> StreamingResponse:
     """
     Create a new conversation and stream the first turn as SSE.
@@ -70,87 +86,86 @@ async def create_conversation_stream(
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     _check_input_length(messages, settings.max_input_chars)
 
-    # Run domain logic and streaming adapter in a thread so we don't block the event loop.
-    def _stream_setup() -> tuple[str, Any, str]:
-        used_prompt_slug = body.prompt_slug or settings.default_prompt_slug
-        cid = repo.create_conversation()
-
-        # Persist user messages for this first turn.
-        for msg in messages:
-            repo.append_message(cid, msg["role"], msg["content"])
-
-        cid2, events = stream_chat(
-            messages=messages,
-            prompt_slug=body.prompt_slug,
-            default_slug=settings.default_prompt_slug,
-            llm_stream=llm.stream,
-            conversation_id=cid,
-        )
-        return cid2, events, used_prompt_slug
-
     async def event_generator() -> AsyncIterator[str]:
-        conv_id, events, used_prompt_slug = await asyncio.to_thread(_stream_setup)
+        try:
+            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(
+                service.create_and_stream,
+                messages,
+                body.prompt_slug,
+            )
 
-        # Meta event first.
-        meta = {
-            "conversation_id": conv_id,
-            "model": settings.openai_model,
-            "prompt_slug": used_prompt_slug,
-        }
-        yield _sse_event("meta", meta)
+            meta = {
+                "conversation_id": conv_id,
+                "model": settings.openai_model,
+                "prompt_slug": used_prompt_slug,
+            }
+            yield _sse_event("meta", meta)
 
-        assistant_text_parts: list[str] = []
-        ttfb_ms = 0
-        total_ms = 0
-        model = settings.openai_model
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = settings.openai_model
 
-        for ev in events:
-            if ev.get("type") == "delta":
-                delta = ev.get("delta", "")
-                if not delta:
-                    continue
-                assistant_text_parts.append(delta)
-                if ev.get("ttfb_ms"):
-                    ttfb_ms = ev["ttfb_ms"]
-                if ev.get("model"):
-                    model = ev["model"]
-                if ev.get("total_ms"):
-                    total_ms = ev["total_ms"]
-                yield _sse_event("chunk", {"delta": delta})
-            elif ev.get("type") == "final":
-                full_text = ev.get("text", "") or "".join(assistant_text_parts)
-                if ev.get("model"):
-                    model = ev["model"]
-                if ev.get("ttfb_ms"):
-                    ttfb_ms = ev["ttfb_ms"]
-                if ev.get("total_ms"):
-                    total_ms = ev["total_ms"]
+            for ev in events:
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
 
-                # Persist assistant message and run metadata in a worker thread.
-                def _inner(
-                    _ft: str = full_text,
-                    _m: str = model,
-                    _ttfb: int = ttfb_ms,
-                    _total: int = total_ms,
-                ) -> None:
-                    assistant_message_id = repo.append_message(conv_id, "assistant", _ft)
-                    repo.record_run(
-                        conversation_id=conv_id,
-                        assistant_message_id=assistant_message_id,
-                        prompt_slug=used_prompt_slug,
-                        model=_m,
-                        ttfb_ms=_ttfb,
-                        total_ms=_total,
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
                     )
-
-                await asyncio.to_thread(_inner)
-                done_payload = {
-                    "conversation_id": conv_id,
-                    "assistant_message": full_text,
-                    "model": model,
-                    "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    done_payload = {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    }
+                    yield _sse_event("done", done_payload)
+        except HTTPException as exc:
+            # Map HTTP exceptions to SSE error events
+            error_payload = {
+                "error": {
+                    "type": "http_error",
+                    "status_code": exc.status_code,
+                    "message": exc.detail,
                 }
-                yield _sse_event("done", done_payload)
+            }
+            yield _sse_event("done", error_payload)
+        except Exception as exc:
+            # Catch any other errors and emit terminal done event
+            error_payload = {
+                "error": {
+                    "type": "internal_error",
+                    "message": "An unexpected error occurred during streaming",
+                }
+            }
+            yield _sse_event("done", error_payload)
+            # Re-raise so middleware can log it
+            raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -159,46 +174,16 @@ async def create_conversation_stream(
 async def create_conversation(
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
-    llm: LLMPort = Depends(get_llm),
-    repo: ConversationRepo = Depends(get_repo),
-    ) -> ConversationResponse:
+    service: ConversationService = Depends(get_conversation_service),
+) -> ConversationResponse:
     """Create a new conversation and handle the first turn (non-streaming)."""
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     _check_input_length(messages, settings.max_input_chars)
-    prompt_slug = body.prompt_slug or settings.default_prompt_slug
-
-    def _run() -> tuple[str, str, str, int, int]:
-        # Create a new conversation.
-        cid = repo.create_conversation()
-
-        # Persist user messages for this turn.
-        for msg in messages:
-            repo.append_message(cid, msg["role"], msg["content"])
-
-        conversation_id, assistant_message, model, ttfb_ms, total_ms = chat(
-            messages=messages,
-            prompt_slug=body.prompt_slug,
-            default_slug=settings.default_prompt_slug,
-            llm_complete=llm.complete,
-            conversation_id=cid,
-        )
-
-        # Persist assistant message and run metadata.
-        assistant_message_id = repo.append_message(
-            conversation_id, "assistant", assistant_message
-        )
-        repo.record_run(
-            conversation_id=conversation_id,
-            assistant_message_id=assistant_message_id,
-            prompt_slug=prompt_slug,
-            model=model,
-            ttfb_ms=ttfb_ms,
-            total_ms=total_ms,
-        )
-        return conversation_id, assistant_message, model, ttfb_ms, total_ms
 
     conversation_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(
-        _run
+        service.create_and_chat,
+        messages,
+        body.prompt_slug,
     )
     return ConversationResponse(
         conversation_id=conversation_id,
@@ -222,47 +207,17 @@ async def append_conversation_turn(
     conversation_id: str,
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
-    llm: LLMPort = Depends(get_llm),
-    repo: ConversationRepo = Depends(get_repo),
+    service: ConversationService = Depends(get_conversation_service),
 ) -> ConversationResponse:
     """Append a new turn to an existing conversation (non-streaming)."""
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
-    prompt_slug = body.prompt_slug or settings.default_prompt_slug
+    _check_input_length(messages, settings.max_input_chars)
 
     def _run() -> tuple[str, str, str, int, int]:
-        cid = conversation_id
-
-        # Build conversation history before adding this turn so we don't double-count.
-        history = repo.get_messages(cid)
-        if not history:
-            # No existing conversation or no prior messages: treat as not found.
-            raise HTTPException(status_code=404, detail="Conversation not found")
-
-        # Persist user messages for this turn.
-        for msg in messages:
-            repo.append_message(cid, msg["role"], msg["content"])
-
-        combined_messages = history + messages
-
-        conv_id, assistant_message, model, ttfb_ms, total_ms = chat(
-            messages=combined_messages,
-            prompt_slug=body.prompt_slug,
-            default_slug=settings.default_prompt_slug,
-            llm_complete=llm.complete,
-            conversation_id=cid,
-        )
-
-        # Persist assistant message and run metadata.
-        assistant_message_id = repo.append_message(conv_id, "assistant", assistant_message)
-        repo.record_run(
-            conversation_id=conv_id,
-            assistant_message_id=assistant_message_id,
-            prompt_slug=prompt_slug,
-            model=model,
-            ttfb_ms=ttfb_ms,
-            total_ms=total_ms,
-        )
-        return conv_id, assistant_message, model, ttfb_ms, total_ms
+        try:
+            return service.append_and_chat(conversation_id, messages, body.prompt_slug)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     conv_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(_run)
     return ConversationResponse(
@@ -281,8 +236,7 @@ async def append_conversation_turn_stream(
     conversation_id: str,
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
-    llm: LLMPort = Depends(get_llm),
-    repo: ConversationRepo = Depends(get_repo),
+    service: ConversationService = Depends(get_conversation_service),
 ) -> StreamingResponse:
     """
     Append a new turn to an existing conversation with streaming SSE output.
@@ -295,94 +249,87 @@ async def append_conversation_turn_stream(
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     _check_input_length(messages, settings.max_input_chars)
 
-    # Run domain logic and streaming adapter in a thread so we don't block the event loop.
-    def _stream_setup() -> tuple[str, Any, str]:
-        used_prompt_slug = body.prompt_slug or settings.default_prompt_slug
-        cid = conversation_id
-
-        # Build conversation history before adding this turn so we don't double-count.
-        history = repo.get_messages(cid)
-        if not history:
-            # No existing conversation or no prior messages: treat as not found.
-            raise HTTPException(status_code=404, detail="Conversation not found")
-
-        # Persist user messages for this turn.
-        for msg in messages:
-            repo.append_message(cid, msg["role"], msg["content"])
-
-        combined_messages = history + messages
-
-        cid2, events = stream_chat(
-            messages=combined_messages,
-            prompt_slug=body.prompt_slug,
-            default_slug=settings.default_prompt_slug,
-            llm_stream=llm.stream,
-            conversation_id=cid,
-        )
-        return cid2, events, used_prompt_slug
-
     async def event_generator() -> AsyncIterator[str]:
-        conv_id, events, used_prompt_slug = await asyncio.to_thread(_stream_setup)
+        try:
+            def _stream_setup() -> tuple[str, Any, str, UnitOfWork]:
+                try:
+                    return service.append_and_stream(conversation_id, messages, body.prompt_slug)
+                except ValueError as e:
+                    raise HTTPException(status_code=404, detail=str(e))
 
-        # Meta event first.
-        meta = {
-            "conversation_id": conv_id,
-            "model": settings.openai_model,
-            "prompt_slug": used_prompt_slug,
-        }
-        yield _sse_event("meta", meta)
+            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(_stream_setup)
 
-        assistant_text_parts: list[str] = []
-        ttfb_ms = 0
-        total_ms = 0
-        model = settings.openai_model
+            meta = {
+                "conversation_id": conv_id,
+                "model": settings.openai_model,
+                "prompt_slug": used_prompt_slug,
+            }
+            yield _sse_event("meta", meta)
 
-        for ev in events:
-            if ev.get("type") == "delta":
-                delta = ev.get("delta", "")
-                if not delta:
-                    continue
-                assistant_text_parts.append(delta)
-                if ev.get("ttfb_ms"):
-                    ttfb_ms = ev["ttfb_ms"]
-                if ev.get("model"):
-                    model = ev["model"]
-                if ev.get("total_ms"):
-                    total_ms = ev["total_ms"]
-                yield _sse_event("chunk", {"delta": delta})
-            elif ev.get("type") == "final":
-                full_text = ev.get("text", "") or "".join(assistant_text_parts)
-                if ev.get("model"):
-                    model = ev["model"]
-                if ev.get("ttfb_ms"):
-                    ttfb_ms = ev["ttfb_ms"]
-                if ev.get("total_ms"):
-                    total_ms = ev["total_ms"]
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = settings.openai_model
 
-                # Persist assistant message and run metadata in a worker thread.
-                def _inner(
-                    _ft: str = full_text,
-                    _m: str = model,
-                    _ttfb: int = ttfb_ms,
-                    _total: int = total_ms,
-                ) -> None:
-                    assistant_message_id = repo.append_message(conv_id, "assistant", _ft)
-                    repo.record_run(
-                        conversation_id=conv_id,
-                        assistant_message_id=assistant_message_id,
-                        prompt_slug=used_prompt_slug,
-                        model=_m,
-                        ttfb_ms=_ttfb,
-                        total_ms=_total,
+            for ev in events:
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
                     )
-
-                await asyncio.to_thread(_inner)
-                done_payload = {
-                    "conversation_id": conv_id,
-                    "assistant_message": full_text,
-                    "model": model,
-                    "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    done_payload = {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    }
+                    yield _sse_event("done", done_payload)
+        except HTTPException as exc:
+            # Map HTTP exceptions to SSE error events
+            error_payload = {
+                "error": {
+                    "type": "http_error",
+                    "status_code": exc.status_code,
+                    "message": exc.detail,
                 }
-                yield _sse_event("done", done_payload)
+            }
+            yield _sse_event("done", error_payload)
+        except Exception as exc:
+            # Catch any other errors and emit terminal done event
+            error_payload = {
+                "error": {
+                    "type": "internal_error",
+                    "message": "An unexpected error occurred during streaming",
+                }
+            }
+            yield _sse_event("done", error_payload)
+            # Re-raise so middleware can log it
+            raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

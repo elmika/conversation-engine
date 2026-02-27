@@ -1,7 +1,58 @@
 
 # Top Risks and Improvements
 
-TBD.
+1.Routes too fat (duplication + orchestration in API layer) ✅ FIXED
+
+This is the biggest “complexity multiplier”.
+
+-It drives bugs (create vs append drift, stream vs non-stream drift)
+-It makes tests harder
+-It blocks clean transaction boundaries
+
+Fix: move “load history → call LLM → persist → format response” into application services/use cases. Routes become glue.
+
+**Implementation details:**
+- Created `ConversationService` in `app/application/services.py` with methods: `create_and_chat()`, `append_and_chat()`, `create_and_stream()`, `append_and_stream()`, `persist_stream_result()`
+- Routes now delegate all orchestration to the service layer
+- Service encapsulates: conversation creation, message persistence, history loading, LLM invocation, response persistence
+- Routes handle only: input validation, calling service methods, formatting HTTP/SSE responses
+- Eliminated code duplication between create/append and stream/non-stream endpoints
+- Clearer separation of concerns: routes = HTTP layer, service = business workflow orchestration
+- Easier to test: service methods can be unit-tested independently of HTTP
+- Prepares for transaction boundaries: UoW can be introduced in the service layer without touching routes
+
+2.Transaction boundaries / UoW (commit discipline) ✅ FIXED
+
+**Status:** Resolved by implementing the Unit of Work pattern. Repository no longer commits; service methods define transaction boundaries.
+
+-Prevents partial persistence (especially around streaming + errors)
+-Makes retries + error handling sane
+-Enables future “atomic: messages + run + conversation state”
+
+Fix: introduce UoW; remove repo commits.
+
+3.Conversation history growth / token limits (cost + failure mode) ✅ FIXED
+
+**Status:** Resolved by implementing configurable history capping with both turn and token limits.
+
+**What changed:**
+- Added `max_history_turns` (default: 20) and `max_history_tokens` (default: 100,000) to settings
+- Created `trim_history()` utility in `app/domain/history.py` that keeps most recent N turns within token budget
+- Services automatically trim history before calling LLM
+- Token estimation uses 4 chars/token heuristic (conservative, safe for limits)
+
+**Practical limits for gpt-4.1-mini (128K context):**
+- **20 turns:** Keeps conversations focused (10 back-and-forth exchanges)
+- **100K tokens:** ~75% of 128K context, leaves room for system prompt + new turn + response + safety margin
+
+**Benefits:**
+- **Prevents context overflow:** Never hit the 128K token limit
+- **Cost control:** Limits max tokens per request, preventing cost explosion
+- **Latency control:** Smaller context = faster responses
+- **Configurable:** Can adjust limits via environment variables for different use cases
+
+4.Streaming non-happy-path events + client contract ✅ FIXED
+
 
 
 # Exhaustive Risks and Improvements
@@ -25,17 +76,11 @@ TBD.
   For very long responses or many concurrent streams, we may want to move the entire streaming loop into a worker thread (or a dedicated task with backpressure) so the event loop remains as responsive as possible.
 
 - **Error handling and non-happy-path events**  
-  **Done:** Streaming endpoints now emit terminal `done` events with structured error payloads.
-  - Both streaming endpoints wrap event generation in try/catch
-  - HTTPException and general exceptions emit `done` event with `error` field
-  - Error payload includes `type` (http_error/internal_error), `status_code`, and `message`
-  - General exceptions are re-raised after emitting error event for middleware logging
-  
-  **Future improvements:**
-  - **Error classification granularity**: Add more specific error types (e.g., `validation_error`, `not_found`, `rate_limit`) instead of generic `http_error` for better client-side handling
-  - **Partial content recovery**: If stream fails mid-way after emitting chunks, include partial `assistant_message` in error payload so clients can show what was received before failure
-  - **Retry hints**: Include `retry_after` seconds in rate limit errors to guide client retry behavior
-  - **Conversation ID in early errors**: For errors before meta event is emitted, still include `conversation_id` in error payload if available (e.g., for append endpoints where ID is known upfront)
+  **Done:** Request-level error handling is in place: middleware logs request failures (request_id, endpoint, latency) and re-raises; a global exception handler logs unhandled exceptions and returns a 500 JSON envelope (with optional `request_id`).  
+  **Pending:** Non-happy-path streaming events (e.g. `response.failed`, `response.incomplete`) are not yet translated into SSE error events or a terminal `done` with an `error` field. Next steps:  
+  - Wrap adapter and OpenAI errors in a structured error payload.  
+  - Emit a final `done` SSE event containing `error` information (alongside timings and model metadata).  
+  - Optionally surface an `error` SSE event type for clients that want to differentiate failures from normal completion.
 
 - **Multiple streaming entrypoints**  
   We now expose both `POST /conversations/stream` (first turn) and `POST /conversations/{conversation_id}/stream` (subsequent turns).  
@@ -60,6 +105,12 @@ TBD.
   Setting up a “real” database (e.g. PostgreSQL) is a worthwhile improvement for production or once we store more than conversations/runs (e.g. prompts). Enables better concurrency, tooling, and backups; SQLite remains fine for local/dev and tests.
 
 ## Architecture
+
+- **Routes too fat** ✅ FIXED  
+  **Done:** Introduced `ConversationService` in `app/application/services.py`. Routes are now thin—they validate input, call service methods (`create_and_chat`, `append_and_chat`, `create_and_stream`, `append_and_stream`), and format HTTP/SSE responses. All orchestration (conversation creation, message persistence, history loading, LLM invocation, response persistence) lives in the service layer. This eliminates duplication between create/append and stream/non-stream endpoints and makes the API layer easier to test and change.
+
+- **Domain very thin** ✅ STRENGTHENED  
+  **Done:** Introduced domain value objects and entities in `app/domain/`. The domain now has a clear "center" with business rules and invariants: **Value objects:** `ConversationId` (UUID generation + validation), `PromptSlug` (registry validation), `MessageRole` (enum with validation). **Entities:** `Message` (validated role + content), `ConversationTurn` (user messages + assistant response with invariants), `Conversation` (aggregate root with ID + turn history). **Business rules:** Conversation ID generation moved from infrastructure to domain; prompt slug validation is explicit; message roles are type-safe enums. Use cases and services now depend on domain types instead of primitive strings, making business concepts explicit and enforcing invariants at compile time.
 
 - **Prompts from infrastructure with a contract**  
   See **Prompts and configuration** below: load prompts from the database via a port (PromptRepo) and define a clear schema/contract for prompt definitions so the rest of the app depends on the contract, not on a concrete registry or file format.

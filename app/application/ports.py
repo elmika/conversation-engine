@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from typing import Optional, Protocol, TypedDict
+from types import TracebackType
 
 
 class Timings(TypedDict):
@@ -23,7 +24,7 @@ class LLMResult(TypedDict):
 class StreamEvent(TypedDict, total=False):
     """Event from a streaming LLM call."""
 
-    # "delta" for incremental text, "final" for completion metadata.
+    # "delta" for incremental text, "final" for completion metadata, "error" for failures.
     type: str
     # Present when type == "delta".
     delta: str
@@ -32,6 +33,9 @@ class StreamEvent(TypedDict, total=False):
     model: str
     ttfb_ms: int
     total_ms: int
+    # Present when type == "error".
+    error_type: str  # e.g., "rate_limit", "timeout", "api_error"
+    error_message: str  # Human-readable error description
 
 
 class LLMPort(Protocol):
@@ -58,7 +62,11 @@ class ConversationRepo(Protocol):
         ...
 
     def create_conversation(self) -> str:
-        """Create a new conversation; return its id."""
+        """Create a new conversation with a generated ID; return its id."""
+        ...
+
+    def create_conversation_with_id(self, conversation_id: str) -> None:
+        """Create a new conversation with a specific ID (domain-generated)."""
         ...
 
     def record_run(
@@ -74,4 +82,43 @@ class ConversationRepo(Protocol):
         finish_reason: Optional[str] = None,
     ) -> None:
         """Persist run metadata describing how an assistant message was generated."""
+        ...
+
+
+class UnitOfWork(Protocol):
+    """
+    Unit of Work pattern: manages transaction boundaries.
+    
+    The UoW owns the session lifecycle and controls commit/rollback.
+    Repositories should only add/flush, never commit.
+    
+    Usage:
+        with uow:
+            uow.repo.create_conversation_with_id(cid)
+            uow.repo.append_message(cid, "user", "Hello")
+            # ... more operations ...
+            uow.commit()  # Atomic commit of all operations
+    """
+
+    repo: ConversationRepo
+
+    def commit(self) -> None:
+        """Commit the current transaction."""
+        ...
+
+    def rollback(self) -> None:
+        """Rollback the current transaction."""
+        ...
+
+    def __enter__(self) -> "UnitOfWork":
+        """Enter context manager."""
+        ...
+
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        """Exit context manager; rollback on exception."""
         ...

@@ -84,6 +84,17 @@ event: done
 data: {"conversation_id":"...","assistant_message":"Full answer ...","model":"gpt-4.1-mini","timings":{"ttfb_ms":10,"total_ms":120}}
 ```
 
+**Error handling:** If an error occurs during streaming (e.g., rate limit, timeout, internal error), a terminal `done` event is always emitted with an `error` field instead of `assistant_message`:
+
+```text
+event: done
+data: {"error":{"type":"http_error","status_code":429,"message":"Upstream OpenAI rate limit exceeded. Please retry later."}}
+```
+
+This ensures clients never hang waiting for completion. The `error.type` can be:
+- `http_error`: Mapped HTTP errors (rate limits, timeouts, bad gateway)
+- `internal_error`: Unexpected failures during streaming
+
 For `POST /conversations/{conversation_id}/stream`, the model sees the full conversation history (all previous `user` and `assistant` messages) plus the new `messages` you send in this request.
 
 ---
