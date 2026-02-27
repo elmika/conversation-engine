@@ -1,108 +1,61 @@
-# Project: FastAPI Backend – OpenAI Integration (Responses API)
+# Project: Production FastAPI backend + OpenAI Responses API
 
-This repository is a production-grade FastAPI backend integrating OpenAI (Responses API).
-The service must be secure, observable, and testable.
+## Test Gate Policy (strict)
 
-## Test Gate Policy
+1) BEFORE changes: run the existing test suite (pytest). If failing, warn and stop.
+2) AFTER changes: run full test suite. Task is not complete unless all tests pass
+   (except when explicitly writing a failing test in TDD).
 
-This project follows strict test gating.
+## Documentation Gate (mandatory)
 
-1. Pre-condition:
-   - Confirm the current test suite passes before implementing changes.
-   - If not, warn and stop.
+Update any impacted docs proportionally (README.md, API.md, RISKS-AND-IMPROVEMENTS.md,
+docstrings, env vars in settings). Prefer updating existing docs.
 
-2. Post-condition:
-   - Run the full test suite after implementing changes.
-   - Do not consider the task complete if any test fails. (Unless we are explicitly creating a failing test while applying the TDD methodology)
+## Stack & practices
 
-A feature is complete only when:
-- All tests pass 
-- No new warnings or regressions are introduced
+- FastAPI with APIRouter + Depends.
+- Pydantic v2 / pydantic-settings (settings.py).
+- Official OpenAI Python client.
+- Async-first: if the app is async, do not introduce sync I/O in request path.
+- pytest (+ pytest-asyncio if async).
+- Respect existing tooling (ruff/black/mypy if present).
 
-Use the test command defined in the project (e.g. `pytest`) to verify correctness.
+## Architecture (Hexagonal / Clean) – MUST MATCH CURRENT FOLDERS
 
-## Documentation Gate (Mandatory)
+Use the existing structure. Do NOT invent new top-level folders.
 
-No task is considered complete unless documentation is consistent with the implemented changes.
+- app/api = entrypoints (routes, middleware, schemas). Keep routers thin.
+- app/application = use cases + ports (interfaces). No framework or infra imports.
+- app/domain = domain logic (pure Python). No imports from api/application/infra.
+- app/infra = adapters / infrastructure (OpenAI + persistence + logging). External libs allowed.
 
-Before marking a task as complete:
+Dependency direction (strict):
+api -> application -> domain
+infra -> application/domain (implements ports)
 
-1. Identify all documentation impacted by the change:
-   - README
-   - API documentation (OpenAPI / docstrings)
-   - Architecture notes
-   - Configuration instructions
-   - Environment variables
-   - Runbooks (if relevant)
+Forbidden:
+- domain importing from application/api/infra
+- application importing from api/infra/openai/sqlalchemy
 
-2. Update documentation to reflect:
-   - New endpoints
-   - Changed behavior
-   - New environment variables
-   - New dependencies
-   - Breaking changes
-   - Updated workflows
+## OpenAI integration rules (mandatory)
 
-3. Ensure examples and code snippets (if any) match the current implementation.
+- OPENAI_API_KEY from environment only.
+- Always set timeouts.
+- Handle transient errors + rate limits with basic retry/backoff if needed.
+- Never log full prompts or sensitive user data. Apply data minimization.
+- Use consistent response envelope patterns.
 
-A task is complete only when:
-- All tests are green (Unless we are explicitly creating a failing test while applying the TDD methodology)
-- Documentation reflects the current state of the system
-- No outdated references remain
+## Observability
 
-If documentation is missing or unclear, propose the minimal necessary addition.
+Logs must include request_id, endpoint, status_code, latency.
+Prefer centralized error handling, avoid scattered try/except.
 
-Documentation updates must be proportional to the change.
-Do not introduce unnecessary verbosity or redundant files.
-Prefer updating existing documents over creating new ones.
+## Transactions & persistence
 
-## Expected Stack & Practices
-- FastAPI with APIRouter and dependency injection (Depends)
-- Pydantic v2 + pydantic-settings for configuration (.env)
-- Official OpenAI Python client (preferred)
-- Async-first architecture (use async/await if the app is async; do not mix sync and async)
-- Testing with pytest (+ pytest-asyncio if async)
-- Respect existing lint/format tools (ruff, black, mypy if present)
+- SQLAlchemy repo in app/infra/persistence must NOT call commit().
+- commit/rollback must be managed at a higher level (Unit of Work or request scope).
+- Repos should do add/flush and return ids/data.
 
-## Recommended Structure (if not already defined)
-app/
-  main.py
-  core/        (config, logging, errors)
-  api/         (deps, routes)
-  schemas/     (request/response models)
-  services/    (OpenAI wrapper + business logic)
-tests/
-
-Do not introduce new structure unless necessary. Follow the repo’s existing structure.
-
-## OpenAI Integration Rules (Mandatory)
-- API keys must come from environment variables (OPENAI_API_KEY). Never hardcode.
-- Use timeouts for all external calls.
-- Handle rate limits and transient errors (basic retry with backoff if needed).
-- Never log full prompts or sensitive user data.
-- Apply data minimization when sending data to OpenAI.
-- Use structured, consistent response envelopes.
-- Streaming only if explicitly requested.
-
-## Observability Requirements
-- Include request_id, endpoint, status_code, and latency in logs.
-- Use middleware for request_id and timing if not already implemented.
-- Centralized exception handling preferred over scattered try/except blocks.
-
-## Implementation Guidelines
-When implementing a new feature:
-1. Define endpoint(s)
-2. Define Pydantic request/response schemas
-3. Implement service layer logic
-4. Handle errors explicitly
-5. Add minimal tests
-
-Keep routers thin.
-Business logic belongs in services/.
-Validation belongs in schemas.
-Avoid framework over-engineering.
-
-## Coding Style
-- Explicit type hints on public functions.
-- Clear naming (no cryptic abbreviations).
-- Short architectural comments (ADR-style) only when a decision matters.
+Before coding:
+- State which layers/files you will touch.
+- Confirm you will not introduce forbidden imports.
