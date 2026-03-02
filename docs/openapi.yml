@@ -2,10 +2,23 @@ openapi: 3.1.0
 
 info:
   title: Conversation Engine
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Production-ready FastAPI + OpenAI service with streaming, conversation history,
     and hexagonal architecture.
+
+    ## Architecture
+
+    The system has two access points:
+
+    - **FastAPI** (`http://localhost:8000`) — core API; used directly in development
+      or by automated tests.
+    - **Next.js BFF** (`http://localhost:3000/api`) — Backend-for-Frontend proxy layer
+      served by the Next.js app. The browser always calls this; the FastAPI URL is never
+      exposed to the client. All paths and request/response shapes are identical — the BFF
+      forwards requests verbatim and pipes streaming responses without buffering.
+
+    Use `docker compose up` to start both services together.
 
     ## SSE Streaming
 
@@ -31,7 +44,9 @@ info:
 
 servers:
   - url: http://localhost:8000
-    description: Local development
+    description: FastAPI (direct) — local development and tests
+  - url: http://localhost:3000/api
+    description: Next.js BFF proxy — used by the browser frontend
 
 tags:
   - name: health

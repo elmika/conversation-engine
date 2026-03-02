@@ -1,0 +1,40 @@
+---
+description: Keep API documentation in sync whenever backend routes or schemas change.
+globs:
+  - app/api/routes.py
+  - app/api/schemas.py
+  - app/domain/prompt_registry.py
+alwaysApply: false
+---
+
+# API Documentation Gate
+
+Whenever you add, remove, or modify:
+- a route in `app/api/routes.py`
+- a request/response schema in `app/api/schemas.py`
+- a prompt entry in `app/domain/prompt_registry.py`
+
+you **must** update **both** documentation files before finishing the task:
+
+## Files to update
+
+| File | What to change |
+|---|---|
+| `docs/openapi.yml` | Add/remove/edit the relevant `paths` entry and any `components/schemas` it references |
+| `docs/postman_collection.json` | Add/remove/edit the matching request item, update saved example responses |
+
+## Checklist — apply to every API change
+
+- [ ] New route → new `paths` entry in `openapi.yml` + new item in the correct Postman folder
+- [ ] Removed route → delete the `paths` entry and the Postman item
+- [ ] Renamed or re-typed field → update the schema `$ref` chain in `openapi.yml` and the example `body` in the Postman item
+- [ ] New query parameter → add `parameters` entry in `openapi.yml` and append to the Postman `query` array
+- [ ] New error response → add the status code under `responses` in `openapi.yml` and add a saved example response in Postman
+- [ ] New prompt slug → the `/prompts` example response in both files should reflect the current `PROMPTS` dict
+
+## Style rules
+
+- Use `$ref` for any schema used by more than one endpoint
+- Every path must have at least one saved example response in the Postman collection
+- SSE endpoints must document all three event types (`meta`, `chunk`, `done`) in the description field
+- Postman test scripts on `POST /conversations` must keep the `conversation_id` variable assignment

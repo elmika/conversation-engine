@@ -75,35 +75,35 @@ Rules:
 
 ## Frontend Architecture
 
-Next.js 15 App Router frontend in `frontend/`. All API calls are proxied through BFF Route Handlers — the FastAPI URL is never exposed to the browser.
+Next.js 15 App Router frontend in `frontend/`. All API calls are proxied through BFF Route Handlers — the FastAPI URL is never exposed to the browser. See `docs/frontend.md` for full documentation.
 
 ```
 frontend/
 ├── app/                   # Next.js App Router
-│   ├── layout.tsx         # Root layout (providers injected here in Phase 5)
+│   ├── layout.tsx         # Root layout with QueryClientProvider
 │   ├── page.tsx           # Redirect → /chat
 │   ├── globals.css        # Tailwind + shadcn CSS variables
-│   ├── providers.tsx      # QueryClientProvider + TooltipProvider (Phase 5)
-│   ├── chat/              # Chat interface pages (Phase 7)
-│   ├── history/           # Conversation browser (Phase 7)
-│   ├── admin/             # Prompt admin panel (Phase 7)
-│   └── api/               # BFF Route Handlers — proxy to FastAPI (Phase 4)
+│   ├── providers.tsx      # QueryClientProvider
+│   ├── chat/              # Chat interface pages
+│   ├── history/           # Conversation browser
+│   ├── admin/             # Prompt admin panel
+│   └── api/               # BFF Route Handlers — proxy to FastAPI
 │       ├── healthz/
 │       ├── prompts/
 │       ├── conversations/
 │       └── conversations/[conversationId]/
 ├── components/
 │   ├── ui/                # shadcn/ui primitives (button, input, select, …)
-│   ├── chat/              # Chat-specific components (Phase 6)
-│   ├── history/           # History browser components (Phase 6)
-│   └── admin/             # Admin panel components (Phase 6)
-├── hooks/                 # TanStack Query + Zustand hooks (Phase 5)
+│   ├── chat/              # Chat-specific components
+│   ├── history/           # History browser components
+│   └── admin/             # Admin panel components
+├── hooks/                 # TanStack Query + Zustand hooks
 ├── lib/
 │   ├── utils.ts           # cn(), formatDate(), truncateId()
-│   ├── types.ts           # TypeScript interfaces mirroring API schemas (Phase 3)
-│   ├── stream-parser.ts   # async generator: ReadableStream → typed SSE events (Phase 3)
-│   └── api-client.ts      # Typed fetch wrappers for BFF routes (Phase 3)
-└── tests/                 # Vitest + Testing Library + MSW (Phase 9)
+│   ├── types.ts           # TypeScript interfaces mirroring API schemas
+│   ├── stream-parser.ts   # async generator: ReadableStream → typed SSE events
+│   └── api-client.ts      # Typed fetch wrappers for BFF routes
+└── tests/                 # Vitest + Testing Library + MSW
 ```
 
 **Key decisions:**

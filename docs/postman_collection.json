@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Conversation Engine",
-    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Quick start\n1. Set the `base_url` variable to your server (default: `http://localhost:8000`).\n2. Run **Create Conversation** — copy `conversation_id` from the response.\n3. Paste it into the `conversation_id` variable and run **Append Turn**.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
+    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Access points\n- **`base_url`** (`http://localhost:8000`) — FastAPI directly. Use this for backend development and testing.\n- **`frontend_base_url`** (`http://localhost:3000/api`) — Next.js BFF proxy. Use this to test the full stack as the browser would. All paths and schemas are identical.\n\nRun `docker compose up` to start both services together.\n\n## Quick start\n1. Choose your `base_url` or `frontend_base_url` variable.\n2. Run **Create Conversation** — the test script automatically saves `conversation_id`.\n3. Run **Append Turn** to continue the conversation.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -10,7 +10,13 @@
       "key": "base_url",
       "value": "http://localhost:8000",
       "type": "string",
-      "description": "Base URL of the Conversation Engine API"
+      "description": "FastAPI base URL — direct backend access"
+    },
+    {
+      "key": "frontend_base_url",
+      "value": "http://localhost:3000/api",
+      "type": "string",
+      "description": "Next.js BFF base URL — same API as base_url, accessed through the frontend proxy"
     },
     {
       "key": "conversation_id",

@@ -153,4 +153,7 @@ These examples assume the app is running on `http://127.0.0.1:8000` (locally or 
 ## More
 
 - **[API.md](API.md)** — Example requests, response shapes, and quick command-line tests for all endpoints.
+- **[docs/openapi.yml](docs/openapi.yml)** — OpenAPI 3.1.0 spec for the full API (FastAPI direct + Next.js BFF).
+- **[docs/postman_collection.json](docs/postman_collection.json)** — Postman collection with saved examples for every endpoint.
+- **[docs/frontend.md](docs/frontend.md)** — Frontend reference: pages, BFF routes, state management, streaming, and testing.
 - **[RISKS-AND-IMPROVEMENTS.md](RISKS-AND-IMPROVEMENTS.md)** — Streaming and persistence risks, and future improvements.

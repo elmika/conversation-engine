@@ -1,5 +1,6 @@
 data
 .env
+frontend/.pnpm-store
 
 # Python build artifacts
 *.egg-info/
