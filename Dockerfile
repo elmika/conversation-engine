@@ -7,20 +7,25 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-COPY pyproject.toml requirements.txt ./
-RUN pip install --no-cache-dir -e ".[dev]"
+# Install runtime + dev dependencies first for layer caching
+COPY requirements.txt pyproject.toml README.md ./
+RUN pip install --no-cache-dir -r requirements.txt pytest pytest-asyncio ruff
 
+# Copy source and install the package itself (no deps re-install)
 COPY app/ app/
 COPY tests/ tests/
+RUN pip install --no-cache-dir -e . --no-deps
 
 # ---- Prod (optional): runtime deps only, smaller image ----
 FROM python:3.11-slim AS prod
 
 WORKDIR /app
 
-COPY pyproject.toml requirements.txt ./
-RUN pip install --no-cache-dir -e .
-COPY --from=builder /app/app ./app
+COPY requirements.txt pyproject.toml README.md ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app/ app/
+RUN pip install --no-cache-dir -e . --no-deps
 
 RUN mkdir -p /app/data \
     && adduser --disabled-password --gecos "" appuser \

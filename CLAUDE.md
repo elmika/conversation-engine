@@ -14,12 +14,12 @@ pip install -e ".[dev]"
 uvicorn app.main:app --reload
 ```
 
-**Tests (no API key needed — LLM is mocked):**
+**Tests (run in Docker — no local Python needed):**
 ```bash
-pytest
-pytest -v
-pytest tests/test_chat.py          # single test file
-pytest tests/test_chat.py::test_name  # single test
+docker build -t conversation-engine .
+docker run --rm conversation-engine python -m pytest -v
+docker run --rm conversation-engine python -m pytest tests/test_chat.py          # single file
+docker run --rm conversation-engine python -m pytest tests/test_chat.py::test_name  # single test
 ```
 
 **Lint:**

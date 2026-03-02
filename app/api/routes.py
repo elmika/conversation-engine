@@ -8,8 +8,19 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.schemas import ConversationRequest, ConversationResponse, TimingsSchema
+from app.api.schemas import (
+    ConversationListResponse,
+    ConversationRequest,
+    ConversationResponse,
+    ConversationSummary,
+    MessageSchema,
+    MessagesResponse,
+    PromptSchema,
+    PromptsResponse,
+    TimingsSchema,
+)
 from app.application.ports import LLMPort, UnitOfWork
+from app.domain.prompt_registry import PROMPTS
 from app.application.services import ConversationService
 from app.infra.persistence.db import get_session
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -333,3 +344,58 @@ async def append_conversation_turn_stream(
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/conversations", response_model=ConversationListResponse)
+async def list_conversations(
+    page: int = 1,
+    page_size: int = 20,
+    uow_factory=Depends(get_uow_factory),
+) -> ConversationListResponse:
+    """List conversations with pagination, ordered by created_at DESC."""
+    def _run() -> tuple[list[dict], int]:
+        with uow_factory() as uow:
+            return uow.repo.list_conversations(page, page_size)
+
+    rows, total = await asyncio.to_thread(_run)
+    return ConversationListResponse(
+        conversations=[ConversationSummary(id=r["id"], created_at=r["created_at"]) for r in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=MessagesResponse)
+async def get_conversation_messages(
+    conversation_id: str,
+    uow_factory=Depends(get_uow_factory),
+) -> MessagesResponse:
+    """Get all messages for a conversation, ordered by id ASC."""
+    def _run() -> list[dict]:
+        with uow_factory() as uow:
+            return uow.repo.get_messages_with_metadata(conversation_id)
+
+    msgs = await asyncio.to_thread(_run)
+    return MessagesResponse(
+        conversation_id=conversation_id,
+        messages=[
+            MessageSchema(
+                id=m["id"],
+                role=m["role"],
+                content=m["content"],
+                created_at=m["created_at"],
+            )
+            for m in msgs
+        ],
+    )
+
+
+@router.get("/prompts", response_model=PromptsResponse)
+async def list_prompts() -> PromptsResponse:
+    """List all registered prompts from the prompt registry."""
+    prompts = [
+        PromptSchema(slug=slug, name=spec["name"], system_prompt=spec["system_prompt"])
+        for slug, spec in PROMPTS.items()
+    ]
+    return PromptsResponse(prompts=prompts)
