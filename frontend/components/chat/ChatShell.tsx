@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -13,7 +13,6 @@ import { useChatStore } from "@/hooks/useChatStore";
 import { useConversation } from "@/hooks/useConversation";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { cn } from "@/lib/utils";
-import { useRef, useState } from "react";
 import type { Message } from "@/lib/types";
 
 interface ChatShellProps {
@@ -21,50 +20,57 @@ interface ChatShellProps {
 }
 
 export function ChatShell({ conversationId }: ChatShellProps) {
-  const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug } = useChatStore();
   const { data, isLoading } = useConversation(conversationId ?? null);
   const { status, partialText, timings, errorMessage, sendMessage } =
     useStreamingChat();
 
-  const [pendingUserMessage, setPendingUserMessage] = useState("");
-  // Track messages shown in the list — seed from fetched data, extend after streaming
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
-  const initialised = useRef(false);
+  const prevStatusRef = useRef(status);
 
-  // Sync fetched messages into local state once on load
-  if (data && !initialised.current) {
-    initialised.current = true;
-    setLocalMessages(data.messages);
-  }
+  // Sync server messages into local state on initial load and after each refetch
+  useEffect(() => {
+    if (data?.messages) {
+      setLocalMessages(data.messages);
+    }
+  }, [data?.messages]);
+
+  // When the stream finishes, append the assistant reply to localMessages immediately
+  // so there is no visible gap before the query refetch arrives with server data
+  useEffect(() => {
+    if (prevStatusRef.current !== "done" && status === "done" && partialText) {
+      setLocalMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: "assistant" as const,
+          content: partialText,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    }
+    prevStatusRef.current = status;
+  }, [status, partialText]);
 
   const isStreaming = status === "connecting" || status === "streaming";
 
-  const handleSend = async (text: string) => {
-    setPendingUserMessage(text);
+  const handleSend = (text: string) => {
+    // Optimistically show the user message immediately
+    setLocalMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        role: "user" as const,
+        content: text,
+        created_at: new Date().toISOString(),
+      },
+    ]);
 
-    // Optimistically append user message
-    const optimisticUser: Message = {
-      id: Date.now(),
-      role: "user",
-      content: text,
-      created_at: new Date().toISOString(),
-    };
-    setLocalMessages((prev) => [...prev, optimisticUser]);
-
-    await sendMessage(
+    sendMessage(
       { messages: [{ role: "user", content: text }], prompt_slug: selectedPromptSlug },
       conversationId
     );
-
-    // After streaming ends, navigate to the new conversation if one was created
-    if (!conversationId && status !== "error") {
-      // The hook will have set conversationId; handled via query invalidation + redirect
-    }
   };
-
-  // Navigate to the new conversation once we get the ID back
-  // (handled by checking the stream status after sendMessage resolves)
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -106,7 +112,6 @@ export function ChatShell({ conversationId }: ChatShellProps) {
           streamStatus={status}
           partialText={partialText}
           timings={timings}
-          pendingUserMessage={pendingUserMessage}
         />
 
         {/* Error banner */}

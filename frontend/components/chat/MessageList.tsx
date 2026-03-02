@@ -15,8 +15,6 @@ interface MessageListProps {
   streamStatus: StreamStatus;
   partialText: string;
   timings: Timings | null;
-  /** The user message that was just sent, shown optimistically while streaming. */
-  pendingUserMessage?: string;
 }
 
 export function MessageList({
@@ -25,7 +23,6 @@ export function MessageList({
   streamStatus,
   partialText,
   timings,
-  pendingUserMessage,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const isStreaming = streamStatus === "connecting" || streamStatus === "streaming";
@@ -51,11 +48,6 @@ export function MessageList({
         {messages.map((msg) => (
           <MessageBubble key={msg.id} role={msg.role} content={msg.content} />
         ))}
-
-        {/* Optimistic user message shown before streaming begins */}
-        {pendingUserMessage && isStreaming && messages.length === 0 && (
-          <MessageBubble role="user" content={pendingUserMessage} />
-        )}
 
         {/* Streaming assistant response */}
         {isStreaming && (
