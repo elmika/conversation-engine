@@ -1,0 +1,288 @@
+{
+  "info": {
+    "name": "Conversation Engine",
+    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Quick start\n1. Set the `base_url` variable to your server (default: `http://localhost:8000`).\n2. Run **Create Conversation** — copy `conversation_id` from the response.\n3. Paste it into the `conversation_id` variable and run **Append Turn**.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string",
+      "description": "Base URL of the Conversation Engine API"
+    },
+    {
+      "key": "conversation_id",
+      "value": "",
+      "type": "string",
+      "description": "Set this after creating a conversation"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": ["{{base_url}}"],
+              "path": ["healthz"]
+            },
+            "description": "Returns `{\"status\": \"ok\"}` when the service is running."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"status\": \"ok\"}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Conversations",
+      "item": [
+        {
+          "name": "List Conversations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/conversations?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["conversations"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "1-based page number"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "Results per page (max 100)"
+                }
+              ]
+            },
+            "description": "Returns conversations ordered by `created_at` DESC with page-based pagination."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"conversations\": [\n    {\n      \"id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    }\n  ],\n  \"total\": 1,\n  \"page\": 1,\n  \"page_size\": 20\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "Create Conversation (non-streaming)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "    pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "    console.log('conversation_id set to', json.conversation_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {
+              "raw": "{{base_url}}/conversations",
+              "host": ["{{base_url}}"],
+              "path": ["conversations"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Creates a new conversation and processes the first user turn synchronously. The test script automatically saves `conversation_id` as a collection variable."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Hello Mika! How can I help you today?\",\n  \"model\": \"gpt-4.1-mini\",\n  \"timings\": {\n    \"ttfb_ms\": 320,\n    \"total_ms\": 980\n  }\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "400 Bad Request",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"detail\": \"Total message content length (35000) exceeds max_input_chars (32000)\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "Create Conversation (streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Accept", "value": "text/event-stream"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/conversations/stream",
+              "host": ["{{base_url}}"],
+              "path": ["conversations", "stream"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Tell me a short story.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Creates a new conversation and streams the assistant reply as SSE.\n\nEvent order: `meta` → `chunk`* → `done`\n\nUse \"Send and Download\" in Postman, or:\n```\ncurl -N -X POST http://localhost:8000/conversations/stream \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'\n```"
+          },
+          "response": [
+            {
+              "name": "200 OK — SSE stream",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "text/event-stream"}],
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1-mini\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Once upon\"}\n\nevent: chunk\ndata: {\"delta\": \" a time...\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Once upon a time...\", \"model\": \"gpt-4.1-mini\", \"timings\": {\"ttfb_ms\": 120, \"total_ms\": 800}}\n\n",
+              "_postman_previewlanguage": "text"
+            }
+          ]
+        },
+        {
+          "name": "Append Turn (non-streaming)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {
+              "raw": "{{base_url}}/conversations/{{conversation_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["conversations", "{{conversation_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is my name?\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Appends a new user turn to an existing conversation. History is automatically trimmed before the LLM call.\n\nRequires `conversation_id` collection variable to be set (done automatically by the Create Conversation test script)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Your name is Mika.\",\n  \"model\": \"gpt-4.1-mini\",\n  \"timings\": {\n    \"ttfb_ms\": 290,\n    \"total_ms\": 740\n  }\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"detail\": \"Conversation abc123 not found\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "Append Turn (streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Accept", "value": "text/event-stream"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/conversations/{{conversation_id}}/stream",
+              "host": ["{{base_url}}"],
+              "path": ["conversations", "{{conversation_id}}", "stream"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Continue the story.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Appends a new user turn to an existing conversation and streams the reply as SSE.\n\nEvent order: `meta` → `chunk`* → `done`\n\nUse \"Send and Download\" in Postman, or use curl with `-N`."
+          },
+          "response": [
+            {
+              "name": "200 OK — SSE stream",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "text/event-stream"}],
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1-mini\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"The hero\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"The hero continued on...\", \"model\": \"gpt-4.1-mini\", \"timings\": {\"ttfb_ms\": 115, \"total_ms\": 620}}\n\n",
+              "_postman_previewlanguage": "text"
+            }
+          ]
+        },
+        {
+          "name": "Get Conversation Messages",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/conversations/{{conversation_id}}/messages",
+              "host": ["{{base_url}}"],
+              "path": ["conversations", "{{conversation_id}}", "messages"]
+            },
+            "description": "Returns all messages for a conversation ordered by id ASC. Returns an empty `messages` array for unknown conversation IDs."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"messages\": [\n    {\n      \"id\": 1,\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"role\": \"assistant\",\n      \"content\": \"Hello Mika! How can I help you today?\",\n      \"created_at\": \"2026-03-02T11:00:01\"\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Prompts",
+      "item": [
+        {
+          "name": "List Prompts",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/prompts",
+              "host": ["{{base_url}}"],
+              "path": ["prompts"]
+            },
+            "description": "Returns all registered prompt personas from `domain/prompt_registry.py`. Use a `slug` value as `prompt_slug` in conversation requests."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"prompts\": [\n    {\n      \"slug\": \"default\",\n      \"name\": \"Default Assistant\",\n      \"system_prompt\": \"You are a concise and precise assistant.\"\n    },\n    {\n      \"slug\": \"conflict-coach-v1\",\n      \"name\": \"Conflict Coach\",\n      \"system_prompt\": \"You help users reason calmly through workplace conflicts.\"\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

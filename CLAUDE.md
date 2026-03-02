@@ -37,6 +37,27 @@ docker run --rm conversation-engine pytest -v
 
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
 
+## API Documentation Gate
+
+`docs/openapi.yml` and `docs/postman_collection.json` are the source-of-truth API docs.
+
+**Whenever you modify the backend API you must also update both files:**
+
+| Change | openapi.yml | postman_collection.json |
+|---|---|---|
+| New route | Add `paths` entry + any new `components/schemas` | Add request item in correct folder |
+| Removed route | Delete `paths` entry | Delete request item |
+| Field renamed/retyped | Update schema `$ref` chain | Update example `body` |
+| New query param | Add `parameters` entry | Add to `query` array |
+| New error response | Add status code under `responses` | Add saved example response |
+| New prompt slug | Update `/prompts` example | Update `/prompts` example response |
+
+Rules:
+- Use `$ref` for any schema referenced by more than one endpoint
+- Every path must have at least one saved example response in the Postman collection
+- SSE endpoints must describe all three event types (`meta`, `chunk`, `done`) in the `description` field
+- The Postman test script on `POST /conversations` must keep the `conversation_id` variable assignment
+
 ## Architecture
 
 The app uses hexagonal (ports & adapters) architecture with four layers:
