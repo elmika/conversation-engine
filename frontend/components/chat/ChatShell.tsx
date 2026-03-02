@@ -85,7 +85,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-full overflow-hidden bg-background">
       {/* Sidebar */}
       <aside
         className={cn(
