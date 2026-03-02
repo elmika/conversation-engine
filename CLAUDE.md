@@ -8,13 +8,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-**Local development:**
+> **No local Python or Node.js required** — everything runs in Docker.
+
+**Start both services (hot-reload):**
 ```bash
-pip install -e ".[dev]"
-uvicorn app.main:app --reload
+docker compose up
+# API  → http://localhost:8000
+# UI   → http://localhost:3000
 ```
 
-**Tests (run in Docker — no local Python needed):**
+**Backend tests:**
 ```bash
 docker build -t conversation-engine .
 docker run --rm conversation-engine python -m pytest -v
@@ -22,20 +25,32 @@ docker run --rm conversation-engine python -m pytest tests/test_chat.py         
 docker run --rm conversation-engine python -m pytest tests/test_chat.py::test_name  # single test
 ```
 
-**Lint:**
+**Frontend tests:**
 ```bash
-ruff check .
-ruff format .
+docker compose run --rm frontend pnpm test                                        # all tests
+docker compose run --rm frontend pnpm test tests/lib/stream-parser.test.ts       # single file
+docker compose run --rm frontend pnpm test:watch                                  # watch mode
 ```
 
-**Docker:**
+**Add a frontend package:**
+```bash
+docker compose run --rm frontend pnpm add <package>
+docker compose run --rm frontend pnpm add -D <package>
+```
+
+**Backend lint:**
+```bash
+docker run --rm conversation-engine python -m ruff check .
+docker run --rm conversation-engine python -m ruff format .
+```
+
+**Production build (both images):**
 ```bash
 docker build -t conversation-engine .
-docker run --rm -p 8000:8000 --env-file .env conversation-engine
-docker run --rm conversation-engine pytest -v
+docker build -t conversation-engine-frontend ./frontend
 ```
 
-**Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
+**Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
 
 ## API Documentation Gate
 
@@ -58,7 +73,46 @@ Rules:
 - SSE endpoints must describe all three event types (`meta`, `chunk`, `done`) in the `description` field
 - The Postman test script on `POST /conversations` must keep the `conversation_id` variable assignment
 
-## Architecture
+## Frontend Architecture
+
+Next.js 15 App Router frontend in `frontend/`. All API calls are proxied through BFF Route Handlers — the FastAPI URL is never exposed to the browser.
+
+```
+frontend/
+├── app/                   # Next.js App Router
+│   ├── layout.tsx         # Root layout (providers injected here in Phase 5)
+│   ├── page.tsx           # Redirect → /chat
+│   ├── globals.css        # Tailwind + shadcn CSS variables
+│   ├── providers.tsx      # QueryClientProvider + TooltipProvider (Phase 5)
+│   ├── chat/              # Chat interface pages (Phase 7)
+│   ├── history/           # Conversation browser (Phase 7)
+│   ├── admin/             # Prompt admin panel (Phase 7)
+│   └── api/               # BFF Route Handlers — proxy to FastAPI (Phase 4)
+│       ├── healthz/
+│       ├── prompts/
+│       ├── conversations/
+│       └── conversations/[conversationId]/
+├── components/
+│   ├── ui/                # shadcn/ui primitives (button, input, select, …)
+│   ├── chat/              # Chat-specific components (Phase 6)
+│   ├── history/           # History browser components (Phase 6)
+│   └── admin/             # Admin panel components (Phase 6)
+├── hooks/                 # TanStack Query + Zustand hooks (Phase 5)
+├── lib/
+│   ├── utils.ts           # cn(), formatDate(), truncateId()
+│   ├── types.ts           # TypeScript interfaces mirroring API schemas (Phase 3)
+│   ├── stream-parser.ts   # async generator: ReadableStream → typed SSE events (Phase 3)
+│   └── api-client.ts      # Typed fetch wrappers for BFF routes (Phase 3)
+└── tests/                 # Vitest + Testing Library + MSW (Phase 9)
+```
+
+**Key decisions:**
+- **BFF pattern**: Route Handlers read `FASTAPI_URL` server-side; clients use relative `/api/...` URLs
+- **Streaming**: BFF pipes `upstream.body` (ReadableStream) directly — no manual chunking
+- **State**: Zustand for UI state (active conversation, sidebar); TanStack Query for server state
+- **shadcn/ui**: Components live in `components/ui/` as source — edit freely, not managed by CLI
+
+## Backend Architecture
 
 The app uses hexagonal (ports & adapters) architecture with four layers:
 
