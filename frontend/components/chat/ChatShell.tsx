@@ -22,8 +22,12 @@ interface ChatShellProps {
 export function ChatShell({ conversationId }: ChatShellProps) {
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug } = useChatStore();
   const { data, isLoading } = useConversation(conversationId ?? null);
-  const { status, partialText, timings, errorMessage, sendMessage } =
+  const { status, partialText, timings, errorMessage, sendMessage, conversationId: streamedConversationId } =
     useStreamingChat();
+
+  // After the first turn the hook captures the server-assigned ID; use it for
+  // follow-up turns when there is no URL-based conversationId.
+  const activeConversationId = conversationId ?? streamedConversationId ?? undefined;
 
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const prevStatusRef = useRef(status);
@@ -68,7 +72,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
 
     sendMessage(
       { messages: [{ role: "user", content: text }], prompt_slug: selectedPromptSlug },
-      conversationId
+      activeConversationId
     );
   };
 
