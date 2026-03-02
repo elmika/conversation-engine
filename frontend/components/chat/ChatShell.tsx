@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { PanelLeft, Plus } from "lucide-react";
+import { PanelLeft, Plus, SquarePen } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { PromptSelector } from "./PromptSelector";
@@ -20,9 +21,10 @@ interface ChatShellProps {
 }
 
 export function ChatShell({ conversationId }: ChatShellProps) {
+  const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug } = useChatStore();
   const { data, isLoading } = useConversation(conversationId ?? null);
-  const { status, partialText, timings, errorMessage, sendMessage, conversationId: streamedConversationId } =
+  const { status, partialText, timings, errorMessage, sendMessage, reset, conversationId: streamedConversationId } =
     useStreamingChat();
 
   // After the first turn the hook captures the server-assigned ID; use it for
@@ -57,6 +59,12 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   }, [status, partialText]);
 
   const isStreaming = status === "connecting" || status === "streaming";
+
+  const handleNewConversation = () => {
+    reset();
+    setLocalMessages([]);
+    router.push("/chat");
+  };
 
   const handleSend = (text: string) => {
     // Optimistically show the user message immediately
@@ -105,6 +113,9 @@ export function ChatShell({ conversationId }: ChatShellProps) {
         <header className="flex items-center gap-2 border-b px-4 py-2">
           <Button variant="ghost" size="icon" onClick={toggleSidebar}>
             <PanelLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={handleNewConversation} title="New conversation">
+            <SquarePen className="h-4 w-4" />
           </Button>
           <PromptSelector />
         </header>
