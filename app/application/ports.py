@@ -93,6 +93,26 @@ class ConversationRepo(Protocol):
         ...
 
 
+class PromptRepo(Protocol):
+    """Port for prompt persistence."""
+
+    def get_prompt(self, slug: str) -> Optional[dict]:
+        """Return prompt dict {slug, name, system_prompt} or None if not found."""
+        ...
+
+    def get_prompt_or_default(self, slug: Optional[str], default_slug: str) -> dict:
+        """Return prompt for slug, falling back to default_slug. Raises ValueError if neither found."""
+        ...
+
+    def list_prompts(self) -> list[dict]:
+        """Return all prompts as [{slug, name, system_prompt}] ordered by slug."""
+        ...
+
+    def upsert(self, slug: str, name: str, system_prompt: str) -> None:
+        """Insert or update a prompt by slug."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """
     Unit of Work pattern: manages transaction boundaries.

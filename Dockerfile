@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt pytest pytest-asyncio ruff
 # Copy source and install the package itself (no deps re-install)
 COPY app/ app/
 COPY tests/ tests/
+COPY prompts/ prompts/
 RUN pip install --no-cache-dir -e . --no-deps
 
 # ---- Prod (optional): runtime deps only, smaller image ----
@@ -25,6 +26,7 @@ COPY requirements.txt pyproject.toml README.md ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ app/
+COPY prompts/ prompts/
 RUN pip install --no-cache-dir -e . --no-deps
 
 RUN mkdir -p /app/data \

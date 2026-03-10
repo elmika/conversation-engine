@@ -19,10 +19,10 @@ from app.api.schemas import (
     PromptsResponse,
     TimingsSchema,
 )
-from app.application.ports import LLMPort, UnitOfWork
-from app.domain.prompt_registry import PROMPTS
+from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.application.services import ConversationService
 from app.infra.persistence.db import get_session
+from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from app.settings import Settings
 
@@ -46,15 +46,22 @@ def get_uow_factory(db=Depends(get_session)):
     return _factory
 
 
+def get_prompt_repo(db=Depends(get_session)) -> PromptRepo:
+    """Provide a PromptRepo for the current request session."""
+    return SQLAlchemyPromptRepo(db)
+
+
 def get_conversation_service(
     uow_factory=Depends(get_uow_factory),
     llm: LLMPort = Depends(get_llm),
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
     settings: Settings = Depends(get_settings),
 ) -> ConversationService:
     """Provide conversation service with injected dependencies."""
     return ConversationService(
         uow_factory=uow_factory,
         llm=llm,
+        prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
@@ -392,10 +399,13 @@ async def get_conversation_messages(
 
 
 @router.get("/prompts", response_model=PromptsResponse)
-async def list_prompts() -> PromptsResponse:
-    """List all registered prompts from the prompt registry."""
+async def list_prompts(
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+) -> PromptsResponse:
+    """List all registered prompts from the database."""
+    rows = await asyncio.to_thread(prompt_repo.list_prompts)
     prompts = [
-        PromptSchema(slug=slug, name=spec["name"], system_prompt=spec["system_prompt"])
-        for slug, spec in PROMPTS.items()
+        PromptSchema(slug=r["slug"], name=r["name"], system_prompt=r["system_prompt"])
+        for r in rows
     ]
     return PromptsResponse(prompts=prompts)

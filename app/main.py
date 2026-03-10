@@ -7,11 +7,15 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from pathlib import Path
+
 from app.api.middleware import RequestIdAndTimingMiddleware
 from app.api.routes import router
 from app.infra.llm_openai import OpenAILLMAdapter
 from app.infra.logging import setup_logging
+import app.infra.persistence.db as _db
 from app.infra.persistence.db import Base, get_engine, init_engine
+from app.infra.prompt_seeder import seed_prompts_from_directory
 from app.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -49,6 +53,9 @@ async def lifespan(app: FastAPI):
     init_engine(settings.database_url)
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+
+    with _db.SessionLocal() as session:
+        seed_prompts_from_directory(Path(settings.prompts_dir), session)
 
     # Inject infra so routes depend on app.state instead of constructing adapters.
     app.state.settings = settings
