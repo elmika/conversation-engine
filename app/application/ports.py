@@ -84,6 +84,14 @@ class ConversationRepo(Protocol):
         """Persist run metadata describing how an assistant message was generated."""
         ...
 
+    def list_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) ordered by created_at DESC with pagination."""
+        ...
+
+    def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
+        """Return [{id, role, content, created_at}] ordered by id ASC."""
+        ...
+
 
 class UnitOfWork(Protocol):
     """

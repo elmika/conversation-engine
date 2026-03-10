@@ -1,0 +1,71 @@
+---
+description: Frontend conventions for the Next.js 15 App Router frontend.
+globs:
+  - frontend/**/*.ts
+  - frontend/**/*.tsx
+alwaysApply: false
+---
+
+# Frontend Patterns
+
+## Environment
+
+No local Node.js. All commands run in Docker:
+
+```bash
+docker compose up                                          # dev server (hot-reload)
+docker compose run --rm frontend pnpm test                 # run all tests
+docker compose run --rm frontend pnpm add <pkg>            # add a dependency
+docker compose run --rm frontend pnpm add -D <pkg>         # add a dev dependency
+```
+
+## Stack
+
+- **Next.js 15** App Router — server components by default; add `"use client"` only when needed
+- **TanStack Query v5** — all server state; use `useQuery` / `useMutation`
+- **Zustand v5** — UI-only state (active conversation, sidebar open, prompt slug)
+- **shadcn/ui** — components live in `components/ui/`; edit the source directly
+- **Vitest + Testing Library + MSW v2** — unit tests in `tests/`
+
+## BFF Route Handlers
+
+All API calls go through `app/api/` Route Handlers. Handlers read `FASTAPI_URL` from
+`process.env` (server-side only). Clients always use relative `/api/...` URLs.
+
+```typescript
+// Non-streaming passthrough
+export async function GET() {
+  const res = await fetch(`${process.env.FASTAPI_URL}/prompts`)
+  return NextResponse.json(await res.json(), { status: res.status })
+}
+
+// Streaming — pipe body directly, never buffer
+export async function POST(request: NextRequest) {
+  const upstream = await fetch(`${process.env.FASTAPI_URL}/conversations/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: await request.text(),
+  })
+  return new Response(upstream.body, {
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' },
+  })
+}
+```
+
+## SSE parsing
+
+`lib/stream-parser.ts` exports `parseSSEStream(stream)` — an async generator that yields
+`MetaEvent | ChunkEvent | DoneEvent`. Always consume until `done` before closing.
+
+## Component rules
+
+- `components/ui/` — shadcn primitives; do not add business logic here
+- `components/chat/`, `components/history/`, `components/admin/` — feature components
+- Keep components pure where possible; lift state into hooks
+- `"use client"` is required for any component that uses hooks, event handlers, or browser APIs
+
+## Testing
+
+- MSW handlers mock BFF routes (not FastAPI directly)
+- Test files live in `tests/` with the structure mirroring `lib/`, `hooks/`, `components/`
+- Use `renderWithProviders()` helper (wraps QueryClient + stores) for component tests

@@ -1,0 +1,12 @@
+import { ConversationList } from "@/components/history/ConversationList";
+
+export default function HistoryPage() {
+  return (
+    <div className="h-full overflow-y-auto">
+      <main className="mx-auto max-w-2xl px-4 py-8">
+        <h1 className="mb-6 text-2xl font-semibold">Conversation History</h1>
+        <ConversationList />
+      </main>
+    </div>
+  );
+}

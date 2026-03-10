@@ -1,0 +1,568 @@
+openapi: 3.1.0
+
+info:
+  title: Conversation Engine
+  version: 0.2.0
+  description: |
+    Production-ready FastAPI + OpenAI service with streaming, conversation history,
+    and hexagonal architecture.
+
+    ## Architecture
+
+    The system has two access points:
+
+    - **FastAPI** (`http://localhost:8000`) — core API; used directly in development
+      or by automated tests.
+    - **Next.js BFF** (`http://localhost:3000/api`) — Backend-for-Frontend proxy layer
+      served by the Next.js app. The browser always calls this; the FastAPI URL is never
+      exposed to the client. All paths and request/response shapes are identical — the BFF
+      forwards requests verbatim and pipes streaming responses without buffering.
+
+    Use `docker compose up` to start both services together.
+
+    ## SSE Streaming
+
+    Streaming endpoints return `text/event-stream`. Each event is `\n\n`-separated:
+
+    ```
+    event: meta
+    data: {"conversation_id": "...", "model": "...", "prompt_slug": "..."}
+
+    event: chunk
+    data: {"delta": "Hello"}
+
+    event: done
+    data: {"conversation_id": "...", "assistant_message": "Hello world", "model": "...", "timings": {"ttfb_ms": 120, "total_ms": 800}}
+    ```
+
+    Three event types in order:
+    - **meta** — emitted first with conversation metadata
+    - **chunk** — zero or more incremental text deltas
+    - **done** — always the final event; contains the full message or an `error` object on failure
+
+    Clients must read until `done` is received to avoid hanging connections.
+
+servers:
+  - url: http://localhost:8000
+    description: FastAPI (direct) — local development and tests
+  - url: http://localhost:3000/api
+    description: Next.js BFF proxy — used by the browser frontend
+
+tags:
+  - name: health
+    description: Service liveness
+  - name: conversations
+    description: Conversation CRUD and chat turns
+  - name: prompts
+    description: Prompt persona registry
+
+paths:
+
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Health check
+      tags: [health]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /conversations:
+    get:
+      operationId: listConversations
+      summary: List conversations
+      description: Returns all conversations ordered by `created_at` DESC with page-based pagination.
+      tags: [conversations]
+      parameters:
+        - name: page
+          in: query
+          description: 1-based page number
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationListResponse"
+              example:
+                conversations:
+                  - id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    created_at: "2026-03-02T11:00:00"
+                total: 1
+                page: 1
+                page_size: 20
+
+    post:
+      operationId: createConversation
+      summary: Create conversation (non-streaming)
+      description: Creates a new conversation and processes the first user turn synchronously.
+      tags: [conversations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationRequest"
+            example:
+              prompt_slug: default
+              messages:
+                - role: user
+                  content: "Hello! My name is Mika."
+      responses:
+        "200":
+          description: Assistant reply with conversation ID and latency timings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationResponse"
+              example:
+                conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                assistant_message: "Hello Mika! How can I help you today?"
+                model: gpt-4.1-mini
+                timings:
+                  ttfb_ms: 320
+                  total_ms: 980
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+        "503":
+          $ref: "#/components/responses/RateLimited"
+
+  /conversations/stream:
+    post:
+      operationId: createConversationStream
+      summary: Create conversation (streaming)
+      description: |
+        Creates a new conversation and streams the assistant reply as SSE.
+        Event order: `meta` → `chunk`* → `done`.
+      tags: [conversations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationRequest"
+            example:
+              prompt_slug: default
+              messages:
+                - role: user
+                  content: "Tell me a short story."
+      responses:
+        "200":
+          description: SSE stream — see SSE Streaming section in description
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEStream"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /conversations/{conversationId}:
+    post:
+      operationId: appendConversationTurn
+      summary: Append turn (non-streaming)
+      description: Appends a new user turn to an existing conversation and returns the assistant reply synchronously. History is automatically trimmed before the LLM call.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/conversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationRequest"
+            example:
+              messages:
+                - role: user
+                  content: "What is my name?"
+      responses:
+        "200":
+          description: Assistant reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+        "503":
+          $ref: "#/components/responses/RateLimited"
+
+  /conversations/{conversationId}/stream:
+    post:
+      operationId: appendConversationTurnStream
+      summary: Append turn (streaming)
+      description: |
+        Appends a new user turn to an existing conversation and streams the assistant reply as SSE.
+        Event order: `meta` → `chunk`* → `done`.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/conversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationRequest"
+            example:
+              messages:
+                - role: user
+                  content: "Continue the story."
+      responses:
+        "200":
+          description: SSE stream — see SSE Streaming section in description
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEStream"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /conversations/{conversationId}/messages:
+    get:
+      operationId: getConversationMessages
+      summary: Get conversation messages
+      description: Returns all messages for a conversation ordered by id ASC. Returns an empty `messages` array for unknown conversation IDs.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/conversationId"
+      responses:
+        "200":
+          description: Full message history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagesResponse"
+              example:
+                conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                messages:
+                  - id: 1
+                    role: user
+                    content: "Hello! My name is Mika."
+                    created_at: "2026-03-02T11:00:00"
+                  - id: 2
+                    role: assistant
+                    content: "Hello Mika! How can I help you today?"
+                    created_at: "2026-03-02T11:00:01"
+
+  /prompts:
+    get:
+      operationId: listPrompts
+      summary: List prompts
+      description: Returns all registered prompt personas from the in-code prompt registry (`domain/prompt_registry.py`).
+      tags: [prompts]
+      responses:
+        "200":
+          description: All registered prompts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptsResponse"
+              example:
+                prompts:
+                  - slug: default
+                    name: Default Assistant
+                    system_prompt: "You are a concise and precise assistant."
+                  - slug: conflict-coach-v1
+                    name: Conflict Coach
+                    system_prompt: "You help users reason calmly through workplace conflicts."
+
+components:
+
+  parameters:
+    conversationId:
+      name: conversationId
+      in: path
+      required: true
+      description: UUID of the conversation
+      schema:
+        type: string
+        format: uuid
+      example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+  schemas:
+
+    ConversationMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+          minLength: 1
+
+    ConversationRequest:
+      type: object
+      required: [messages]
+      properties:
+        prompt_slug:
+          type: string
+          nullable: true
+          description: |
+            Slug of the prompt persona to use. Falls back to the `default_prompt_slug`
+            setting if omitted, null, or unknown.
+          example: default
+        messages:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ConversationMessage"
+
+    Timings:
+      type: object
+      required: [ttfb_ms, total_ms]
+      properties:
+        ttfb_ms:
+          type: integer
+          description: Time-to-first-byte from OpenAI in milliseconds
+          example: 320
+        total_ms:
+          type: integer
+          description: Total wall-clock latency in milliseconds
+          example: 980
+
+    ConversationResponse:
+      type: object
+      required: [conversation_id, assistant_message, model, timings]
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+        assistant_message:
+          type: string
+        model:
+          type: string
+          description: OpenAI model that generated the reply
+          example: gpt-4.1-mini
+        timings:
+          $ref: "#/components/schemas/Timings"
+
+    ConversationSummary:
+      type: object
+      required: [id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+
+    ConversationListResponse:
+      type: object
+      required: [conversations, total, page, page_size]
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationSummary"
+        total:
+          type: integer
+          description: Total conversation count across all pages
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    Message:
+      type: object
+      required: [id, role, content, created_at]
+      properties:
+        id:
+          type: integer
+          description: Auto-incrementing message ID (stable ordering key)
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+
+    MessagesResponse:
+      type: object
+      required: [conversation_id, messages]
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+
+    Prompt:
+      type: object
+      required: [slug, name, system_prompt]
+      properties:
+        slug:
+          type: string
+          description: Unique identifier used in `prompt_slug` request fields
+          example: default
+        name:
+          type: string
+          description: Human-readable display name
+          example: Default Assistant
+        system_prompt:
+          type: string
+          description: The system instruction sent to the LLM
+
+    PromptsResponse:
+      type: object
+      required: [prompts]
+      properties:
+        prompts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Prompt"
+
+    SSEMetaEventData:
+      type: object
+      description: Payload of the `meta` SSE event
+      required: [conversation_id, model, prompt_slug]
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+        model:
+          type: string
+          example: gpt-4.1-mini
+        prompt_slug:
+          type: string
+          example: default
+
+    SSEChunkEventData:
+      type: object
+      description: Payload of each `chunk` SSE event
+      required: [delta]
+      properties:
+        delta:
+          type: string
+          description: Incremental text fragment
+
+    SSEDoneEventData:
+      type: object
+      description: |
+        Payload of the terminal `done` SSE event.
+        On success all fields except `error` are present.
+        On failure only `error` is present.
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+        assistant_message:
+          type: string
+          description: Full assembled assistant reply (success only)
+        model:
+          type: string
+        timings:
+          $ref: "#/components/schemas/Timings"
+        error:
+          type: object
+          description: Present only on failure
+          required: [type, message]
+          properties:
+            type:
+              type: string
+              enum: [http_error, internal_error]
+            status_code:
+              type: integer
+              description: HTTP status code (http_error only)
+            message:
+              type: string
+
+    SSEStream:
+      type: string
+      description: |
+        Raw `text/event-stream` body. Each event block is two newline-terminated lines
+        followed by a blank line:
+
+        ```
+        event: <type>
+        data: <json>
+
+        ```
+
+        Possible `<type>` values and their data schemas:
+        - `meta` → SSEMetaEventData
+        - `chunk` → SSEChunkEventData
+        - `done` → SSEDoneEventData
+
+    ErrorDetail:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+        request_id:
+          type: string
+          description: Echo of the X-Request-ID header (assigned by middleware if not supplied)
+
+  responses:
+    BadRequest:
+      description: Input validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: "Total message content length (35000) exceeds max_input_chars (32000)"
+
+    NotFound:
+      description: Conversation not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: "Conversation abc123 not found"
+
+    UpstreamError:
+      description: Upstream OpenAI API returned an error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: "Upstream OpenAI API error."
+
+    RateLimited:
+      description: OpenAI rate limit hit after retries exhausted
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: "OpenAI rate limit exceeded. Please retry later."

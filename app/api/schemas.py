@@ -33,3 +33,37 @@ class ConversationResponse(BaseModel):
     assistant_message: str
     model: str
     timings: TimingsSchema
+
+
+class ConversationSummary(BaseModel):
+    id: str
+    created_at: str  # ISO 8601
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[ConversationSummary]
+    total: int
+    page: int
+    page_size: int
+
+
+class MessageSchema(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: str
+
+
+class MessagesResponse(BaseModel):
+    conversation_id: str
+    messages: list[MessageSchema]
+
+
+class PromptSchema(BaseModel):
+    slug: str
+    name: str
+    system_prompt: str
+
+
+class PromptsResponse(BaseModel):
+    prompts: list[PromptSchema]

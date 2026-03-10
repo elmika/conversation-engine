@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.application.ports import ConversationRepo
@@ -44,6 +44,36 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self._session.add(msg)
         self._session.flush()  # Flush to get the auto-generated ID
         return msg.id
+
+    def list_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) ordered by created_at DESC with pagination."""
+        total = self._session.execute(select(func.count()).select_from(Conversation)).scalar_one()
+        stmt = (
+            select(Conversation)
+            .order_by(Conversation.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        rows = self._session.execute(stmt).scalars().all()
+        return [{"id": c.id, "created_at": c.created_at.isoformat()} for c in rows], total
+
+    def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
+        """Return [{id, role, content, created_at}] ordered by id ASC."""
+        stmt = (
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.id.asc())
+        )
+        rows = self._session.execute(stmt).scalars().all()
+        return [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in rows
+        ]
 
     def record_run(
         self,
