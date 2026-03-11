@@ -48,22 +48,54 @@ class SQLAlchemyConversationRepo(ConversationRepo):
     def list_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
         """Return (rows, total) ordered by created_at DESC with pagination."""
         total = self._session.execute(select(func.count()).select_from(Conversation)).scalar_one()
+
+        first_msg_sq = (
+            select(Message.content)
+            .where(Message.conversation_id == Conversation.id)
+            .where(Message.role == "user")
+            .order_by(Message.id.asc())
+            .limit(1)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+        last_activity_sq = (
+            select(func.max(Message.created_at))
+            .where(Message.conversation_id == Conversation.id)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+
         stmt = (
-            select(Conversation)
+            select(
+                Conversation,
+                first_msg_sq.label("first_message"),
+                last_activity_sq.label("last_activity"),
+            )
             .order_by(Conversation.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        rows = self._session.execute(stmt).scalars().all()
+        rows = self._session.execute(stmt).all()
         return [
-            {"id": c.id, "name": c.name, "created_at": c.created_at.isoformat()}
-            for c in rows
+            {
+                "id": r.Conversation.id,
+                "name": r.Conversation.name,
+                "created_at": r.Conversation.created_at.isoformat(),
+                "last_activity": (r.last_activity or r.Conversation.created_at).isoformat(),
+                "first_message": (r.first_message or "")[:120],
+            }
+            for r in rows
         ], total
 
     def rename_conversation(self, conversation_id: str, name: str) -> None:
         conv = self._session.get(Conversation, conversation_id)
         if conv:
             conv.name = name
+
+    def delete_conversation(self, conversation_id: str) -> None:
+        conv = self._session.get(Conversation, conversation_id)
+        if conv:
+            self._session.delete(conv)
 
     def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
         """Return [{id, role, content, created_at}] ordered by id ASC."""

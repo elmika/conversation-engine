@@ -367,11 +367,34 @@ async def list_conversations(
 
     rows, total = await asyncio.to_thread(_run)
     return ConversationListResponse(
-        conversations=[ConversationSummary(id=r["id"], name=r.get("name"), created_at=r["created_at"]) for r in rows],
+        conversations=[
+            ConversationSummary(
+                id=r["id"],
+                name=r.get("name"),
+                created_at=r["created_at"],
+                last_activity=r.get("last_activity"),
+                first_message=r.get("first_message"),
+            )
+            for r in rows
+        ],
         total=total,
         page=page,
         page_size=page_size,
     )
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: str,
+    uow_factory=Depends(get_uow_factory),
+) -> None:
+    """Delete a conversation and all its messages."""
+    def _run() -> None:
+        with uow_factory() as uow:
+            uow.repo.delete_conversation(conversation_id)
+            uow.commit()
+
+    await asyncio.to_thread(_run)
 
 
 @router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)

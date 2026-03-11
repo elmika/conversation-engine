@@ -39,6 +39,8 @@ export interface ConversationSummary {
   id: string;
   name?: string | null;
   created_at: string; // ISO 8601
+  last_activity?: string | null;
+  first_message?: string | null;
 }
 
 export interface ConversationListResponse {

@@ -96,6 +96,10 @@ class ConversationRepo(Protocol):
         """Set the display name for a conversation."""
         ...
 
+    def delete_conversation(self, conversation_id: str) -> None:
+        """Delete a conversation and all its messages and runs."""
+        ...
+
 
 class PromptRepo(Protocol):
     """Port for prompt persistence."""

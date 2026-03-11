@@ -9,9 +9,10 @@ import { ConversationListItem } from "./ConversationListItem";
 
 interface ConversationListProps {
   activeConversationId?: string;
+  showDelete?: boolean;
 }
 
-export function ConversationList({ activeConversationId }: ConversationListProps) {
+export function ConversationList({ activeConversationId, showDelete = false }: ConversationListProps) {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
   const { data, isLoading } = useConversationList(page, PAGE_SIZE);
@@ -43,6 +44,7 @@ export function ConversationList({ activeConversationId }: ConversationListProps
             key={c.id}
             conversation={c}
             isActive={c.id === activeConversationId}
+            showDelete={showDelete}
           />
         ))
       )}

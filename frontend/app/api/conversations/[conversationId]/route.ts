@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 
 const FASTAPI_URL = process.env.FASTAPI_URL ?? "http://localhost:8000";
 
+/** DELETE /api/conversations/[conversationId] — delete conversation */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ conversationId: string }> }
+): Promise<NextResponse> {
+  const { conversationId } = await params;
+  const res = await fetch(`${FASTAPI_URL}/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+  return new NextResponse(null, { status: res.status });
+}
+
 /** PATCH /api/conversations/[conversationId] — rename conversation */
 export async function PATCH(
   request: NextRequest,

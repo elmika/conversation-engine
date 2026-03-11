@@ -92,6 +92,15 @@ export async function fetchConversations(
   return handleResponse(res);
 }
 
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const res = await fetch(`/api/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await parseErrorDetail(res));
+  }
+}
+
 export async function renameConversation(
   conversationId: string,
   name: string

@@ -39,6 +39,8 @@ class ConversationSummary(BaseModel):
     id: str
     name: Optional[str] = None
     created_at: str  # ISO 8601
+    last_activity: Optional[str] = None
+    first_message: Optional[str] = None
 
 
 class ConversationRenameRequest(BaseModel):
