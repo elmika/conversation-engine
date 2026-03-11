@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { PanelLeft, Plus, SquarePen } from "lucide-react";
+import { PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { PromptSelector } from "./PromptSelector";
@@ -24,7 +24,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug } = useChatStore();
   const { data, isLoading } = useConversation(conversationId ?? null);
-  const { status, partialText, timings, errorMessage, sendMessage, reset, conversationId: streamedConversationId } =
+  const { status, partialText, timings, errorMessage, sendMessage, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat();
 
   // After the first turn the hook captures the server-assigned ID; use it for
@@ -138,7 +138,16 @@ export function ChatShell({ conversationId }: ChatShellProps) {
 
         {/* Input */}
         <div className="border-t p-4">
-          <ChatInput onSend={handleSend} disabled={isStreaming} />
+          {isStreaming ? (
+            <div className="flex justify-center">
+              <Button variant="outline" size="sm" onClick={cancel} className="gap-2">
+                <StopCircle className="h-4 w-4" />
+                Stop
+              </Button>
+            </div>
+          ) : (
+            <ChatInput onSend={handleSend} disabled={false} />
+          )}
         </div>
       </div>
     </div>
