@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { CodeBlock } from "./CodeBlock";
 
 interface StreamingMessageProps {
@@ -30,7 +31,7 @@ export function StreamingMessage({ partialText }: StreamingMessageProps) {
     <div className="flex justify-start">
       <div className="max-w-[80%] rounded-2xl bg-muted px-4 py-2 text-sm text-foreground">
         <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown components={markdownComponents}>{partialText}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{partialText}</ReactMarkdown>
         </div>
         {/* Blinking cursor */}
         <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse ml-0.5 align-middle" />

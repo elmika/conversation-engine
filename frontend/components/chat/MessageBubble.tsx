@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
 import type { MessageRole } from "@/lib/types";
@@ -55,7 +56,7 @@ export function MessageBubble({ role, content }: MessageBubbleProps) {
         ) : (
           <>
             <div className="prose prose-sm dark:prose-invert max-w-none">
-              <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{content}</ReactMarkdown>
             </div>
             <button
               onClick={handleCopyMessage}
