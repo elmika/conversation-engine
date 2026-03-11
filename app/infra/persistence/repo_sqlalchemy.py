@@ -55,7 +55,15 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             .limit(page_size)
         )
         rows = self._session.execute(stmt).scalars().all()
-        return [{"id": c.id, "created_at": c.created_at.isoformat()} for c in rows], total
+        return [
+            {"id": c.id, "name": c.name, "created_at": c.created_at.isoformat()}
+            for c in rows
+        ], total
+
+    def rename_conversation(self, conversation_id: str, name: str) -> None:
+        conv = self._session.get(Conversation, conversation_id)
+        if conv:
+            conv.name = name
 
     def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
         """Return [{id, role, content, created_at}] ordered by id ASC."""

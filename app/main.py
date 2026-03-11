@@ -14,6 +14,7 @@ from app.api.routes import router
 from app.infra.llm_openai import OpenAILLMAdapter
 from app.infra.logging import setup_logging
 import app.infra.persistence.db as _db
+from app.infra.migrations import run_migrations
 from app.infra.persistence.db import Base, get_engine, init_engine
 from app.infra.prompt_seeder import seed_prompts_from_directory
 from app.settings import Settings
@@ -53,6 +54,7 @@ async def lifespan(app: FastAPI):
     init_engine(settings.database_url)
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+    run_migrations(engine)
 
     with _db.SessionLocal() as session:
         seed_prompts_from_directory(Path(settings.prompts_dir), session)

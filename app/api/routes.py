@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
     ConversationListResponse,
+    ConversationRenameRequest,
     ConversationRequest,
     ConversationResponse,
     ConversationSummary,
@@ -366,11 +367,27 @@ async def list_conversations(
 
     rows, total = await asyncio.to_thread(_run)
     return ConversationListResponse(
-        conversations=[ConversationSummary(id=r["id"], created_at=r["created_at"]) for r in rows],
+        conversations=[ConversationSummary(id=r["id"], name=r.get("name"), created_at=r["created_at"]) for r in rows],
         total=total,
         page=page,
         page_size=page_size,
     )
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)
+async def rename_conversation(
+    conversation_id: str,
+    body: ConversationRenameRequest,
+    uow_factory=Depends(get_uow_factory),
+) -> ConversationSummary:
+    """Rename a conversation."""
+    def _run() -> None:
+        with uow_factory() as uow:
+            uow.repo.rename_conversation(conversation_id, body.name)
+            uow.commit()
+
+    await asyncio.to_thread(_run)
+    return ConversationSummary(id=conversation_id, name=body.name, created_at="")
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=MessagesResponse)

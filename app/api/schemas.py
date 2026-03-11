@@ -37,7 +37,12 @@ class ConversationResponse(BaseModel):
 
 class ConversationSummary(BaseModel):
     id: str
+    name: Optional[str] = None
     created_at: str  # ISO 8601
+
+
+class ConversationRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
 
 
 class ConversationListResponse(BaseModel):

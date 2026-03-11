@@ -59,6 +59,9 @@ class ConversationService:
         with self._uow_factory() as uow:
             # Persist conversation and user messages
             uow.repo.create_conversation_with_id(cid_str)
+            first_user = next((m for m in messages if m["role"] == "user"), None)
+            if first_user:
+                uow.repo.rename_conversation(cid_str, first_user["content"][:60].strip())
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
@@ -172,6 +175,9 @@ class ConversationService:
         uow_setup = self._uow_factory()
         with uow_setup:
             uow_setup.repo.create_conversation_with_id(cid_str)
+            first_user = next((m for m in messages if m["role"] == "user"), None)
+            if first_user:
+                uow_setup.repo.rename_conversation(cid_str, first_user["content"][:60].strip())
             for msg in messages:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
             uow_setup.commit()

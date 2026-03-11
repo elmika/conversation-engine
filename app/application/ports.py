@@ -92,6 +92,10 @@ class ConversationRepo(Protocol):
         """Return [{id, role, content, created_at}] ordered by id ASC."""
         ...
 
+    def rename_conversation(self, conversation_id: str, name: str) -> None:
+        """Set the display name for a conversation."""
+        ...
+
 
 class PromptRepo(Protocol):
     """Port for prompt persistence."""

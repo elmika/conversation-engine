@@ -92,6 +92,18 @@ export async function fetchConversations(
   return handleResponse(res);
 }
 
+export async function renameConversation(
+  conversationId: string,
+  name: string
+): Promise<void> {
+  const res = await fetch(`/api/conversations/${conversationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  await handleResponse(res);
+}
+
 export async function fetchConversationMessages(
   conversationId: string
 ): Promise<MessagesResponse> {
