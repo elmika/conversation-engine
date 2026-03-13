@@ -16,19 +16,26 @@ The assistant's reply appears word-by-word in real time. A typing indicator is s
 ### 1.3 Stop / cancel streaming
 A **Stop** button replaces the input field while the assistant is responding. Clicking it immediately halts the stream.
 
-### 1.4 Code syntax highlighting
+### 1.4 Send key preference
+A toggle in the chat header bar switches between two send modes:
+- **Enter to send** (default) — `Enter` sends the message, `Shift+Enter` inserts a new line
+- **Ctrl+Enter to send** — `Enter` inserts a new line, `Ctrl+Enter` (or `Cmd+Enter`) sends
+
+The active mode is shown as a labelled button in the header and as a persistent hint line below the input field. The preference is saved to `localStorage` and persists across sessions.
+
+### 1.5 Code syntax highlighting
 Code blocks in assistant responses are syntax-highlighted. Supported languages: TypeScript, JavaScript, TSX/JSX, Python, Bash, JSON, SQL, YAML, CSS, PHP, Java, Rust, Go.
 
-### 1.5 Copy code block
+### 1.6 Copy code block
 Each code block has a **Copy** button that copies just the code snippet to the clipboard.
 
-### 1.6 Copy full message
+### 1.7 Copy full message
 Each assistant message has a **Copy** button (visible on hover) that copies the entire message content.
 
-### 1.7 Edit and resend (message rewind)
+### 1.8 Edit and resend (message rewind)
 Any past user message can be edited and resent. Hovering over a user message reveals a **pencil icon**. Clicking it opens an inline editor pre-filled with the original message. The user can modify the text and click **Resend** (or `Ctrl+Enter`). This truncates the conversation from that point onward and streams a new response — effectively branching the conversation from the edited message.
 
-### 1.8 Response timings
+### 1.9 Response timings
 After each complete response, a small badge shows the time-to-first-byte (TTFB) and total response time in milliseconds.
 
 ---

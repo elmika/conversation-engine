@@ -56,7 +56,7 @@ docker build -t conversation-engine-frontend ./frontend
 
 `docs/features.md` is the canonical list of user-facing features, maintained for UX review.
 
-**Whenever you add, change, or remove a user-facing feature, update `docs/features.md`** to reflect it — add new entries, update descriptions, or remove entries as appropriate. This applies to anything a user can see or interact with: new UI, new API behaviour exposed in the UI, changed workflows, or removed functionality.
+**Updating `docs/features.md` is MANDATORY and must be the last step of every task that touches user-facing behaviour.** This includes new UI, changed interactions, new API behaviour surfaced in the UI, and removed functionality. Do not consider a task complete until the feature list has been updated.
 
 ## API Documentation Gate
 
