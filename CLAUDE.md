@@ -52,6 +52,12 @@ docker build -t conversation-engine-frontend ./frontend
 
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
 
+## Feature List Gate
+
+`docs/features.md` is the canonical list of user-facing features, maintained for UX review.
+
+**Whenever you add, change, or remove a user-facing feature, update `docs/features.md`** to reflect it — add new entries, update descriptions, or remove entries as appropriate. This applies to anything a user can see or interact with: new UI, new API behaviour exposed in the UI, changed workflows, or removed functionality.
+
 ## API Documentation Gate
 
 `docs/openapi.yml` and `docs/postman_collection.json` are the source-of-truth API docs.
