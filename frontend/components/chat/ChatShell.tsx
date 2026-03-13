@@ -24,7 +24,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug } = useChatStore();
   const { data, isLoading } = useConversation(conversationId ?? null);
-  const { status, partialText, timings, errorMessage, sendMessage, cancel, reset, conversationId: streamedConversationId } =
+  const { status, partialText, timings, errorMessage, sendMessage, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat();
 
   // After the first turn the hook captures the server-assigned ID; use it for
@@ -64,6 +64,27 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     reset();
     setLocalMessages([]);
     router.push("/chat");
+  };
+
+  const handleRewind = (messageId: number, newContent: string) => {
+    if (!activeConversationId) return;
+
+    // Optimistically truncate local messages at the rewound message
+    setLocalMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === messageId);
+      const kept = idx >= 0 ? prev.slice(0, idx) : prev;
+      return [
+        ...kept,
+        {
+          id: Date.now(),
+          role: "user" as const,
+          content: newContent,
+          created_at: new Date().toISOString(),
+        },
+      ];
+    });
+
+    rewindAndStream(activeConversationId, messageId, newContent, selectedPromptSlug);
   };
 
   const handleSend = (text: string) => {
@@ -127,6 +148,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
           streamStatus={status}
           partialText={partialText}
           timings={timings}
+          onRewind={activeConversationId ? handleRewind : undefined}
         />
 
         {/* Error banner */}

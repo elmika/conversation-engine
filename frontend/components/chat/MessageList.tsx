@@ -14,6 +14,7 @@ interface MessageListProps {
   streamStatus: StreamStatus;
   partialText: string;
   timings: Timings | null;
+  onRewind?: (messageId: number, newContent: string) => void;
 }
 
 const NEAR_BOTTOM_THRESHOLD = 80; // px
@@ -24,6 +25,7 @@ export function MessageList({
   streamStatus,
   partialText,
   timings,
+  onRewind,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -77,7 +79,13 @@ export function MessageList({
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
       <div className="flex flex-col gap-3 p-4">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} role={msg.role} content={msg.content} />
+          <MessageBubble
+            key={msg.id}
+            role={msg.role}
+            content={msg.content}
+            messageId={msg.id}
+            onRewind={msg.role === "user" ? onRewind : undefined}
+          />
         ))}
 
         {isStreaming && <StreamingMessage partialText={partialText} />}

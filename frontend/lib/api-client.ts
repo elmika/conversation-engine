@@ -177,3 +177,19 @@ export async function appendConversationTurnStream(
   });
   return getStream(res);
 }
+
+export async function rewindConversationStream(
+  conversationId: string,
+  messageId: number,
+  content: string,
+  promptSlug?: string | null,
+  signal?: AbortSignal
+): Promise<ReadableStream<Uint8Array>> {
+  const res = await fetch(`/api/conversations/${conversationId}/rewind/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message_id: messageId, content, prompt_slug: promptSlug }),
+    signal,
+  });
+  return getStream(res);
+}

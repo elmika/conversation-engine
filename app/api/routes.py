@@ -13,6 +13,7 @@ from app.api.schemas import (
     ConversationRenameRequest,
     ConversationRequest,
     ConversationResponse,
+    ConversationRewindRequest,
     ConversationSummary,
     MessageSchema,
     MessagesResponse,
@@ -349,6 +350,112 @@ async def append_conversation_turn_stream(
             }
             yield _sse_event("done", error_payload)
             # Re-raise so middleware can log it
+            raise
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post(
+    "/conversations/{conversation_id}/rewind/stream",
+    name="rewind_conversation_stream",
+)
+async def rewind_conversation_stream(
+    conversation_id: str,
+    body: ConversationRewindRequest,
+    settings: Settings = Depends(get_settings),
+    service: ConversationService = Depends(get_conversation_service),
+) -> StreamingResponse:
+    """
+    Rewind a conversation to a past user message, replace it with new content, and stream.
+
+    Deletes message_id and all subsequent messages, appends new content as a user
+    message, then streams the assistant response as SSE.
+
+    Emits SSE events:
+      - meta: conversation_id, model, prompt_slug
+      - chunk: incremental text delta
+      - done: final assistant message + timings
+    """
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            def _rewind_setup() -> tuple[str, Any, str, UnitOfWork]:
+                try:
+                    return service.rewind_and_stream(
+                        conversation_id, body.message_id, body.content, body.prompt_slug
+                    )
+                except ValueError as e:
+                    raise HTTPException(status_code=404, detail=str(e))
+
+            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(_rewind_setup)
+
+            meta = {
+                "conversation_id": conv_id,
+                "model": settings.openai_model,
+                "prompt_slug": used_prompt_slug,
+            }
+            yield _sse_event("meta", meta)
+
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = settings.openai_model
+
+            for ev in events:
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
+                    )
+                    done_payload = {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    }
+                    yield _sse_event("done", done_payload)
+        except HTTPException as exc:
+            error_payload = {
+                "error": {
+                    "type": "http_error",
+                    "status_code": exc.status_code,
+                    "message": exc.detail,
+                }
+            }
+            yield _sse_event("done", error_payload)
+        except Exception:
+            error_payload = {
+                "error": {
+                    "type": "internal_error",
+                    "message": "An unexpected error occurred during streaming",
+                }
+            }
+            yield _sse_event("done", error_payload)
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.application.ports import ConversationRepo
@@ -96,6 +96,22 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         conv = self._session.get(Conversation, conversation_id)
         if conv:
             self._session.delete(conv)
+
+    def truncate_from(self, conversation_id: str, message_id: int) -> None:
+        """Delete messages with id >= message_id and their associated runs."""
+        # Delete runs referencing messages that will be deleted
+        msg_ids_sq = (
+            select(Message.id)
+            .where(Message.conversation_id == conversation_id)
+            .where(Message.id >= message_id)
+        )
+        self._session.execute(delete(Run).where(Run.assistant_message_id.in_(msg_ids_sq)))
+        self._session.execute(
+            delete(Message).where(
+                Message.conversation_id == conversation_id,
+                Message.id >= message_id,
+            )
+        )
 
     def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
         """Return [{id, role, content, created_at}] ordered by id ASC."""

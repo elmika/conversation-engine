@@ -246,6 +246,55 @@ class ConversationService:
         uow_final = self._uow_factory()
         return conv_id, events, used_prompt_slug, uow_final
 
+    def rewind_and_stream(
+        self,
+        conversation_id: str,
+        message_id: int,
+        new_content: str,
+        prompt_slug: Optional[str] = None,
+    ) -> tuple[str, Iterable[StreamEvent], str, UnitOfWork]:
+        """
+        Rewind a conversation to message_id, replace it with new_content, and stream.
+
+        Deletes message_id and everything after it, appends new_content as a user
+        message, then streams the assistant's response using the retained history.
+
+        Returns: (conversation_id, event_iterator, used_prompt_slug, uow)
+        Raises: ValueError if conversation not found.
+        """
+        used_prompt_slug, instructions = self._resolve_prompt(prompt_slug)
+
+        uow_setup = self._uow_factory()
+        with uow_setup:
+            history = uow_setup.repo.get_messages(conversation_id)
+            if not history:
+                raise ValueError(f"Conversation {conversation_id} not found")
+            uow_setup.repo.truncate_from(conversation_id, message_id)
+            uow_setup.repo.append_message(conversation_id, "user", new_content)
+            uow_setup.commit()
+
+        # Reload full history (truncated + new user message)
+        uow_load = self._uow_factory()
+        with uow_load:
+            full_history = uow_load.repo.get_messages(conversation_id)
+
+        trim_result = trim_history(
+            full_history,
+            max_turns=self._max_history_turns,
+            max_tokens=self._max_history_tokens,
+            conversation_id=conversation_id,
+        )
+
+        conv_id, events = stream_chat(
+            messages=trim_result["messages"],
+            instructions=instructions,
+            llm_stream=self._llm.stream,
+            conversation_id=conversation_id,
+        )
+
+        uow_final = self._uow_factory()
+        return conv_id, events, used_prompt_slug, uow_final
+
     def persist_stream_result(
         self,
         uow: UnitOfWork,

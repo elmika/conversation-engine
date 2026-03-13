@@ -47,6 +47,12 @@ class ConversationRenameRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=256)
 
 
+class ConversationRewindRequest(BaseModel):
+    message_id: int
+    content: str = Field(..., min_length=1)
+    prompt_slug: Optional[str] = None
+
+
 class ConversationListResponse(BaseModel):
     conversations: list[ConversationSummary]
     total: int

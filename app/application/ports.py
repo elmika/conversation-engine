@@ -100,6 +100,10 @@ class ConversationRepo(Protocol):
         """Delete a conversation and all its messages and runs."""
         ...
 
+    def truncate_from(self, conversation_id: str, message_id: int) -> None:
+        """Delete messages with id >= message_id and their associated runs."""
+        ...
+
 
 class PromptRepo(Protocol):
     """Port for prompt persistence."""
