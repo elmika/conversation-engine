@@ -4,14 +4,12 @@ from collections.abc import Iterable
 from typing import Callable, Optional, Union
 
 from app.application.ports import LLMResult, StreamEvent
-from app.domain.prompt_registry import get_prompt, get_prompt_slug_or_default
-from app.domain.value_objects import ConversationId, PromptSlug
+from app.domain.value_objects import ConversationId
 
 
 def chat(
     messages: list[dict[str, str]],
-    prompt_slug: Union[str, PromptSlug, None],
-    default_slug: str,
+    instructions: str,
     llm_complete: Callable[[str, list[dict[str, str]]], LLMResult],
     conversation_id: Optional[Union[str, ConversationId]] = None,
 ) -> tuple[str, str, str, int, int]:
@@ -25,9 +23,6 @@ def chat(
         if isinstance(conversation_id, str)
         else conversation_id or ConversationId.generate()
     )
-    slug = get_prompt_slug_or_default(prompt_slug, default_slug)
-    spec = get_prompt(slug)
-    instructions = spec["system_prompt"]
     result = llm_complete(instructions, messages)
     return (
         str(cid),
@@ -40,8 +35,7 @@ def chat(
 
 def stream_chat(
     messages: list[dict[str, str]],
-    prompt_slug: Union[str, PromptSlug, None],
-    default_slug: str,
+    instructions: str,
     llm_stream: Callable[[str, list[dict[str, str]]], Iterable[StreamEvent]],
     conversation_id: Optional[Union[str, ConversationId]] = None,
 ) -> tuple[str, Iterable[StreamEvent]]:
@@ -53,8 +47,5 @@ def stream_chat(
         if isinstance(conversation_id, str)
         else conversation_id or ConversationId.generate()
     )
-    slug = get_prompt_slug_or_default(prompt_slug, default_slug)
-    spec = get_prompt(slug)
-    instructions = spec["system_prompt"]
     events = llm_stream(instructions, messages)
     return str(cid), events

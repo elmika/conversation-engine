@@ -10,8 +10,10 @@ from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
     ConversationListResponse,
+    ConversationRenameRequest,
     ConversationRequest,
     ConversationResponse,
+    ConversationRewindRequest,
     ConversationSummary,
     MessageSchema,
     MessagesResponse,
@@ -19,10 +21,10 @@ from app.api.schemas import (
     PromptsResponse,
     TimingsSchema,
 )
-from app.application.ports import LLMPort, UnitOfWork
-from app.domain.prompt_registry import PROMPTS
+from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.application.services import ConversationService
 from app.infra.persistence.db import get_session
+from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from app.settings import Settings
 
@@ -46,15 +48,22 @@ def get_uow_factory(db=Depends(get_session)):
     return _factory
 
 
+def get_prompt_repo(db=Depends(get_session)) -> PromptRepo:
+    """Provide a PromptRepo for the current request session."""
+    return SQLAlchemyPromptRepo(db)
+
+
 def get_conversation_service(
     uow_factory=Depends(get_uow_factory),
     llm: LLMPort = Depends(get_llm),
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
     settings: Settings = Depends(get_settings),
 ) -> ConversationService:
     """Provide conversation service with injected dependencies."""
     return ConversationService(
         uow_factory=uow_factory,
         llm=llm,
+        prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
@@ -346,6 +355,112 @@ async def append_conversation_turn_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+@router.post(
+    "/conversations/{conversation_id}/rewind/stream",
+    name="rewind_conversation_stream",
+)
+async def rewind_conversation_stream(
+    conversation_id: str,
+    body: ConversationRewindRequest,
+    settings: Settings = Depends(get_settings),
+    service: ConversationService = Depends(get_conversation_service),
+) -> StreamingResponse:
+    """
+    Rewind a conversation to a past user message, replace it with new content, and stream.
+
+    Deletes message_id and all subsequent messages, appends new content as a user
+    message, then streams the assistant response as SSE.
+
+    Emits SSE events:
+      - meta: conversation_id, model, prompt_slug
+      - chunk: incremental text delta
+      - done: final assistant message + timings
+    """
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            def _rewind_setup() -> tuple[str, Any, str, UnitOfWork]:
+                try:
+                    return service.rewind_and_stream(
+                        conversation_id, body.message_id, body.content, body.prompt_slug
+                    )
+                except ValueError as e:
+                    raise HTTPException(status_code=404, detail=str(e))
+
+            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(_rewind_setup)
+
+            meta = {
+                "conversation_id": conv_id,
+                "model": settings.openai_model,
+                "prompt_slug": used_prompt_slug,
+            }
+            yield _sse_event("meta", meta)
+
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = settings.openai_model
+
+            for ev in events:
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
+                    )
+                    done_payload = {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    }
+                    yield _sse_event("done", done_payload)
+        except HTTPException as exc:
+            error_payload = {
+                "error": {
+                    "type": "http_error",
+                    "status_code": exc.status_code,
+                    "message": exc.detail,
+                }
+            }
+            yield _sse_event("done", error_payload)
+        except Exception:
+            error_payload = {
+                "error": {
+                    "type": "internal_error",
+                    "message": "An unexpected error occurred during streaming",
+                }
+            }
+            yield _sse_event("done", error_payload)
+            raise
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
     page: int = 1,
@@ -359,11 +474,50 @@ async def list_conversations(
 
     rows, total = await asyncio.to_thread(_run)
     return ConversationListResponse(
-        conversations=[ConversationSummary(id=r["id"], created_at=r["created_at"]) for r in rows],
+        conversations=[
+            ConversationSummary(
+                id=r["id"],
+                name=r.get("name"),
+                created_at=r["created_at"],
+                last_activity=r.get("last_activity"),
+                first_message=r.get("first_message"),
+            )
+            for r in rows
+        ],
         total=total,
         page=page,
         page_size=page_size,
     )
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: str,
+    uow_factory=Depends(get_uow_factory),
+) -> None:
+    """Delete a conversation and all its messages."""
+    def _run() -> None:
+        with uow_factory() as uow:
+            uow.repo.delete_conversation(conversation_id)
+            uow.commit()
+
+    await asyncio.to_thread(_run)
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)
+async def rename_conversation(
+    conversation_id: str,
+    body: ConversationRenameRequest,
+    uow_factory=Depends(get_uow_factory),
+) -> ConversationSummary:
+    """Rename a conversation."""
+    def _run() -> None:
+        with uow_factory() as uow:
+            uow.repo.rename_conversation(conversation_id, body.name)
+            uow.commit()
+
+    await asyncio.to_thread(_run)
+    return ConversationSummary(id=conversation_id, name=body.name, created_at="")
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=MessagesResponse)
@@ -392,10 +546,13 @@ async def get_conversation_messages(
 
 
 @router.get("/prompts", response_model=PromptsResponse)
-async def list_prompts() -> PromptsResponse:
-    """List all registered prompts from the prompt registry."""
+async def list_prompts(
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+) -> PromptsResponse:
+    """List all registered prompts from the database."""
+    rows = await asyncio.to_thread(prompt_repo.list_prompts)
     prompts = [
-        PromptSchema(slug=slug, name=spec["name"], system_prompt=spec["system_prompt"])
-        for slug, spec in PROMPTS.items()
+        PromptSchema(slug=r["slug"], name=r["name"], system_prompt=r["system_prompt"])
+        for r in rows
     ]
     return PromptsResponse(prompts=prompts)

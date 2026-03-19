@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   createConversationStream,
   appendConversationTurnStream,
+  rewindConversationStream,
 } from "@/lib/api-client";
 import { parseSSEStream } from "@/lib/stream-parser";
 import type { ConversationRequest, Timings } from "@/lib/types";
@@ -132,6 +133,87 @@ export function useStreamingChat() {
     [queryClient]
   );
 
+  const rewindAndStream = useCallback(
+    async (
+      conversationId: string,
+      messageId: number,
+      newContent: string,
+      promptSlug?: string | null
+    ) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setState({
+        status: "connecting",
+        partialText: "",
+        conversationId,
+        timings: null,
+        errorMessage: null,
+      });
+
+      try {
+        const stream = await rewindConversationStream(
+          conversationId,
+          messageId,
+          newContent,
+          promptSlug,
+          controller.signal
+        );
+
+        setState((s) => ({ ...s, status: "streaming" }));
+
+        let finalTimings: Timings | null = null;
+        let accText = "";
+
+        for await (const event of parseSSEStream(stream)) {
+          if (controller.signal.aborted) break;
+
+          if (event.event === "chunk") {
+            accText += event.data.delta;
+            setState((s) => ({ ...s, partialText: accText }));
+          } else if (event.event === "done") {
+            if (event.data.error) {
+              setState({
+                status: "error",
+                partialText: accText,
+                conversationId,
+                timings: null,
+                errorMessage: event.data.error.message,
+              });
+              return;
+            }
+            finalTimings = event.data.timings ?? null;
+          }
+        }
+
+        if (controller.signal.aborted) {
+          setState((s) => ({ ...s, status: "idle" }));
+          return;
+        }
+
+        setState({
+          status: "done",
+          partialText: accText,
+          conversationId,
+          timings: finalTimings,
+          errorMessage: null,
+        });
+
+        queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+      } catch (err) {
+        if (controller.signal.aborted) {
+          setState((s) => ({ ...s, status: "idle" }));
+          return;
+        }
+        const message =
+          err instanceof Error ? err.message : "An unexpected error occurred.";
+        setState((s) => ({ ...s, status: "error", errorMessage: message }));
+      }
+    },
+    [queryClient]
+  );
+
   const cancel = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -141,5 +223,5 @@ export function useStreamingChat() {
     setState(INITIAL_STATE);
   }, []);
 
-  return { ...state, sendMessage, cancel, reset };
+  return { ...state, sendMessage, rewindAndStream, cancel, reset };
 }

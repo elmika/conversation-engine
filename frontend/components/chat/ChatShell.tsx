@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { PanelLeft, Plus, SquarePen } from "lucide-react";
+import { CornerDownLeft, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { PromptSelector } from "./PromptSelector";
@@ -22,9 +22,9 @@ interface ChatShellProps {
 
 export function ChatShell({ conversationId }: ChatShellProps) {
   const router = useRouter();
-  const { isSidebarOpen, toggleSidebar, selectedPromptSlug } = useChatStore();
+  const { isSidebarOpen, toggleSidebar, selectedPromptSlug, enterToSend, toggleEnterToSend } = useChatStore();
   const { data, isLoading } = useConversation(conversationId ?? null);
-  const { status, partialText, timings, errorMessage, sendMessage, reset, conversationId: streamedConversationId } =
+  const { status, partialText, timings, errorMessage, sendMessage, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat();
 
   // After the first turn the hook captures the server-assigned ID; use it for
@@ -64,6 +64,27 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     reset();
     setLocalMessages([]);
     router.push("/chat");
+  };
+
+  const handleRewind = (messageId: number, newContent: string) => {
+    if (!activeConversationId) return;
+
+    // Optimistically truncate local messages at the rewound message
+    setLocalMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === messageId);
+      const kept = idx >= 0 ? prev.slice(0, idx) : prev;
+      return [
+        ...kept,
+        {
+          id: Date.now(),
+          role: "user" as const,
+          content: newContent,
+          created_at: new Date().toISOString(),
+        },
+      ];
+    });
+
+    rewindAndStream(activeConversationId, messageId, newContent, selectedPromptSlug);
   };
 
   const handleSend = (text: string) => {
@@ -111,13 +132,25 @@ export function ChatShell({ conversationId }: ChatShellProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex items-center gap-2 border-b px-4 py-2">
-          <Button variant="ghost" size="icon" onClick={toggleSidebar}>
+          <Button variant="ghost" size="icon" onClick={toggleSidebar} title="Toggle sidebar">
             <PanelLeft className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" onClick={handleNewConversation} title="New conversation">
             <SquarePen className="h-4 w-4" />
           </Button>
           <PromptSelector />
+          <div className="ml-auto">
+            <Button
+              variant={enterToSend ? "secondary" : "ghost"}
+              size="sm"
+              onClick={toggleEnterToSend}
+              title={enterToSend ? "Enter sends message — click to switch to Ctrl+Enter" : "Ctrl+Enter sends message — click to switch to Enter"}
+              className="gap-1.5 text-xs text-muted-foreground"
+            >
+              <CornerDownLeft className="h-3.5 w-3.5" />
+              {enterToSend ? "Enter to send" : "Ctrl+Enter to send"}
+            </Button>
+          </div>
         </header>
 
         {/* Messages */}
@@ -127,6 +160,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
           streamStatus={status}
           partialText={partialText}
           timings={timings}
+          onRewind={activeConversationId ? handleRewind : undefined}
         />
 
         {/* Error banner */}
@@ -138,7 +172,16 @@ export function ChatShell({ conversationId }: ChatShellProps) {
 
         {/* Input */}
         <div className="border-t p-4">
-          <ChatInput onSend={handleSend} disabled={isStreaming} />
+          {isStreaming ? (
+            <div className="flex justify-center">
+              <Button variant="outline" size="sm" onClick={cancel} className="gap-2">
+                <StopCircle className="h-4 w-4" />
+                Stop
+              </Button>
+            </div>
+          ) : (
+            <ChatInput onSend={handleSend} disabled={false} enterToSend={enterToSend} />
+          )}
         </div>
       </div>
     </div>

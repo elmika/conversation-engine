@@ -92,6 +92,27 @@ export async function fetchConversations(
   return handleResponse(res);
 }
 
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const res = await fetch(`/api/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await parseErrorDetail(res));
+  }
+}
+
+export async function renameConversation(
+  conversationId: string,
+  name: string
+): Promise<void> {
+  const res = await fetch(`/api/conversations/${conversationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  await handleResponse(res);
+}
+
 export async function fetchConversationMessages(
   conversationId: string
 ): Promise<MessagesResponse> {
@@ -152,6 +173,22 @@ export async function appendConversationTurnStream(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
+  });
+  return getStream(res);
+}
+
+export async function rewindConversationStream(
+  conversationId: string,
+  messageId: number,
+  content: string,
+  promptSlug?: string | null,
+  signal?: AbortSignal
+): Promise<ReadableStream<Uint8Array>> {
+  const res = await fetch(`/api/conversations/${conversationId}/rewind/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message_id: messageId, content, prompt_slug: promptSlug }),
     signal,
   });
   return getStream(res);

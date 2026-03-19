@@ -37,7 +37,20 @@ class ConversationResponse(BaseModel):
 
 class ConversationSummary(BaseModel):
     id: str
+    name: Optional[str] = None
     created_at: str  # ISO 8601
+    last_activity: Optional[str] = None
+    first_message: Optional[str] = None
+
+
+class ConversationRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class ConversationRewindRequest(BaseModel):
+    message_id: int
+    content: str = Field(..., min_length=1)
+    prompt_slug: Optional[str] = None
 
 
 class ConversationListResponse(BaseModel):

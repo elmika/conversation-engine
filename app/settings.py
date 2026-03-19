@@ -27,3 +27,5 @@ class Settings(BaseSettings):
     # For gpt-4.1-mini (128K context), these are conservative limits
     max_history_turns: int = 20  # Max turns to include (10 back-and-forth exchanges)
     max_history_tokens: int = 100_000  # Max tokens in history (~75% of 128K context)
+
+    prompts_dir: str = "./prompts"

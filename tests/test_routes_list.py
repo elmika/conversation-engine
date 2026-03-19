@@ -144,9 +144,9 @@ def test_get_prompts(client) -> None:
 
 
 def test_get_prompts_includes_all_registered(client) -> None:
-    from app.domain.prompt_registry import PROMPTS
-
     r = client.get("/prompts")
     data = r.json()
     returned_slugs = {p["slug"] for p in data["prompts"]}
-    assert returned_slugs == set(PROMPTS.keys())
+    # Both prompts from the prompts/ directory should be seeded
+    assert "default" in returned_slugs
+    assert "conflict-coach-v1" in returned_slugs

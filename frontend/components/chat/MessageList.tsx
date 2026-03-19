@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageBubble } from "./MessageBubble";
 import { StreamingMessage } from "./StreamingMessage";
@@ -15,7 +14,10 @@ interface MessageListProps {
   streamStatus: StreamStatus;
   partialText: string;
   timings: Timings | null;
+  onRewind?: (messageId: number, newContent: string) => void;
 }
+
+const NEAR_BOTTOM_THRESHOLD = 80; // px
 
 export function MessageList({
   messages,
@@ -23,14 +25,45 @@ export function MessageList({
   streamStatus,
   partialText,
   timings,
+  onRewind,
 }: MessageListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const userScrolledUp = useRef(false);
   const isStreaming = streamStatus === "connecting" || streamStatus === "streaming";
 
-  // Auto-scroll to bottom whenever messages or partial text change
+  const isNearBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_THRESHOLD;
+  };
+
+  // Detect manual scroll up
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, partialText]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      userScrolledUp.current = !isNearBottom();
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // New user message: always scroll to bottom and reset the lock
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last?.role === "user") {
+      userScrolledUp.current = false;
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  // Streaming chunks: scroll only if the user hasn't scrolled up
+  useEffect(() => {
+    if (!userScrolledUp.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [partialText]);
 
   if (isLoading) {
     return (
@@ -43,18 +76,20 @@ export function MessageList({
   }
 
   return (
-    <ScrollArea className="flex-1">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto">
       <div className="flex flex-col gap-3 p-4">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} role={msg.role} content={msg.content} />
+          <MessageBubble
+            key={msg.id}
+            role={msg.role}
+            content={msg.content}
+            messageId={msg.id}
+            onRewind={msg.role === "user" ? onRewind : undefined}
+          />
         ))}
 
-        {/* Streaming assistant response */}
-        {isStreaming && (
-          <StreamingMessage partialText={partialText} />
-        )}
+        {isStreaming && <StreamingMessage partialText={partialText} />}
 
-        {/* Timings shown after stream completes */}
         {streamStatus === "done" && timings && (
           <div className="flex justify-start pl-1">
             <TimingsBadge timings={timings} />
@@ -63,6 +98,6 @@ export function MessageList({
 
         <div ref={bottomRef} />
       </div>
-    </ScrollArea>
+    </div>
   );
 }
