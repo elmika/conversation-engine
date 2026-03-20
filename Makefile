@@ -1,19 +1,23 @@
-.PHONY: up down build test test-backend test-frontend test-watch lint format help
+.PHONY: up down build test test-backend test-frontend test-watch lint format backup help
 
 IMAGE := conversation-engine
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-up: ## Start both services with hot-reload
-	docker compose up
+up: ## Start both services with hot-reload (detached)
+	docker compose up -d
+	echo "The frontend is at http://localhost:3000, the API at http://localhost:8000."
 
 down: ## Stop all services
 	docker compose down
 
-build: ## Build backend and frontend production images
-	docker build -t $(IMAGE) .
-	docker build -t $(IMAGE)-frontend ./frontend
+build: ## Build backend and frontend production images (tagged :prod)
+	docker build -t $(IMAGE):prod .
+	docker build -t $(IMAGE)-frontend:prod ./frontend
+
+logs: ## Follow logs for both services
+	docker compose logs -f
 
 test: test-backend test-frontend ## Run all tests
 
@@ -26,6 +30,10 @@ test-frontend: ## Run frontend tests
 
 test-watch: ## Run frontend tests in watch mode
 	docker compose run --rm frontend pnpm test:watch
+
+backup: ## Backup the SQLite database to data/backups/ with a timestamp
+	mkdir -p data/backups
+	@ts=$$(date +%Y%m%d-%H%M%S); sqlite3 data/chat.db .dump > data/backups/chat-$$ts.sql && echo "Backup saved to data/backups/chat-$$ts.sql"
 
 lint: ## Run ruff linter on backend
 	docker run --rm $(IMAGE) python -m ruff check .
