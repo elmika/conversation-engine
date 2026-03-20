@@ -25,7 +25,12 @@ def test_upsert_and_get_prompt(session) -> None:
     session.commit()
 
     result = repo.get_prompt("default")
-    assert result == {"slug": "default", "name": "Default Assistant", "system_prompt": "You are helpful."}
+    assert result == {
+        "slug": "default",
+        "name": "Default Assistant",
+        "system_prompt": "You are helpful.",
+        "model": None,
+    }
 
 
 def test_get_prompt_returns_none_for_unknown(session) -> None:

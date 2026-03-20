@@ -20,7 +20,12 @@ class SQLAlchemyPromptRepo:
         prompt = self._session.get(Prompt, slug)
         if prompt is None:
             return None
-        return {"slug": prompt.slug, "name": prompt.name, "system_prompt": prompt.system_prompt}
+        return {
+            "slug": prompt.slug,
+            "name": prompt.name,
+            "system_prompt": prompt.system_prompt,
+            "model": prompt.model,
+        }
 
     def get_prompt_or_default(self, slug: Optional[str], default_slug: str) -> dict:
         target = slug or default_slug
@@ -36,12 +41,18 @@ class SQLAlchemyPromptRepo:
     def list_prompts(self) -> list[dict]:
         stmt = select(Prompt).order_by(Prompt.slug.asc())
         rows = self._session.execute(stmt).scalars().all()
-        return [{"slug": p.slug, "name": p.name, "system_prompt": p.system_prompt} for p in rows]
+        return [
+            {"slug": p.slug, "name": p.name, "system_prompt": p.system_prompt, "model": p.model}
+            for p in rows
+        ]
 
-    def upsert(self, slug: str, name: str, system_prompt: str) -> None:
+    def upsert(self, slug: str, name: str, system_prompt: str, model: Optional[str] = None) -> None:
         existing = self._session.get(Prompt, slug)
         if existing:
             existing.name = name
             existing.system_prompt = system_prompt
+            existing.model = model
         else:
-            self._session.add(Prompt(slug=slug, name=name, system_prompt=system_prompt))
+            self._session.add(
+                Prompt(slug=slug, name=name, system_prompt=system_prompt, model=model)
+            )

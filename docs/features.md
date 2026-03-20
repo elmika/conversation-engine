@@ -108,9 +108,27 @@ Prompts are stored in the database and served via `GET /prompts`. New assistants
 - **Conflict Coach** — helps reason calmly through workplace conflicts
 - **TypeScript Mentor** — teaches TypeScript from first principles
 
+### 5.4 Per-prompt model preference
+Each assistant can declare a preferred OpenAI model via a `model:` field in its `.md` frontmatter (e.g. `model: gpt-4o-mini`). When set, that model is used for all conversations with that assistant unless overridden per-request.
+
 ---
 
-## 6. Admin
+## 6. Model Selection
+
+### 6.1 Model registry
+A static registry of supported OpenAI models is served via `GET /models`. Each entry has a `slug` (the OpenAI model ID) and a human-readable `name`.
+
+### 6.2 Per-request model override
+API callers can pass `model_slug` in any conversation request body to override the model for that specific request. Resolution priority (highest → lowest):
+1. `model_slug` in the request body
+2. `model` field on the selected prompt
+3. Global `settings.openai_model` (default)
+
+Passing an unknown `model_slug` returns a 400 error.
+
+---
+
+## 7. Admin
 
 ### 6.1 Admin panel
 A dedicated `/admin` section exists for managing prompts (system-level configuration). Currently read-only; full CRUD for prompts is a planned addition.

@@ -55,6 +55,8 @@ tags:
     description: Conversation CRUD and chat turns
   - name: prompts
     description: Prompt persona registry
+  - name: models
+    description: Available model registry
 
 paths:
 
@@ -272,11 +274,33 @@ paths:
                     content: "Hello Mika! How can I help you today?"
                     created_at: "2026-03-02T11:00:01"
 
+  /models:
+    get:
+      operationId: listModels
+      summary: List models
+      description: Returns all models available in the static model registry. Use a `slug` value as `model_slug` in conversation requests.
+      tags: [models]
+      responses:
+        "200":
+          description: All registered models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelsResponse"
+              example:
+                models:
+                  - slug: gpt-4.1-mini
+                    name: GPT-4.1 Mini
+                  - slug: gpt-4o
+                    name: GPT-4o
+                  - slug: gpt-4o-mini
+                    name: GPT-4o Mini
+
   /prompts:
     get:
       operationId: listPrompts
       summary: List prompts
-      description: Returns all registered prompt personas from the in-code prompt registry (`domain/prompt_registry.py`).
+      description: Returns all registered prompt personas from the database. Each prompt may specify a preferred `model`; null means use the global default.
       tags: [prompts]
       responses:
         "200":
@@ -290,9 +314,15 @@ paths:
                   - slug: default
                     name: Default Assistant
                     system_prompt: "You are a concise and precise assistant."
+                    model: null
                   - slug: conflict-coach-v1
                     name: Conflict Coach
                     system_prompt: "You help users reason calmly through workplace conflicts."
+                    model: null
+                  - slug: typescript-mentor
+                    name: TypeScript Mentor
+                    system_prompt: "You teach TypeScript from first principles."
+                    model: gpt-4o-mini
 
 components:
 
@@ -331,6 +361,14 @@ components:
             Slug of the prompt persona to use. Falls back to the `default_prompt_slug`
             setting if omitted, null, or unknown.
           example: default
+        model_slug:
+          type: string
+          nullable: true
+          description: |
+            Model override for this request. Resolution priority:
+            `model_slug` (request) → prompt's `model` field → `settings.openai_model`.
+            Must be a slug from `GET /models`. Returns 400 if unknown.
+          example: gpt-4o
         messages:
           type: array
           minItems: 1
@@ -438,6 +476,33 @@ components:
         system_prompt:
           type: string
           description: The system instruction sent to the LLM
+        model:
+          type: string
+          nullable: true
+          description: Preferred model slug for this prompt. Null means use the global default.
+          example: gpt-4o-mini
+
+    Model:
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+          description: OpenAI model ID (use as `model_slug` in requests)
+          example: gpt-4o
+        name:
+          type: string
+          description: Human-readable model name
+          example: GPT-4o
+
+    ModelsResponse:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/Model"
 
     PromptsResponse:
       type: object

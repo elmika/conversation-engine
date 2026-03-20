@@ -275,7 +275,7 @@
               "host": ["{{base_url}}"],
               "path": ["prompts"]
             },
-            "description": "Returns all registered prompt personas from `domain/prompt_registry.py`. Use a `slug` value as `prompt_slug` in conversation requests."
+            "description": "Returns all registered prompt personas from the database. Each prompt may include a `model` field (null if using the global default)."
           },
           "response": [
             {
@@ -283,7 +283,34 @@
               "status": "OK",
               "code": 200,
               "header": [{"key": "Content-Type", "value": "application/json"}],
-              "body": "{\n  \"prompts\": [\n    {\n      \"slug\": \"default\",\n      \"name\": \"Default Assistant\",\n      \"system_prompt\": \"You are a concise and precise assistant.\"\n    },\n    {\n      \"slug\": \"conflict-coach-v1\",\n      \"name\": \"Conflict Coach\",\n      \"system_prompt\": \"You help users reason calmly through workplace conflicts.\"\n    }\n  ]\n}",
+              "body": "{\n  \"prompts\": [\n    {\n      \"slug\": \"default\",\n      \"name\": \"Default Assistant\",\n      \"system_prompt\": \"You are a concise and precise assistant.\",\n      \"model\": null\n    },\n    {\n      \"slug\": \"typescript-mentor\",\n      \"name\": \"TypeScript Mentor\",\n      \"system_prompt\": \"You teach TypeScript from first principles.\",\n      \"model\": \"gpt-4o-mini\"\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Models",
+      "item": [
+        {
+          "name": "List Models",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/models",
+              "host": ["{{base_url}}"],
+              "path": ["models"]
+            },
+            "description": "Returns all models available in the static model registry. Use a `slug` value as `model_slug` in conversation requests to override the model for that request."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1-mini\",\n      \"name\": \"GPT-4.1 Mini\"\n    },\n    {\n      \"slug\": \"gpt-4o\",\n      \"name\": \"GPT-4o\"\n    },\n    {\n      \"slug\": \"gpt-4o-mini\",\n      \"name\": \"GPT-4o Mini\"\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
             }
           ]

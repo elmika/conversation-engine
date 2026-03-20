@@ -17,12 +17,15 @@ from app.api.schemas import (
     ConversationSummary,
     MessageSchema,
     MessagesResponse,
+    ModelSchema,
+    ModelsResponse,
     PromptSchema,
     PromptsResponse,
     TimingsSchema,
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.application.services import ConversationService
+from app.domain.model_registry import list_models
 from app.infra.persistence.db import get_session
 from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -65,6 +68,7 @@ def get_conversation_service(
         llm=llm,
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
+        default_model=settings.openai_model,
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
     )
@@ -84,6 +88,12 @@ def _check_input_length(messages: list[dict[str, str]], max_chars: int) -> None:
 async def healthz() -> dict[str, str]:
     """Health check."""
     return {"status": "ok"}
+
+
+@router.get("/models", response_model=ModelsResponse)
+async def list_models_endpoint() -> ModelsResponse:
+    """List all supported models from the model registry."""
+    return ModelsResponse(models=[ModelSchema(**m) for m in list_models()])
 
 
 @router.post(
@@ -108,15 +118,16 @@ async def create_conversation_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         try:
-            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(
+            conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
                 service.create_and_stream,
                 messages,
                 body.prompt_slug,
+                body.model_slug,
             )
 
             meta = {
                 "conversation_id": conv_id,
-                "model": settings.openai_model,
+                "model": resolved_model,
                 "prompt_slug": used_prompt_slug,
             }
             yield _sse_event("meta", meta)
@@ -124,7 +135,7 @@ async def create_conversation_stream(
             assistant_text_parts: list[str] = []
             ttfb_ms = 0
             total_ms = 0
-            model = settings.openai_model
+            model = resolved_model
 
             for ev in events:
                 if ev.get("type") == "delta":
@@ -200,11 +211,16 @@ async def create_conversation(
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     _check_input_length(messages, settings.max_input_chars)
 
-    conversation_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(
-        service.create_and_chat,
-        messages,
-        body.prompt_slug,
-    )
+    try:
+        conversation_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(
+            service.create_and_chat,
+            messages,
+            body.prompt_slug,
+            body.model_slug,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     return ConversationResponse(
         conversation_id=conversation_id,
         assistant_message=assistant_message,
@@ -235,7 +251,9 @@ async def append_conversation_turn(
 
     def _run() -> tuple[str, str, str, int, int]:
         try:
-            return service.append_and_chat(conversation_id, messages, body.prompt_slug)
+            return service.append_and_chat(
+                conversation_id, messages, body.prompt_slug, body.model_slug
+            )
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
@@ -271,17 +289,21 @@ async def append_conversation_turn_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         try:
-            def _stream_setup() -> tuple[str, Any, str, UnitOfWork]:
+            def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
-                    return service.append_and_stream(conversation_id, messages, body.prompt_slug)
+                    return service.append_and_stream(
+                        conversation_id, messages, body.prompt_slug, body.model_slug
+                    )
                 except ValueError as e:
                     raise HTTPException(status_code=404, detail=str(e))
 
-            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(_stream_setup)
+            conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
+                _stream_setup
+            )
 
             meta = {
                 "conversation_id": conv_id,
-                "model": settings.openai_model,
+                "model": resolved_model,
                 "prompt_slug": used_prompt_slug,
             }
             yield _sse_event("meta", meta)
@@ -289,7 +311,7 @@ async def append_conversation_turn_stream(
             assistant_text_parts: list[str] = []
             ttfb_ms = 0
             total_ms = 0
-            model = settings.openai_model
+            model = resolved_model
 
             for ev in events:
                 if ev.get("type") == "delta":
@@ -378,19 +400,25 @@ async def rewind_conversation_stream(
     """
     async def event_generator() -> AsyncIterator[str]:
         try:
-            def _rewind_setup() -> tuple[str, Any, str, UnitOfWork]:
+            def _rewind_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.rewind_and_stream(
-                        conversation_id, body.message_id, body.content, body.prompt_slug
+                        conversation_id,
+                        body.message_id,
+                        body.content,
+                        body.prompt_slug,
+                        body.model_slug,
                     )
                 except ValueError as e:
                     raise HTTPException(status_code=404, detail=str(e))
 
-            conv_id, events, used_prompt_slug, uow = await asyncio.to_thread(_rewind_setup)
+            conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
+                _rewind_setup
+            )
 
             meta = {
                 "conversation_id": conv_id,
-                "model": settings.openai_model,
+                "model": resolved_model,
                 "prompt_slug": used_prompt_slug,
             }
             yield _sse_event("meta", meta)
@@ -398,7 +426,7 @@ async def rewind_conversation_stream(
             assistant_text_parts: list[str] = []
             ttfb_ms = 0
             total_ms = 0
-            model = settings.openai_model
+            model = resolved_model
 
             for ev in events:
                 if ev.get("type") == "delta":
@@ -552,7 +580,12 @@ async def list_prompts(
     """List all registered prompts from the database."""
     rows = await asyncio.to_thread(prompt_repo.list_prompts)
     prompts = [
-        PromptSchema(slug=r["slug"], name=r["name"], system_prompt=r["system_prompt"])
+        PromptSchema(
+            slug=r["slug"],
+            name=r["name"],
+            system_prompt=r["system_prompt"],
+            model=r.get("model"),
+        )
         for r in rows
     ]
     return PromptsResponse(prompts=prompts)
