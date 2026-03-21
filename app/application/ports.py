@@ -41,12 +41,28 @@ class StreamEvent(TypedDict, total=False):
 class LLMPort(Protocol):
     """Port for LLM calls (OpenAI Responses API)."""
 
-    def complete(self, instructions: str, messages: list[dict[str, str]]) -> LLMResult:
-        """Run non-streaming completion; return assistant text, model, timings."""
+    def complete(
+        self,
+        instructions: str,
+        messages: list[dict[str, str]],
+        model: Optional[str] = None,
+    ) -> LLMResult:
+        """Run non-streaming completion; return assistant text, model, timings.
+
+        If model is provided it overrides the adapter's default model.
+        """
         ...
 
-    def stream(self, instructions: str, messages: list[dict[str, str]]) -> Iterable[StreamEvent]:
-        """Run streaming completion; yield StreamEvent items."""
+    def stream(
+        self,
+        instructions: str,
+        messages: list[dict[str, str]],
+        model: Optional[str] = None,
+    ) -> Iterable[StreamEvent]:
+        """Run streaming completion; yield StreamEvent items.
+
+        If model is provided it overrides the adapter's default model.
+        """
         ...
 
 
@@ -109,19 +125,45 @@ class PromptRepo(Protocol):
     """Port for prompt persistence."""
 
     def get_prompt(self, slug: str) -> Optional[dict]:
-        """Return prompt dict {slug, name, system_prompt} or None if not found."""
+        """Return prompt dict {slug, name, system_prompt, model} or None if not found."""
         ...
 
     def get_prompt_or_default(self, slug: Optional[str], default_slug: str) -> dict:
-        """Return prompt for slug, falling back to default_slug. Raises ValueError if neither found."""
+        """Return prompt for slug, falling back to default_slug. Raises ValueError if neither found.
+
+        Returned dict includes {slug, name, system_prompt, model} where model may be None.
+        """
         ...
 
-    def list_prompts(self) -> list[dict]:
-        """Return all prompts as [{slug, name, system_prompt}] ordered by slug."""
+    def list_prompts(self, include_disabled: bool = False) -> list[dict]:
+        """Return prompts as [{slug, name, system_prompt, model, is_active}] ordered by slug.
+
+        When include_disabled=False (default), only active prompts are returned.
+        """
         ...
 
-    def upsert(self, slug: str, name: str, system_prompt: str) -> None:
-        """Insert or update a prompt by slug."""
+    def upsert(self, slug: str, name: str, system_prompt: str, model: Optional[str] = None) -> None:
+        """Insert or update a prompt by slug. model is the preferred model slug (or None)."""
+        ...
+
+    def create(self, slug: str, name: str, system_prompt: str, model: Optional[str] = None) -> None:
+        """Insert a new prompt. Raises ValueError if slug already exists."""
+        ...
+
+    def update(self, slug: str, name: str, system_prompt: str, model: Optional[str] = None) -> bool:
+        """Update an existing prompt. Returns False if not found."""
+        ...
+
+    def set_active(self, slug: str, is_active: bool) -> bool:
+        """Set is_active flag. Returns False if prompt not found."""
+        ...
+
+    def delete(self, slug: str) -> bool:
+        """Hard-delete a prompt row. Returns False if not found."""
+        ...
+
+    def is_used_in_runs(self, slug: str) -> bool:
+        """Return True if the slug appears in any run record."""
         ...
 
 

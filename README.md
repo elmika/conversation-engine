@@ -24,19 +24,29 @@ To call the real conversation endpoints, the app needs an OpenAI API key. Tests 
 
 From the repo root. The image runs as a non-root user and uses a multi-stage build.
 
-**Build the image** (default: includes app + tests)
+A `Makefile` wraps the most common tasks — run `make help` to see them all.
+
+**Start both services (API + UI, hot-reload):**
 
 ```bash
-docker build -t conversation-engine .
+make up
+# API  → http://localhost:8000
+# UI   → http://localhost:3000
 ```
 
-Optional: build a slimmer production-only image (no pytest):
+**Build the images** (default: includes app + tests)
+
+```bash
+make build
+```
+
+Optional: build a slimmer production-only backend image (no pytest):
 
 ```bash
 docker build --target prod -t conversation-engine:prod .
 ```
 
-**Run the app** (with API key so conversation endpoints work)
+**Run the app standalone** (with API key so conversation endpoints work)
 
 ```bash
 docker run --rm -p 8000:8000 --env-file .env conversation-engine
@@ -44,13 +54,15 @@ docker run --rm -p 8000:8000 --env-file .env conversation-engine
 
 If you prefer not to use a file: `docker run --rm -p 8000:8000 -e OPENAI_API_KEY=sk-your-key conversation-engine`.
 
-- Health: http://127.0.0.1:8000/healthz  
-- API docs: http://127.0.0.1:8000/docs  
+- Health: http://127.0.0.1:8000/healthz
+- API docs: http://127.0.0.1:8000/docs
 
 **Run tests** (no API key needed; use default image, not `conversation-engine:prod`)
 
 ```bash
-docker run --rm conversation-engine pytest -v
+make test          # backend + frontend
+make test-backend  # backend only
+make test-frontend # frontend only
 ```
 
 Test gate: fix any failing tests before considering a change complete.

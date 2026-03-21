@@ -16,6 +16,7 @@ class ConversationRequest(BaseModel):
     """Request body for creating or extending a conversation."""
 
     prompt_slug: Optional[str] = None
+    model_slug: Optional[str] = None
     messages: list[ConversationMessage] = Field(..., min_length=1)
 
 
@@ -51,6 +52,7 @@ class ConversationRewindRequest(BaseModel):
     message_id: int
     content: str = Field(..., min_length=1)
     prompt_slug: Optional[str] = None
+    model_slug: Optional[str] = None
 
 
 class ConversationListResponse(BaseModel):
@@ -76,7 +78,32 @@ class PromptSchema(BaseModel):
     slug: str
     name: str
     system_prompt: str
+    model: Optional[str] = None
+    is_active: bool = True
+
+
+class PromptCreateRequest(BaseModel):
+    slug: str = Field(..., pattern=r"^[a-z0-9][a-z0-9\-_]*$", max_length=128)
+    name: str = Field(..., min_length=1, max_length=256)
+    system_prompt: str = Field(..., min_length=1)
+    model: Optional[str] = None
+
+
+class PromptUpdateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+    system_prompt: str = Field(..., min_length=1)
+    model: Optional[str] = None
 
 
 class PromptsResponse(BaseModel):
     prompts: list[PromptSchema]
+
+
+class ModelSchema(BaseModel):
+    slug: str
+    name: str
+    description: str
+
+
+class ModelsResponse(BaseModel):
+    models: list[ModelSchema]
