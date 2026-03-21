@@ -44,13 +44,17 @@ def init_engine(database_url: str) -> None:
     )
     SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
-    # Inline migration: add is_active column to existing prompts tables.
-    try:
-        with _engine.connect() as conn:
-            conn.execute(text("ALTER TABLE prompts ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
-            conn.commit()
-    except Exception:
-        pass  # column already exists or table doesn't exist yet (create_all will add it)
+    # Inline migrations: add new columns to existing prompts tables.
+    for migration_sql in [
+        "ALTER TABLE prompts ADD COLUMN model VARCHAR(128)",
+        "ALTER TABLE prompts ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1",
+    ]:
+        try:
+            with _engine.connect() as conn:
+                conn.execute(text(migration_sql))
+                conn.commit()
+        except Exception:
+            pass  # column already exists or table doesn't exist yet (create_all will add it)
 
 
 def get_engine() -> Engine:
