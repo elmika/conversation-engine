@@ -120,11 +120,16 @@ async def create_conversation_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         try:
+            def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
+                try:
+                    return service.create_and_stream(
+                        messages, body.prompt_slug, body.model_slug
+                    )
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
-                service.create_and_stream,
-                messages,
-                body.prompt_slug,
-                body.model_slug,
+                _stream_setup
             )
 
             meta = {
