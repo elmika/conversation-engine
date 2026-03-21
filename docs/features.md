@@ -116,13 +116,35 @@ Each assistant can declare a preferred OpenAI model via a `model:` field in its 
 ## 6. Model Selection
 
 ### 6.1 Model registry
-A static registry of supported OpenAI models is served via `GET /models`. Each entry has a `slug` (the OpenAI model ID) and a human-readable `name`.
+A static registry of 14 supported OpenAI models is served via `GET /models`. Each entry has a `slug` (the OpenAI model ID), a human-readable `name`, and a `description`. The default model is `gpt-4.1`.
 
-### 6.2 Per-request model override
+**Available models:**
+- **GPT-4.1** (`gpt-4.1`) — Smartest non-reasoning model
+- **GPT-5** (`gpt-5`) — Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
+- **GPT-5 mini** (`gpt-5-mini`) — Near-frontier intelligence for cost sensitive, low latency, high volume workloads
+- **GPT-5 nano** (`gpt-5-nano`) — Fastest, most cost-efficient version of GPT-5
+- **GPT-5 Codex** (`gpt-5-codex`) — A version of GPT-5 optimized for agentic coding in Codex
+- **GPT-5.1 Codex** (`gpt-5.1-codex`) — A version of GPT-5.1 optimized for agentic coding in Codex
+- **GPT-5.1 Codex Max** (`gpt-5.1-codex-max`) — A version of GPT-5.1-codex optimized for long running tasks
+- **GPT-5.1 Codex mini** (`gpt-5.1-codex-mini`) — Smaller, more cost-effective, less-capable version of GPT-5.1-Codex
+- **GPT-5.2 Codex** (`gpt-5.2-codex`) — Our most intelligent coding model optimized for long-horizon, agentic coding tasks
+- **GPT-5.3 Codex** (`gpt-5.3-codex`) — The most capable agentic coding model to date
+- **GPT-5.4** (`gpt-5.4`) — Best intelligence at scale for agentic, coding, and professional workflows
+- **GPT-5.4 pro** (`gpt-5.4-pro`) — Version of GPT-5.4 that produces smarter and more precise responses
+- **GPT-5.4 mini** (`gpt-5.4-mini`) — Our strongest mini model yet for coding, computer use, and subagents
+- **GPT-5.4 nano** (`gpt-5.4-nano`) — Our cheapest GPT-5.4-class model for simple high-volume tasks
+
+### 6.2 Model selector UI
+A **dropdown** in the chat header (next to the assistant selector) lets the user pick a model for their messages. The first option is **Default (auto)**, which defers to the prompt's preferred model or the global default (`gpt-4.1`). Model descriptions are shown as tooltips on each option.
+
+### 6.3 Model badge
+After each streaming response, the timings badge shows the model that was actually used (e.g., `gpt-5.4-mini · TTFB: 120ms · Total: 800ms`). This reflects the resolved model from the backend, which may differ from the selected option if a prompt overrides it.
+
+### 6.4 Per-request model override
 API callers can pass `model_slug` in any conversation request body to override the model for that specific request. Resolution priority (highest → lowest):
 1. `model_slug` in the request body
 2. `model` field on the selected prompt
-3. Global `settings.openai_model` (default)
+3. Global `settings.openai_model` (default: `gpt-4.1`)
 
 Passing an unknown `model_slug` returns a 400 error.
 

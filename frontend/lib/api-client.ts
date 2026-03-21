@@ -13,6 +13,7 @@ import type {
   ConversationRequest,
   ConversationResponse,
   MessagesResponse,
+  ModelsResponse,
   PromptsResponse,
 } from "./types";
 
@@ -75,6 +76,11 @@ export async function fetchHealth(): Promise<{ status: string }> {
 
 export async function fetchPrompts(): Promise<PromptsResponse> {
   const res = await fetch("/api/prompts");
+  return handleResponse(res);
+}
+
+export async function fetchModels(): Promise<ModelsResponse> {
+  const res = await fetch("/api/models");
   return handleResponse(res);
 }
 

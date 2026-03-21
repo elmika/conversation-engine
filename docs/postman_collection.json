@@ -128,7 +128,7 @@
               "status": "OK",
               "code": 200,
               "header": [{"key": "Content-Type", "value": "application/json"}],
-              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Hello Mika! How can I help you today?\",\n  \"model\": \"gpt-4.1-mini\",\n  \"timings\": {\n    \"ttfb_ms\": 320,\n    \"total_ms\": 980\n  }\n}",
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Hello Mika! How can I help you today?\",\n  \"model\": \"gpt-4.1\",\n  \"timings\": {\n    \"ttfb_ms\": 320,\n    \"total_ms\": 980\n  }\n}",
               "_postman_previewlanguage": "json"
             },
             {
@@ -167,7 +167,7 @@
               "status": "OK",
               "code": 200,
               "header": [{"key": "Content-Type", "value": "text/event-stream"}],
-              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1-mini\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Once upon\"}\n\nevent: chunk\ndata: {\"delta\": \" a time...\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Once upon a time...\", \"model\": \"gpt-4.1-mini\", \"timings\": {\"ttfb_ms\": 120, \"total_ms\": 800}}\n\n",
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Once upon\"}\n\nevent: chunk\ndata: {\"delta\": \" a time...\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Once upon a time...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 120, \"total_ms\": 800}}\n\n",
               "_postman_previewlanguage": "text"
             }
           ]
@@ -195,7 +195,7 @@
               "status": "OK",
               "code": 200,
               "header": [{"key": "Content-Type", "value": "application/json"}],
-              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Your name is Mika.\",\n  \"model\": \"gpt-4.1-mini\",\n  \"timings\": {\n    \"ttfb_ms\": 290,\n    \"total_ms\": 740\n  }\n}",
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Your name is Mika.\",\n  \"model\": \"gpt-4.1\",\n  \"timings\": {\n    \"ttfb_ms\": 290,\n    \"total_ms\": 740\n  }\n}",
               "_postman_previewlanguage": "json"
             },
             {
@@ -234,7 +234,7 @@
               "status": "OK",
               "code": 200,
               "header": [{"key": "Content-Type", "value": "text/event-stream"}],
-              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1-mini\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"The hero\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"The hero continued on...\", \"model\": \"gpt-4.1-mini\", \"timings\": {\"ttfb_ms\": 115, \"total_ms\": 620}}\n\n",
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"The hero\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"The hero continued on...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 115, \"total_ms\": 620}}\n\n",
               "_postman_previewlanguage": "text"
             }
           ]
@@ -310,7 +310,7 @@
               "status": "OK",
               "code": 200,
               "header": [{"key": "Content-Type", "value": "application/json"}],
-              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1-mini\",\n      \"name\": \"GPT-4.1 Mini\"\n    },\n    {\n      \"slug\": \"gpt-4o\",\n      \"name\": \"GPT-4o\"\n    },\n    {\n      \"slug\": \"gpt-4o-mini\",\n      \"name\": \"GPT-4o Mini\"\n    }\n  ]\n}",
+              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5\",\n      \"name\": \"GPT-5\",\n      \"description\": \"Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort\"\n    },\n    {\n      \"slug\": \"gpt-5-mini\",\n      \"name\": \"GPT-5 mini\",\n      \"description\": \"Near-frontier intelligence for cost sensitive, low latency, high volume workloads\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
             }
           ]

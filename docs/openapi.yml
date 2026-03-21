@@ -141,7 +141,7 @@ paths:
               example:
                 conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                 assistant_message: "Hello Mika! How can I help you today?"
-                model: gpt-4.1-mini
+                model: gpt-4.1
                 timings:
                   ttfb_ms: 320
                   total_ms: 980
@@ -289,12 +289,15 @@ paths:
                 $ref: "#/components/schemas/ModelsResponse"
               example:
                 models:
-                  - slug: gpt-4.1-mini
-                    name: GPT-4.1 Mini
-                  - slug: gpt-4o
-                    name: GPT-4o
-                  - slug: gpt-4o-mini
-                    name: GPT-4o Mini
+                  - slug: gpt-4.1
+                    name: GPT-4.1
+                    description: Smartest non-reasoning model
+                  - slug: gpt-5
+                    name: GPT-5
+                    description: Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
+                  - slug: gpt-5.4-mini
+                    name: GPT-5.4 mini
+                    description: Our strongest mini model yet for coding, computer use, and subagents
 
   /prompts:
     get:
@@ -400,7 +403,7 @@ components:
         model:
           type: string
           description: OpenAI model that generated the reply
-          example: gpt-4.1-mini
+          example: gpt-4.1
         timings:
           $ref: "#/components/schemas/Timings"
 
@@ -484,16 +487,20 @@ components:
 
     Model:
       type: object
-      required: [slug, name]
+      required: [slug, name, description]
       properties:
         slug:
           type: string
           description: OpenAI model ID (use as `model_slug` in requests)
-          example: gpt-4o
+          example: gpt-4.1
         name:
           type: string
           description: Human-readable model name
-          example: GPT-4o
+          example: GPT-4.1
+        description:
+          type: string
+          description: Short description of the model's capabilities and intended use
+          example: Smartest non-reasoning model
 
     ModelsResponse:
       type: object
@@ -523,7 +530,7 @@ components:
           format: uuid
         model:
           type: string
-          example: gpt-4.1-mini
+          example: gpt-4.1
         prompt_slug:
           type: string
           example: default

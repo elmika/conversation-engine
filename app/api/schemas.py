@@ -88,6 +88,7 @@ class PromptsResponse(BaseModel):
 class ModelSchema(BaseModel):
     slug: str
     name: str
+    description: str
 
 
 class ModelsResponse(BaseModel):

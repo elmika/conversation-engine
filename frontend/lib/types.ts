@@ -16,6 +16,7 @@ export interface ConversationMessage {
 
 export interface ConversationRequest {
   prompt_slug?: string | null;
+  model_slug?: string | null;
   messages: ConversationMessage[];
 }
 
@@ -70,6 +71,16 @@ export interface Prompt {
 
 export interface PromptsResponse {
   prompts: Prompt[];
+}
+
+export interface ModelSchema {
+  slug: string;
+  name: string;
+  description: string;
+}
+
+export interface ModelsResponse {
+  models: ModelSchema[];
 }
 
 // ---------------------------------------------------------------------------
