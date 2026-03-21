@@ -30,6 +30,7 @@ def test_upsert_and_get_prompt(session) -> None:
         "name": "Default Assistant",
         "system_prompt": "You are helpful.",
         "model": None,
+        "is_active": True,
     }
 
 

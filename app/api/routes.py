@@ -19,7 +19,9 @@ from app.api.schemas import (
     MessagesResponse,
     ModelSchema,
     ModelsResponse,
+    PromptCreateRequest,
     PromptSchema,
+    PromptUpdateRequest,
     PromptsResponse,
     TimingsSchema,
 )
@@ -575,17 +577,126 @@ async def get_conversation_messages(
 
 @router.get("/prompts", response_model=PromptsResponse)
 async def list_prompts(
+    all: bool = False,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
 ) -> PromptsResponse:
-    """List all registered prompts from the database."""
-    rows = await asyncio.to_thread(prompt_repo.list_prompts)
+    """List prompts. By default returns only active prompts; pass ?all=true to include disabled."""
+    rows = await asyncio.to_thread(prompt_repo.list_prompts, all)
     prompts = [
         PromptSchema(
             slug=r["slug"],
             name=r["name"],
             system_prompt=r["system_prompt"],
             model=r.get("model"),
+            is_active=r.get("is_active", True),
         )
         for r in rows
     ]
     return PromptsResponse(prompts=prompts)
+
+
+@router.post("/prompts", response_model=PromptSchema, status_code=201)
+async def create_prompt(
+    body: PromptCreateRequest,
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+    db=Depends(get_session),
+) -> PromptSchema:
+    """Create a new prompt persona."""
+    try:
+        await asyncio.to_thread(
+            prompt_repo.create, body.slug, body.name, body.system_prompt, body.model
+        )
+        await asyncio.to_thread(db.commit)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return PromptSchema(
+        slug=body.slug,
+        name=body.name,
+        system_prompt=body.system_prompt,
+        model=body.model,
+        is_active=True,
+    )
+
+
+@router.put("/prompts/{slug}", response_model=PromptSchema)
+async def update_prompt(
+    slug: str,
+    body: PromptUpdateRequest,
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+    db=Depends(get_session),
+) -> PromptSchema:
+    """Update name, system_prompt, and/or model of an existing prompt."""
+    updated = await asyncio.to_thread(
+        prompt_repo.update, slug, body.name, body.system_prompt, body.model
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Prompt '{slug}' not found")
+    await asyncio.to_thread(db.commit)
+    row = await asyncio.to_thread(prompt_repo.get_prompt, slug)
+    return PromptSchema(
+        slug=row["slug"],
+        name=row["name"],
+        system_prompt=row["system_prompt"],
+        model=row.get("model"),
+        is_active=row.get("is_active", True),
+    )
+
+
+@router.patch("/prompts/{slug}/disable", response_model=PromptSchema)
+async def disable_prompt(
+    slug: str,
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+    db=Depends(get_session),
+) -> PromptSchema:
+    """Soft-delete a prompt by setting is_active=False."""
+    found = await asyncio.to_thread(prompt_repo.set_active, slug, False)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Prompt '{slug}' not found")
+    await asyncio.to_thread(db.commit)
+    row = await asyncio.to_thread(prompt_repo.get_prompt, slug)
+    return PromptSchema(
+        slug=row["slug"],
+        name=row["name"],
+        system_prompt=row["system_prompt"],
+        model=row.get("model"),
+        is_active=row.get("is_active", False),
+    )
+
+
+@router.patch("/prompts/{slug}/enable", response_model=PromptSchema)
+async def enable_prompt(
+    slug: str,
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+    db=Depends(get_session),
+) -> PromptSchema:
+    """Re-enable a disabled prompt by setting is_active=True."""
+    found = await asyncio.to_thread(prompt_repo.set_active, slug, True)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Prompt '{slug}' not found")
+    await asyncio.to_thread(db.commit)
+    row = await asyncio.to_thread(prompt_repo.get_prompt, slug)
+    return PromptSchema(
+        slug=row["slug"],
+        name=row["name"],
+        system_prompt=row["system_prompt"],
+        model=row.get("model"),
+        is_active=row.get("is_active", True),
+    )
+
+
+@router.delete("/prompts/{slug}", status_code=204)
+async def delete_prompt(
+    slug: str,
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+    db=Depends(get_session),
+) -> None:
+    """Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation."""
+    used = await asyncio.to_thread(prompt_repo.is_used_in_runs, slug)
+    if used:
+        raise HTTPException(
+            status_code=409, detail="Prompt has been used in conversations"
+        )
+    deleted = await asyncio.to_thread(prompt_repo.delete, slug)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Prompt '{slug}' not found")
+    await asyncio.to_thread(db.commit)

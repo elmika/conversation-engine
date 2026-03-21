@@ -135,12 +135,35 @@ class PromptRepo(Protocol):
         """
         ...
 
-    def list_prompts(self) -> list[dict]:
-        """Return all prompts as [{slug, name, system_prompt, model}] ordered by slug."""
+    def list_prompts(self, include_disabled: bool = False) -> list[dict]:
+        """Return prompts as [{slug, name, system_prompt, model, is_active}] ordered by slug.
+
+        When include_disabled=False (default), only active prompts are returned.
+        """
         ...
 
     def upsert(self, slug: str, name: str, system_prompt: str, model: Optional[str] = None) -> None:
         """Insert or update a prompt by slug. model is the preferred model slug (or None)."""
+        ...
+
+    def create(self, slug: str, name: str, system_prompt: str, model: Optional[str] = None) -> None:
+        """Insert a new prompt. Raises ValueError if slug already exists."""
+        ...
+
+    def update(self, slug: str, name: str, system_prompt: str, model: Optional[str] = None) -> bool:
+        """Update an existing prompt. Returns False if not found."""
+        ...
+
+    def set_active(self, slug: str, is_active: bool) -> bool:
+        """Set is_active flag. Returns False if prompt not found."""
+        ...
+
+    def delete(self, slug: str) -> bool:
+        """Hard-delete a prompt row. Returns False if not found."""
+        ...
+
+    def is_used_in_runs(self, slug: str) -> bool:
+        """Return True if the slug appears in any run record."""
         ...
 
 

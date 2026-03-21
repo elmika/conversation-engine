@@ -14,6 +14,9 @@ import type {
   ConversationResponse,
   MessagesResponse,
   ModelsResponse,
+  Prompt,
+  PromptCreateRequest,
+  PromptUpdateRequest,
   PromptsResponse,
 } from "./types";
 
@@ -77,6 +80,44 @@ export async function fetchHealth(): Promise<{ status: string }> {
 export async function fetchPrompts(): Promise<PromptsResponse> {
   const res = await fetch("/api/prompts");
   return handleResponse(res);
+}
+
+export async function fetchAllPrompts(): Promise<PromptsResponse> {
+  const res = await fetch("/api/prompts?all=true");
+  return handleResponse(res);
+}
+
+export async function createPrompt(body: PromptCreateRequest): Promise<Prompt> {
+  const res = await fetch("/api/prompts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return handleResponse(res);
+}
+
+export async function updatePrompt(slug: string, body: PromptUpdateRequest): Promise<Prompt> {
+  const res = await fetch(`/api/prompts/${slug}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return handleResponse(res);
+}
+
+export async function disablePrompt(slug: string): Promise<void> {
+  const res = await fetch(`/api/prompts/${slug}/disable`, { method: "PATCH" });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
+}
+
+export async function enablePrompt(slug: string): Promise<void> {
+  const res = await fetch(`/api/prompts/${slug}/enable`, { method: "PATCH" });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
+}
+
+export async function deletePrompt(slug: string): Promise<void> {
+  const res = await fetch(`/api/prompts/${slug}`, { method: "DELETE" });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
 }
 
 export async function fetchModels(): Promise<ModelsResponse> {

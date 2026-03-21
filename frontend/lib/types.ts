@@ -67,6 +67,21 @@ export interface Prompt {
   slug: string;
   name: string;
   system_prompt: string;
+  model?: string | null;
+  is_active: boolean;
+}
+
+export interface PromptCreateRequest {
+  slug: string;
+  name: string;
+  system_prompt: string;
+  model?: string | null;
+}
+
+export interface PromptUpdateRequest {
+  name: string;
+  system_prompt: string;
+  model?: string | null;
 }
 
 export interface PromptsResponse {

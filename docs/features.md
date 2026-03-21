@@ -111,6 +111,9 @@ Prompts are stored in the database and served via `GET /prompts`. New assistants
 ### 5.4 Per-prompt model preference
 Each assistant can declare a preferred OpenAI model via a `model:` field in its `.md` frontmatter (e.g. `model: gpt-4o-mini`). When set, that model is used for all conversations with that assistant unless overridden per-request.
 
+### 5.5 Active / disabled state
+Prompts have an `is_active` flag. Disabled prompts are soft-deleted: they no longer appear in the conversation selector or in `GET /prompts`, but their data is preserved so existing conversation history remains intact. Disabled prompts can be re-enabled at any time. Prompts that have never been used in a conversation can be fully hard-deleted.
+
 ---
 
 ## 6. Model Selection
@@ -152,8 +155,23 @@ Passing an unknown `model_slug` returns a 400 error.
 
 ## 7. Admin
 
-### 6.1 Admin panel
-A dedicated `/admin` section exists for managing prompts (system-level configuration). Currently read-only; full CRUD for prompts is a planned addition.
+### 7.1 Admin panel
+A dedicated `/admin` section provides full management of prompt personas.
+
+### 7.2 Create prompt
+A **New Prompt** button (top-right) opens a dialog with fields for slug, name, system prompt, and optional model override. The slug must be lowercase alphanumeric with hyphens/underscores. Duplicate slugs are rejected with an inline error.
+
+### 7.3 Edit prompt
+An **Edit** button (pencil icon) on each active prompt card opens the same dialog pre-filled. The slug is read-only when editing. Changes take effect immediately.
+
+### 7.4 Disable / enable prompt
+An **eye-off** button on each active card soft-deletes the prompt (sets `is_active=false`). Disabled cards are grayed out with a **Disabled** badge and show an **eye** button to re-enable. Disabled prompts no longer appear in the conversation selector.
+
+### 7.5 Show disabled prompts
+A **Show disabled** checkbox at the top of the admin panel toggles display of disabled prompt cards alongside active ones.
+
+### 7.6 Delete prompt
+A **trash** icon on each card opens a confirmation dialog to permanently delete the prompt. If the prompt has been used in any conversation, deletion is blocked with an error message (use Disable instead).
 
 ---
 

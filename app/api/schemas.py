@@ -79,6 +79,20 @@ class PromptSchema(BaseModel):
     name: str
     system_prompt: str
     model: Optional[str] = None
+    is_active: bool = True
+
+
+class PromptCreateRequest(BaseModel):
+    slug: str = Field(..., pattern=r"^[a-z0-9][a-z0-9\-_]*$", max_length=128)
+    name: str = Field(..., min_length=1, max_length=256)
+    system_prompt: str = Field(..., min_length=1)
+    model: Optional[str] = None
+
+
+class PromptUpdateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+    system_prompt: str = Field(..., min_length=1)
+    model: Optional[str] = None
 
 
 class PromptsResponse(BaseModel):
