@@ -9,20 +9,29 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clipboard, Copy, Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
 import type { Prompt } from "@/lib/types";
 
 interface PromptCardProps {
   prompt: Prompt;
   onEdit?: (prompt: Prompt) => void;
+  onDuplicate?: (prompt: Prompt) => void;
   onDisable?: (slug: string) => void;
   onEnable?: (slug: string) => void;
   onDelete?: (prompt: Prompt) => void;
 }
 
-export function PromptCard({ prompt, onEdit, onDisable, onEnable, onDelete }: PromptCardProps) {
+export function PromptCard({ prompt, onEdit, onDuplicate, onDisable, onEnable, onDelete }: PromptCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const isDisabled = !prompt.is_active;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(prompt.system_prompt).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
     <Card className={isDisabled ? "opacity-60" : undefined}>
@@ -35,6 +44,11 @@ export function PromptCard({ prompt, onEdit, onDisable, onEnable, onDelete }: Pr
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {prompt.model && (
+              <Badge variant="secondary" className="font-mono text-xs">
+                {prompt.model}
+              </Badge>
+            )}
             <Badge variant="outline" className="font-mono text-xs">
               {prompt.slug}
             </Badge>
@@ -47,6 +61,17 @@ export function PromptCard({ prompt, onEdit, onDisable, onEnable, onDelete }: Pr
                 title="Edit prompt"
               >
                 <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {onDuplicate && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => onDuplicate(prompt)}
+                title="Duplicate prompt"
+              >
+                <Copy className="h-3.5 w-3.5" />
               </Button>
             )}
             {isDisabled && onEnable ? (
@@ -85,24 +110,45 @@ export function PromptCard({ prompt, onEdit, onDisable, onEnable, onDelete }: Pr
         </div>
       </CardHeader>
       <CardContent>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mb-2 h-auto p-0 text-xs text-muted-foreground"
-          onClick={() => setExpanded((e) => !e)}
-        >
-          {expanded ? (
-            <>
-              <ChevronUp className="mr-1 h-3 w-3" />
-              Hide system prompt
-            </>
-          ) : (
-            <>
-              <ChevronDown className="mr-1 h-3 w-3" />
-              Show system prompt
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2 mb-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto p-0 text-xs text-muted-foreground"
+            onClick={() => setExpanded((e) => !e)}
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="mr-1 h-3 w-3" />
+                Hide system prompt
+              </>
+            ) : (
+              <>
+                <ChevronDown className="mr-1 h-3 w-3" />
+                Show system prompt
+              </>
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto p-0 text-xs text-muted-foreground"
+            onClick={handleCopy}
+            title="Copy system prompt to clipboard"
+          >
+            {copied ? (
+              <>
+                <Check className="mr-1 h-3 w-3 text-green-600" />
+                <span className="text-green-600">Copied</span>
+              </>
+            ) : (
+              <>
+                <Clipboard className="mr-1 h-3 w-3" />
+                Copy
+              </>
+            )}
+          </Button>
+        </div>
         {expanded && (
           <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-relaxed">
             {prompt.system_prompt}

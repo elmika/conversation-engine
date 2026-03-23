@@ -14,6 +14,7 @@ export default function AdminPage() {
   const [showAll, setShowAll] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editPrompt, setEditPrompt] = useState<Prompt | null>(null);
+  const [duplicateSource, setDuplicateSource] = useState<Prompt | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Prompt | null>(null);
 
   const activeResult = usePrompts();
@@ -30,12 +31,22 @@ export default function AdminPage() {
 
   function handleNewPrompt() {
     setEditPrompt(null);
+    setDuplicateSource(null);
+    setDialogOpen(true);
+  }
+
+  function handleDuplicate(prompt: Prompt) {
+    setEditPrompt(null);
+    setDuplicateSource(prompt);
     setDialogOpen(true);
   }
 
   function handleDialogClose(open: boolean) {
     setDialogOpen(open);
-    if (!open) setEditPrompt(null);
+    if (!open) {
+      setEditPrompt(null);
+      setDuplicateSource(null);
+    }
   }
 
   return (
@@ -72,6 +83,7 @@ export default function AdminPage() {
                 key={p.slug}
                 prompt={p}
                 onEdit={handleEdit}
+                onDuplicate={handleDuplicate}
                 onDisable={(slug) => disableMutation.mutate(slug)}
                 onEnable={(slug) => enableMutation.mutate(slug)}
                 onDelete={setDeleteTarget}
@@ -90,6 +102,12 @@ export default function AdminPage() {
         open={dialogOpen}
         onOpenChange={handleDialogClose}
         prompt={editPrompt}
+        initialValues={duplicateSource ? {
+          slug: `${duplicateSource.slug}-copy`,
+          name: `${duplicateSource.name} (copy)`,
+          system_prompt: duplicateSource.system_prompt,
+          model: duplicateSource.model,
+        } : undefined}
       />
 
       {deleteTarget && (
