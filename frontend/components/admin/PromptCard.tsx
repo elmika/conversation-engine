@@ -9,22 +9,25 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Check, ChevronDown, ChevronUp, Clipboard, Copy, Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clipboard, Copy, Eye, EyeOff, Loader2, Pencil, Trash2 } from "lucide-react";
+import { useDisablePrompt, useEnablePrompt } from "@/hooks/usePrompts";
 import type { Prompt } from "@/lib/types";
 
 interface PromptCardProps {
   prompt: Prompt;
   onEdit?: (prompt: Prompt) => void;
   onDuplicate?: (prompt: Prompt) => void;
-  onDisable?: (slug: string) => void;
-  onEnable?: (slug: string) => void;
   onDelete?: (prompt: Prompt) => void;
 }
 
-export function PromptCard({ prompt, onEdit, onDuplicate, onDisable, onEnable, onDelete }: PromptCardProps) {
+export function PromptCard({ prompt, onEdit, onDuplicate, onDelete }: PromptCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const isDisabled = !prompt.is_active;
+
+  const disableMutation = useDisablePrompt();
+  const enableMutation = useEnablePrompt();
+  const isToggling = disableMutation.isPending || enableMutation.isPending;
 
   function handleCopy() {
     navigator.clipboard.writeText(prompt.system_prompt).then(() => {
@@ -74,27 +77,26 @@ export function PromptCard({ prompt, onEdit, onDuplicate, onDisable, onEnable, o
                 <Copy className="h-3.5 w-3.5" />
               </Button>
             )}
-            {isDisabled && onEnable ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => onEnable(prompt.slug)}
-                title="Enable prompt"
-              >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={isToggling}
+              onClick={() =>
+                isDisabled
+                  ? enableMutation.mutate(prompt.slug)
+                  : disableMutation.mutate(prompt.slug)
+              }
+              title={isDisabled ? "Enable prompt" : "Disable prompt"}
+            >
+              {isToggling ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : isDisabled ? (
                 <Eye className="h-3.5 w-3.5" />
-              </Button>
-            ) : onDisable ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => onDisable(prompt.slug)}
-                title="Disable prompt"
-              >
+              ) : (
                 <EyeOff className="h-3.5 w-3.5" />
-              </Button>
-            ) : null}
+              )}
+            </Button>
             {onDelete && (
               <Button
                 variant="ghost"

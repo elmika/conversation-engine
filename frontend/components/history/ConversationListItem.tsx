@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,8 +34,8 @@ export function ConversationListItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const { mutate: rename } = useRenameConversation();
-  const { mutate: remove } = useDeleteConversation();
+  const { mutateAsync: rename, isPending: isRenaming } = useRenameConversation();
+  const { mutateAsync: remove, isPending: isRemoving } = useDeleteConversation();
 
   function startEditing(e: React.MouseEvent) {
     e.preventDefault();
@@ -45,10 +45,10 @@ export function ConversationListItem({
     setTimeout(() => inputRef.current?.select(), 0);
   }
 
-  function commit() {
+  async function commit() {
     const trimmed = draft.trim();
     if (trimmed && trimmed !== conversation.name) {
-      rename({ id: conversation.id, name: trimmed });
+      await rename({ id: conversation.id, name: trimmed });
     }
     setEditing(false);
   }
@@ -96,12 +96,15 @@ export function ConversationListItem({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => remove(conversation.id)}
+                disabled={isRemoving}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                Delete
+                {isRemoving ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deleting…</>
+                ) : "Delete"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -118,11 +121,12 @@ export function ConversationListItem({
       ref={inputRef}
       autoFocus
       value={draft}
+      disabled={isRenaming}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={onKeyDown}
       onClick={(e) => e.preventDefault()}
-      className="min-w-0 flex-1 rounded border border-input bg-background px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+      className="min-w-0 flex-1 rounded border border-input bg-background px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
     />
   ) : (
     <span className="min-w-0 flex-1 truncate font-medium" title={conversation.name || undefined}>

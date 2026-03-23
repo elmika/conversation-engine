@@ -7,7 +7,7 @@ import { PromptDialog } from "@/components/admin/PromptDialog";
 import { DeletePromptDialog } from "@/components/admin/DeletePromptDialog";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { usePrompts, useAllPrompts, useDisablePrompt, useEnablePrompt } from "@/hooks/usePrompts";
+import { usePrompts, useAllPrompts } from "@/hooks/usePrompts";
 import type { Prompt } from "@/lib/types";
 
 export default function AdminPage() {
@@ -20,9 +20,6 @@ export default function AdminPage() {
   const activeResult = usePrompts();
   const allResult = useAllPrompts();
   const { data, isLoading, isError } = showAll ? allResult : activeResult;
-
-  const disableMutation = useDisablePrompt();
-  const enableMutation = useEnablePrompt();
 
   function handleEdit(prompt: Prompt) {
     setEditPrompt(prompt);
@@ -84,8 +81,6 @@ export default function AdminPage() {
                 prompt={p}
                 onEdit={handleEdit}
                 onDuplicate={handleDuplicate}
-                onDisable={(slug) => disableMutation.mutate(slug)}
-                onEnable={(slug) => enableMutation.mutate(slug)}
                 onDelete={setDeleteTarget}
               />
             ))}
