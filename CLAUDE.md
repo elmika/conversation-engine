@@ -120,6 +120,8 @@ frontend/
 - **State**: Zustand for UI state (active conversation, sidebar); TanStack Query for server state
 - **shadcn/ui**: Components live in `components/ui/` as source — edit freely, not managed by CLI
 
+**Mutation UX rule:** All user-triggered mutations (create, update, delete, enable, disable, rename…) must wait for the HTTP round-trip before updating the UI. Do **not** use optimistic updates. Instead, disable the triggering control and show a visible loading indicator (spinner or `isPending` prop) for the duration of the request. The UI updates only after the server confirms success. This prevents the confusion of controls that appear to do nothing, or records that disappear after a delay.
+
 ## Backend Architecture
 
 The app uses hexagonal (ports & adapters) architecture with four layers:
@@ -161,6 +163,8 @@ app/
 **History trimming:** Before each LLM call on existing conversations, `domain/history.py::trim_history()` caps history by `max_history_turns` and `max_history_tokens` (configured in `Settings`). This prevents context overflow and cost explosion.
 
 **Sync SQLAlchemy with async HTTP:** The HTTP layer is async, but SQLAlchemy uses a sync engine. DB work runs in worker threads via `asyncio.to_thread()` in routes to avoid blocking the event loop.
+
+**Synchronous endpoints by default:** Backend endpoints must be synchronous by default — they complete their work and return the final result (200/201/204) before closing the connection. Async patterns (`BackgroundTasks`, task queues, `202 Accepted` with deferred processing) are only acceptable when there is an explicit use case that requires it (e.g. SSE streaming for LLM responses). Never introduce an async workflow speculatively or for performance reasons alone — the added complexity must be justified by a concrete requirement.
 
 **SSE streaming shape:** Three event types — `meta` (conversation_id, model, slug), `chunk` (delta text), `done` (full message + timings, or `error` field on failure). Streaming routes always emit a terminal `done` event so clients never hang.
 
