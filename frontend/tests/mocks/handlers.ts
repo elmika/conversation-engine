@@ -8,8 +8,16 @@ const CONVERSATION_ID = "test-conv-id-1";
 
 const PROMPTS_FIXTURE = {
   prompts: [
-    { slug: "default", name: "Default", system_prompt: "You are a helpful assistant." },
-    { slug: "concise", name: "Concise", system_prompt: "Reply briefly." },
+    { slug: "default", name: "Default", system_prompt: "You are a helpful assistant.", model: null, is_active: true },
+    { slug: "concise", name: "Concise", system_prompt: "Reply briefly.", model: null, is_active: true },
+  ],
+};
+
+const ALL_PROMPTS_FIXTURE = {
+  prompts: [
+    { slug: "default", name: "Default", system_prompt: "You are a helpful assistant.", model: null, is_active: true },
+    { slug: "concise", name: "Concise", system_prompt: "Reply briefly.", model: null, is_active: true },
+    { slug: "disabled-prompt", name: "Disabled", system_prompt: "Disabled prompt.", model: null, is_active: false },
   ],
 };
 
@@ -63,8 +71,50 @@ export const handlers = [
   // Health
   http.get("/api/healthz", () => HttpResponse.json({ status: "ok" })),
 
-  // Prompts
-  http.get("/api/prompts", () => HttpResponse.json(PROMPTS_FIXTURE)),
+  // Models
+  http.get("/api/models", () => HttpResponse.json({
+    models: [
+      { slug: "gpt-4.1", name: "GPT-4.1", description: "Smartest non-reasoning model" },
+      { slug: "gpt-4.1-mini", name: "GPT-4.1 mini", description: "Affordable, intelligent, fast" },
+    ],
+  })),
+
+  // Prompts — GET (active only or all)
+  http.get("/api/prompts", ({ request }) => {
+    const url = new URL(request.url);
+    const all = url.searchParams.get("all") === "true";
+    return HttpResponse.json(all ? ALL_PROMPTS_FIXTURE : PROMPTS_FIXTURE);
+  }),
+
+  // Create prompt
+  http.post("/api/prompts", async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>;
+    return HttpResponse.json(
+      { slug: body.slug, name: body.name, system_prompt: body.system_prompt, model: body.model ?? null, is_active: true },
+      { status: 201 }
+    );
+  }),
+
+  // Update prompt
+  http.put("/api/prompts/:slug", async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>;
+    return HttpResponse.json(
+      { slug: params.slug, name: body.name, system_prompt: body.system_prompt, model: body.model ?? null, is_active: true }
+    );
+  }),
+
+  // Disable prompt
+  http.patch("/api/prompts/:slug/disable", ({ params }) =>
+    HttpResponse.json({ slug: params.slug, name: "Default", system_prompt: "You are a helpful assistant.", model: null, is_active: false })
+  ),
+
+  // Enable prompt
+  http.patch("/api/prompts/:slug/enable", ({ params }) =>
+    HttpResponse.json({ slug: params.slug, name: "Default", system_prompt: "You are a helpful assistant.", model: null, is_active: true })
+  ),
+
+  // Delete prompt
+  http.delete("/api/prompts/:slug", () => new HttpResponse(null, { status: 204 })),
 
   // Conversation list
   http.get("/api/conversations", () => HttpResponse.json(CONVERSATIONS_FIXTURE)),

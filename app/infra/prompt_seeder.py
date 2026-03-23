@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.domain.model_registry import validate_model_slug
 from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,15 @@ def seed_prompts_from_directory(directory: Path, session: Session) -> None:
         if not system_prompt:
             logger.warning("Skipping %s: body (system_prompt) is empty", path.name)
             continue
-        repo.upsert(slug=slug, name=name, system_prompt=system_prompt)
+        model: str | None = None
+        raw_model = meta.get("model")
+        if raw_model:
+            try:
+                model = validate_model_slug(raw_model)
+            except ValueError as exc:
+                logger.error("Skipping %s: invalid model slug — %s", path.name, exc)
+                continue
+        repo.upsert(slug=slug, name=name, system_prompt=system_prompt, model=model)
         seeded += 1
         logger.debug("Seeded prompt '%s' (%s)", slug, name)
 

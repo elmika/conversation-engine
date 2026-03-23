@@ -10,26 +10,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **No local Python or Node.js required** — everything runs in Docker.
 
+A `Makefile` wraps the most common tasks — run `make help` to list them. The raw Docker commands are documented below for cases that need more control (e.g. running a single test file).
+
 **Start both services (hot-reload):**
 ```bash
-docker compose up
+make up
 # API  → http://localhost:8000
 # UI   → http://localhost:3000
 ```
 
 **Backend tests:**
 ```bash
+make test-backend
+# or, for a single file/test:
 docker build -t conversation-engine .
-docker run --rm conversation-engine python -m pytest -v
 docker run --rm conversation-engine python -m pytest tests/test_chat.py          # single file
 docker run --rm conversation-engine python -m pytest tests/test_chat.py::test_name  # single test
 ```
 
 **Frontend tests:**
 ```bash
-docker compose run --rm frontend pnpm test                                        # all tests
+make test-frontend                                                                 # all tests
+make test-watch                                                                    # watch mode
 docker compose run --rm frontend pnpm test tests/lib/stream-parser.test.ts       # single file
-docker compose run --rm frontend pnpm test:watch                                  # watch mode
 ```
 
 **Add a frontend package:**
@@ -40,14 +43,13 @@ docker compose run --rm frontend pnpm add -D <package>
 
 **Backend lint:**
 ```bash
-docker run --rm conversation-engine python -m ruff check .
-docker run --rm conversation-engine python -m ruff format .
+make lint
+make format
 ```
 
 **Production build (both images):**
 ```bash
-docker build -t conversation-engine .
-docker build -t conversation-engine-frontend ./frontend
+make build
 ```
 
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.

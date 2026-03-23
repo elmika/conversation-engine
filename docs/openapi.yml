@@ -55,6 +55,8 @@ tags:
     description: Conversation CRUD and chat turns
   - name: prompts
     description: Prompt persona registry
+  - name: models
+    description: Available model registry
 
 paths:
 
@@ -139,7 +141,7 @@ paths:
               example:
                 conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                 assistant_message: "Hello Mika! How can I help you today?"
-                model: gpt-4.1-mini
+                model: gpt-4.1
                 timings:
                   ttfb_ms: 320
                   total_ms: 980
@@ -272,15 +274,50 @@ paths:
                     content: "Hello Mika! How can I help you today?"
                     created_at: "2026-03-02T11:00:01"
 
+  /models:
+    get:
+      operationId: listModels
+      summary: List models
+      description: Returns all models available in the static model registry. Use a `slug` value as `model_slug` in conversation requests.
+      tags: [models]
+      responses:
+        "200":
+          description: All registered models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelsResponse"
+              example:
+                models:
+                  - slug: gpt-4.1
+                    name: GPT-4.1
+                    description: Smartest non-reasoning model
+                  - slug: gpt-5
+                    name: GPT-5
+                    description: Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
+                  - slug: gpt-5.4-mini
+                    name: GPT-5.4 mini
+                    description: Our strongest mini model yet for coding, computer use, and subagents
+
   /prompts:
     get:
       operationId: listPrompts
       summary: List prompts
-      description: Returns all registered prompt personas from the in-code prompt registry (`domain/prompt_registry.py`).
+      description: |
+        Returns prompt personas from the database. By default returns only active prompts.
+        Pass `?all=true` to include disabled prompts (soft-deleted).
+        Each prompt may specify a preferred `model`; null means use the global default.
       tags: [prompts]
+      parameters:
+        - name: all
+          in: query
+          description: When true, include disabled (soft-deleted) prompts in the response
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          description: All registered prompts
+          description: Registered prompts
           content:
             application/json:
               schema:
@@ -290,9 +327,138 @@ paths:
                   - slug: default
                     name: Default Assistant
                     system_prompt: "You are a concise and precise assistant."
-                  - slug: conflict-coach-v1
-                    name: Conflict Coach
-                    system_prompt: "You help users reason calmly through workplace conflicts."
+                    model: null
+                    is_active: true
+                  - slug: typescript-mentor
+                    name: TypeScript Mentor
+                    system_prompt: "You teach TypeScript from first principles."
+                    model: gpt-4o-mini
+                    is_active: true
+
+    post:
+      operationId: createPrompt
+      summary: Create prompt
+      description: Create a new prompt persona. Returns 409 if the slug already exists.
+      tags: [prompts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptCreateRequest"
+            example:
+              slug: my-prompt
+              name: My Prompt
+              system_prompt: "You are a custom assistant."
+              model: null
+      responses:
+        "201":
+          description: Prompt created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+              example:
+                slug: my-prompt
+                name: My Prompt
+                system_prompt: "You are a custom assistant."
+                model: null
+                is_active: true
+        "409":
+          description: Slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: "Prompt 'my-prompt' already exists"
+
+  /prompts/{slug}:
+    put:
+      operationId: updatePrompt
+      summary: Update prompt
+      description: Update the name, system_prompt, and/or model of an existing prompt.
+      tags: [prompts]
+      parameters:
+        - $ref: "#/components/parameters/promptSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptUpdateRequest"
+            example:
+              name: Updated Prompt
+              system_prompt: "Updated instructions."
+              model: null
+      responses:
+        "200":
+          description: Updated prompt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      operationId: deletePrompt
+      summary: Delete prompt
+      description: |
+        Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation run
+        (use PATCH disable instead to soft-delete it).
+      tags: [prompts]
+      parameters:
+        - $ref: "#/components/parameters/promptSlug"
+      responses:
+        "204":
+          description: Deleted successfully
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Prompt has been used in conversations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: "Prompt has been used in conversations"
+
+  /prompts/{slug}/disable:
+    patch:
+      operationId: disablePrompt
+      summary: Disable prompt
+      description: Soft-delete a prompt by setting is_active=false. The prompt is hidden from GET /prompts but preserved in conversation history.
+      tags: [prompts]
+      parameters:
+        - $ref: "#/components/parameters/promptSlug"
+      responses:
+        "200":
+          description: Prompt disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /prompts/{slug}/enable:
+    patch:
+      operationId: enablePrompt
+      summary: Enable prompt
+      description: Re-enable a disabled prompt by setting is_active=true.
+      tags: [prompts]
+      parameters:
+        - $ref: "#/components/parameters/promptSlug"
+      responses:
+        "200":
+          description: Prompt enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
 components:
 
@@ -306,6 +472,15 @@ components:
         type: string
         format: uuid
       example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+    promptSlug:
+      name: slug
+      in: path
+      required: true
+      description: Slug identifier of the prompt
+      schema:
+        type: string
+      example: default
 
   schemas:
 
@@ -331,6 +506,14 @@ components:
             Slug of the prompt persona to use. Falls back to the `default_prompt_slug`
             setting if omitted, null, or unknown.
           example: default
+        model_slug:
+          type: string
+          nullable: true
+          description: |
+            Model override for this request. Resolution priority:
+            `model_slug` (request) → prompt's `model` field → `settings.openai_model`.
+            Must be a slug from `GET /models`. Returns 400 if unknown.
+          example: gpt-4o
         messages:
           type: array
           minItems: 1
@@ -362,7 +545,7 @@ components:
         model:
           type: string
           description: OpenAI model that generated the reply
-          example: gpt-4.1-mini
+          example: gpt-4.1
         timings:
           $ref: "#/components/schemas/Timings"
 
@@ -425,7 +608,7 @@ components:
 
     Prompt:
       type: object
-      required: [slug, name, system_prompt]
+      required: [slug, name, system_prompt, is_active]
       properties:
         slug:
           type: string
@@ -438,6 +621,84 @@ components:
         system_prompt:
           type: string
           description: The system instruction sent to the LLM
+        model:
+          type: string
+          nullable: true
+          description: Preferred model slug for this prompt. Null means use the global default.
+          example: gpt-4o-mini
+        is_active:
+          type: boolean
+          description: When false the prompt is soft-deleted and excluded from GET /prompts (unless ?all=true)
+          example: true
+
+    PromptCreateRequest:
+      type: object
+      required: [slug, name, system_prompt]
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9\\-_]*$"
+          maxLength: 128
+          description: Unique slug identifier (lowercase alphanumeric, hyphens, underscores)
+          example: my-prompt
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Human-readable display name
+          example: My Prompt
+        system_prompt:
+          type: string
+          minLength: 1
+          description: The system instruction sent to the LLM
+        model:
+          type: string
+          nullable: true
+          description: Preferred model slug. Null means use the global default.
+
+    PromptUpdateRequest:
+      type: object
+      required: [name, system_prompt]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Human-readable display name
+        system_prompt:
+          type: string
+          minLength: 1
+          description: The system instruction sent to the LLM
+        model:
+          type: string
+          nullable: true
+          description: Preferred model slug. Null means use the global default.
+
+    Model:
+      type: object
+      required: [slug, name, description]
+      properties:
+        slug:
+          type: string
+          description: OpenAI model ID (use as `model_slug` in requests)
+          example: gpt-4.1
+        name:
+          type: string
+          description: Human-readable model name
+          example: GPT-4.1
+        description:
+          type: string
+          description: Short description of the model's capabilities and intended use
+          example: Smartest non-reasoning model
+
+    ModelsResponse:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/Model"
 
     PromptsResponse:
       type: object
@@ -445,6 +706,7 @@ components:
       properties:
         prompts:
           type: array
+          description: List of prompts. Active-only by default; all when ?all=true.
           items:
             $ref: "#/components/schemas/Prompt"
 
@@ -458,7 +720,7 @@ components:
           format: uuid
         model:
           type: string
-          example: gpt-4.1-mini
+          example: gpt-4.1
         prompt_slug:
           type: string
           example: default

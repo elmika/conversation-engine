@@ -6,7 +6,7 @@ import os
 from collections.abc import Generator
 from typing import Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -43,6 +43,18 @@ def init_engine(database_url: str) -> None:
         database_url, future=True, connect_args=connect_args, poolclass=poolclass
     )
     SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
+
+    # Inline migrations: add new columns to existing prompts tables.
+    for migration_sql in [
+        "ALTER TABLE prompts ADD COLUMN model VARCHAR(128)",
+        "ALTER TABLE prompts ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1",
+    ]:
+        try:
+            with _engine.connect() as conn:
+                conn.execute(text(migration_sql))
+                conn.commit()
+        except Exception:
+            pass  # column already exists or table doesn't exist yet (create_all will add it)
 
 
 def get_engine() -> Engine:

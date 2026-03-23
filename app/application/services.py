@@ -6,6 +6,7 @@ from typing import Optional
 from app.application.ports import LLMPort, LLMResult, PromptRepo, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
+from app.domain.model_registry import validate_model_slug
 from app.domain.value_objects import ConversationId
 
 
@@ -24,6 +25,7 @@ class ConversationService:
         llm: LLMPort,
         prompt_repo: PromptRepo,
         default_prompt_slug: str,
+        default_model: str,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
     ) -> None:
@@ -31,18 +33,32 @@ class ConversationService:
         self._llm = llm
         self._prompt_repo = prompt_repo
         self._default_prompt_slug = default_prompt_slug
+        self._default_model = default_model
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
 
-    def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str]:
-        """Resolve prompt slug to (used_slug, system_prompt). Falls back to default."""
+    def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str]]:
+        """Resolve prompt slug to (used_slug, system_prompt, prompt_model). Falls back to default."""
         record = self._prompt_repo.get_prompt_or_default(slug, self._default_prompt_slug)
-        return record["slug"], record["system_prompt"]
+        return record["slug"], record["system_prompt"], record.get("model")
+
+    def _resolve_model(
+        self,
+        request_model: Optional[str],
+        prompt_model: Optional[str],
+    ) -> str:
+        """Resolve model from request override → prompt default → global default.
+
+        Raises ValueError if an explicitly provided slug is unknown.
+        """
+        slug = request_model or prompt_model or self._default_model
+        return validate_model_slug(slug)
 
     def create_and_chat(
         self,
         messages: list[dict[str, str]],
         prompt_slug: Optional[str] = None,
+        model_slug: Optional[str] = None,
     ) -> tuple[str, str, str, int, int]:
         """
         Create a new conversation and run the first turn (non-streaming).
@@ -50,7 +66,8 @@ class ConversationService:
         Transaction boundary: all operations commit atomically.
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         """
-        used_prompt_slug, instructions = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
 
         # Create conversation with domain-generated ID
         conv_id = ConversationId.generate()
@@ -65,11 +82,11 @@ class ConversationService:
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
-            # Call LLM
+            # Call LLM with resolved model
             conversation_id, assistant_message, model, ttfb_ms, total_ms = chat(
                 messages=messages,
                 instructions=instructions,
-                llm_complete=self._llm.complete,
+                llm_complete=lambda instr, msgs: self._llm.complete(instr, msgs, model=resolved_model),
                 conversation_id=conv_id,
             )
 
@@ -96,6 +113,7 @@ class ConversationService:
         conversation_id: str,
         messages: list[dict[str, str]],
         prompt_slug: Optional[str] = None,
+        model_slug: Optional[str] = None,
     ) -> tuple[str, str, str, int, int]:
         """
         Append a new turn to an existing conversation (non-streaming).
@@ -105,7 +123,8 @@ class ConversationService:
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
 
         with self._uow_factory() as uow:
             # Load conversation history
@@ -128,11 +147,11 @@ class ConversationService:
             # Combine trimmed history with new messages
             combined_messages = trim_result["messages"] + messages
 
-            # Call LLM with trimmed history
+            # Call LLM with trimmed history and resolved model
             conv_id, assistant_message, model, ttfb_ms, total_ms = chat(
                 messages=combined_messages,
                 instructions=instructions,
-                llm_complete=self._llm.complete,
+                llm_complete=lambda instr, msgs: self._llm.complete(instr, msgs, model=resolved_model),
                 conversation_id=conversation_id,
             )
 
@@ -158,16 +177,18 @@ class ConversationService:
         self,
         messages: list[dict[str, str]],
         prompt_slug: Optional[str] = None,
-    ) -> tuple[str, Iterable[StreamEvent], str, UnitOfWork]:
+        model_slug: Optional[str] = None,
+    ) -> tuple[str, Iterable[StreamEvent], str, str, UnitOfWork]:
         """
         Create a new conversation and stream the first turn.
 
         Transaction boundary: conversation + user messages are committed immediately.
         The UoW is returned for the caller to persist the final assistant message + run.
 
-        Returns: (conversation_id, event_iterator, used_prompt_slug, uow)
+        Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
-        used_prompt_slug, instructions = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
         conv_id = ConversationId.generate()
         cid_str = str(conv_id)
 
@@ -182,24 +203,25 @@ class ConversationService:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
             uow_setup.commit()
 
-        # Start streaming
+        # Start streaming with resolved model
         conversation_id, events = stream_chat(
             messages=messages,
             instructions=instructions,
-            llm_stream=self._llm.stream,
+            llm_stream=lambda instr, msgs: self._llm.stream(instr, msgs, model=resolved_model),
             conversation_id=conv_id,
         )
 
         # Return a new UoW for the caller to persist the final result
         uow_final = self._uow_factory()
-        return conversation_id, events, used_prompt_slug, uow_final
+        return conversation_id, events, used_prompt_slug, resolved_model, uow_final
 
     def append_and_stream(
         self,
         conversation_id: str,
         messages: list[dict[str, str]],
         prompt_slug: Optional[str] = None,
-    ) -> tuple[str, Iterable[StreamEvent], str, UnitOfWork]:
+        model_slug: Optional[str] = None,
+    ) -> tuple[str, Iterable[StreamEvent], str, str, UnitOfWork]:
         """
         Append a new turn to an existing conversation with streaming.
 
@@ -207,10 +229,11 @@ class ConversationService:
         The UoW is returned for the caller to persist the final assistant message + run.
 
         Loads history, trims to limits, combines with new messages, starts streaming.
-        Returns: (conversation_id, event_iterator, used_prompt_slug, uow)
+        Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
 
         # Load history and persist user messages in one transaction
         uow_setup = self._uow_factory()
@@ -234,17 +257,17 @@ class ConversationService:
         # Combine trimmed history with new messages
         combined_messages = trim_result["messages"] + messages
 
-        # Start streaming with full history
+        # Start streaming with full history and resolved model
         conv_id, events = stream_chat(
             messages=combined_messages,
             instructions=instructions,
-            llm_stream=self._llm.stream,
+            llm_stream=lambda instr, msgs: self._llm.stream(instr, msgs, model=resolved_model),
             conversation_id=conversation_id,
         )
 
         # Return a new UoW for the caller to persist the final result
         uow_final = self._uow_factory()
-        return conv_id, events, used_prompt_slug, uow_final
+        return conv_id, events, used_prompt_slug, resolved_model, uow_final
 
     def rewind_and_stream(
         self,
@@ -252,17 +275,19 @@ class ConversationService:
         message_id: int,
         new_content: str,
         prompt_slug: Optional[str] = None,
-    ) -> tuple[str, Iterable[StreamEvent], str, UnitOfWork]:
+        model_slug: Optional[str] = None,
+    ) -> tuple[str, Iterable[StreamEvent], str, str, UnitOfWork]:
         """
         Rewind a conversation to message_id, replace it with new_content, and stream.
 
         Deletes message_id and everything after it, appends new_content as a user
         message, then streams the assistant's response using the retained history.
 
-        Returns: (conversation_id, event_iterator, used_prompt_slug, uow)
+        Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
 
         uow_setup = self._uow_factory()
         with uow_setup:
@@ -288,12 +313,12 @@ class ConversationService:
         conv_id, events = stream_chat(
             messages=trim_result["messages"],
             instructions=instructions,
-            llm_stream=self._llm.stream,
+            llm_stream=lambda instr, msgs: self._llm.stream(instr, msgs, model=resolved_model),
             conversation_id=conversation_id,
         )
 
         uow_final = self._uow_factory()
-        return conv_id, events, used_prompt_slug, uow_final
+        return conv_id, events, used_prompt_slug, resolved_model, uow_final
 
     def persist_stream_result(
         self,

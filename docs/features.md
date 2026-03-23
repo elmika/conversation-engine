@@ -108,12 +108,70 @@ Prompts are stored in the database and served via `GET /prompts`. New assistants
 - **Conflict Coach** — helps reason calmly through workplace conflicts
 - **TypeScript Mentor** — teaches TypeScript from first principles
 
+### 5.4 Per-prompt model preference
+Each assistant can declare a preferred OpenAI model via a `model:` field in its `.md` frontmatter (e.g. `model: gpt-4o-mini`). When set, that model is used for all conversations with that assistant unless overridden per-request.
+
+### 5.5 Active / disabled state
+Prompts have an `is_active` flag. Disabled prompts are soft-deleted: they no longer appear in the conversation selector or in `GET /prompts`, but their data is preserved so existing conversation history remains intact. Disabled prompts can be re-enabled at any time. Prompts that have never been used in a conversation can be fully hard-deleted.
+
 ---
 
-## 6. Admin
+## 6. Model Selection
 
-### 6.1 Admin panel
-A dedicated `/admin` section exists for managing prompts (system-level configuration). Currently read-only; full CRUD for prompts is a planned addition.
+### 6.1 Model registry
+A static registry of 14 supported OpenAI models is served via `GET /models`. Each entry has a `slug` (the OpenAI model ID), a human-readable `name`, and a `description`. The default model is `gpt-4.1`.
+
+**Available models:**
+- **GPT-4.1** (`gpt-4.1`) — Smartest non-reasoning model
+- **GPT-5** (`gpt-5`) — Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
+- **GPT-5 mini** (`gpt-5-mini`) — Near-frontier intelligence for cost sensitive, low latency, high volume workloads
+- **GPT-5 nano** (`gpt-5-nano`) — Fastest, most cost-efficient version of GPT-5
+- **GPT-5 Codex** (`gpt-5-codex`) — A version of GPT-5 optimized for agentic coding in Codex
+- **GPT-5.1 Codex** (`gpt-5.1-codex`) — A version of GPT-5.1 optimized for agentic coding in Codex
+- **GPT-5.1 Codex Max** (`gpt-5.1-codex-max`) — A version of GPT-5.1-codex optimized for long running tasks
+- **GPT-5.1 Codex mini** (`gpt-5.1-codex-mini`) — Smaller, more cost-effective, less-capable version of GPT-5.1-Codex
+- **GPT-5.2 Codex** (`gpt-5.2-codex`) — Our most intelligent coding model optimized for long-horizon, agentic coding tasks
+- **GPT-5.3 Codex** (`gpt-5.3-codex`) — The most capable agentic coding model to date
+- **GPT-5.4** (`gpt-5.4`) — Best intelligence at scale for agentic, coding, and professional workflows
+- **GPT-5.4 pro** (`gpt-5.4-pro`) — Version of GPT-5.4 that produces smarter and more precise responses
+- **GPT-5.4 mini** (`gpt-5.4-mini`) — Our strongest mini model yet for coding, computer use, and subagents
+- **GPT-5.4 nano** (`gpt-5.4-nano`) — Our cheapest GPT-5.4-class model for simple high-volume tasks
+
+### 6.2 Model selector UI
+A **dropdown** in the chat header (next to the assistant selector) lets the user pick a model for their messages. The first option is **Default (auto)**, which defers to the prompt's preferred model or the global default (`gpt-4.1`). Model descriptions are shown as tooltips on each option.
+
+### 6.3 Model badge
+After each streaming response, the timings badge shows the model that was actually used (e.g., `gpt-5.4-mini · TTFB: 120ms · Total: 800ms`). This reflects the resolved model from the backend, which may differ from the selected option if a prompt overrides it.
+
+### 6.4 Per-request model override
+API callers can pass `model_slug` in any conversation request body to override the model for that specific request. Resolution priority (highest → lowest):
+1. `model_slug` in the request body
+2. `model` field on the selected prompt
+3. Global `settings.openai_model` (default: `gpt-4.1`)
+
+Passing an unknown `model_slug` returns a 400 error.
+
+---
+
+## 7. Admin
+
+### 7.1 Admin panel
+A dedicated `/admin` section provides full management of prompt personas.
+
+### 7.2 Create prompt
+A **New Prompt** button (top-right) opens a dialog with fields for slug, name, system prompt, and optional model override. The slug must be lowercase alphanumeric with hyphens/underscores. Duplicate slugs are rejected with an inline error.
+
+### 7.3 Edit prompt
+An **Edit** button (pencil icon) on each active prompt card opens the same dialog pre-filled. The slug is read-only when editing. Changes take effect immediately.
+
+### 7.4 Disable / enable prompt
+An **eye-off** button on each active card soft-deletes the prompt (sets `is_active=false`). Disabled cards are grayed out with a **Disabled** badge and show an **eye** button to re-enable. Disabled prompts no longer appear in the conversation selector.
+
+### 7.5 Show disabled prompts
+A **Show disabled** checkbox at the top of the admin panel toggles display of disabled prompt cards alongside active ones.
+
+### 7.6 Delete prompt
+A **trash** icon on each card opens a confirmation dialog to permanently delete the prompt. If the prompt has been used in any conversation, deletion is blocked with an error message (use Disable instead).
 
 ---
 

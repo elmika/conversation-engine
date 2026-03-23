@@ -23,6 +23,8 @@ export interface StreamingChatState {
   /** Set when status === "done" (success path). */
   conversationId: string | null;
   timings: Timings | null;
+  /** Model used for this response, captured from the SSE meta event. */
+  model: string | null;
   /** Set when status === "error". */
   errorMessage: string | null;
 }
@@ -32,6 +34,7 @@ const INITIAL_STATE: StreamingChatState = {
   partialText: "",
   conversationId: null,
   timings: null,
+  model: null,
   errorMessage: null,
 };
 
@@ -56,6 +59,7 @@ export function useStreamingChat() {
         partialText: "",
         conversationId: existingConversationId ?? null,
         timings: null,
+        model: null,
         errorMessage: null,
       });
 
@@ -72,6 +76,7 @@ export function useStreamingChat() {
 
         let finalConversationId = existingConversationId ?? null;
         let finalTimings: Timings | null = null;
+        let finalModel: string | null = null;
         let accText = "";
 
         for await (const event of parseSSEStream(stream)) {
@@ -79,6 +84,7 @@ export function useStreamingChat() {
 
           if (event.event === "meta") {
             finalConversationId = event.data.conversation_id;
+            finalModel = event.data.model;
           } else if (event.event === "chunk") {
             accText += event.data.delta;
             setState((s) => ({ ...s, partialText: accText }));
@@ -89,6 +95,7 @@ export function useStreamingChat() {
                 partialText: accText,
                 conversationId: finalConversationId,
                 timings: null,
+                model: finalModel,
                 errorMessage: event.data.error.message,
               });
               return;
@@ -107,6 +114,7 @@ export function useStreamingChat() {
           partialText: accText,
           conversationId: finalConversationId,
           timings: finalTimings,
+          model: finalModel,
           errorMessage: null,
         });
 
@@ -149,6 +157,7 @@ export function useStreamingChat() {
         partialText: "",
         conversationId,
         timings: null,
+        model: null,
         errorMessage: null,
       });
 
@@ -164,12 +173,15 @@ export function useStreamingChat() {
         setState((s) => ({ ...s, status: "streaming" }));
 
         let finalTimings: Timings | null = null;
+        let finalModel: string | null = null;
         let accText = "";
 
         for await (const event of parseSSEStream(stream)) {
           if (controller.signal.aborted) break;
 
-          if (event.event === "chunk") {
+          if (event.event === "meta") {
+            finalModel = event.data.model;
+          } else if (event.event === "chunk") {
             accText += event.data.delta;
             setState((s) => ({ ...s, partialText: accText }));
           } else if (event.event === "done") {
@@ -179,6 +191,7 @@ export function useStreamingChat() {
                 partialText: accText,
                 conversationId,
                 timings: null,
+                model: finalModel,
                 errorMessage: event.data.error.message,
               });
               return;
@@ -197,6 +210,7 @@ export function useStreamingChat() {
           partialText: accText,
           conversationId,
           timings: finalTimings,
+          model: finalModel,
           errorMessage: null,
         });
 

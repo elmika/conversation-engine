@@ -91,13 +91,22 @@ class OpenAILLMAdapter:
         self._max_retries = settings.max_retries
         self._retry_backoff_s = settings.retry_backoff_s
 
-    def complete(self, instructions: str, messages: list[dict[str, str]]) -> LLMResult:
-        """Run non-streaming completion; return assistant text, model, timings."""
+    def complete(
+        self,
+        instructions: str,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+    ) -> LLMResult:
+        """Run non-streaming completion; return assistant text, model, timings.
+
+        If model is provided it overrides the adapter's configured default.
+        """
+        effective_model = model or self._model
         input_items = _build_input_items(messages)
         if not input_items:
             return LLMResult(
                 text="",
-                model=self._model,
+                model=effective_model,
                 ttfb_ms=0,
                 total_ms=0,
             )
@@ -107,7 +116,7 @@ class OpenAILLMAdapter:
                 try:
                     start = time.perf_counter()
                     response = self._client.responses.create(
-                        model=self._model,
+                        model=effective_model,
                         instructions=instructions,
                         input=input_items,
                         max_output_tokens=self._max_output_tokens,
@@ -117,7 +126,7 @@ class OpenAILLMAdapter:
                     text = _extract_output_text(response)
                     return LLMResult(
                         text=text,
-                        model=getattr(response, "model", self._model) or self._model,
+                        model=getattr(response, "model", effective_model) or effective_model,
                         ttfb_ms=total_ms,
                         total_ms=total_ms,
                     )
@@ -142,12 +151,19 @@ class OpenAILLMAdapter:
         # Should never be reached, but keep mypy happy.
         raise _map_openai_error(last_exc or Exception("Unknown OpenAI error"))
 
-    def stream(self, instructions: str, messages: list[dict[str, str]]) -> Iterable[StreamEvent]:
+    def stream(
+        self,
+        instructions: str,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+    ) -> Iterable[StreamEvent]:
         """
         Run streaming completion; yield StreamEvent items.
 
+        If model is provided it overrides the adapter's configured default.
         TTFB is measured as time until first text delta; total_ms until final response.
         """
+        effective_model = model or self._model
         input_items = _build_input_items(messages)
         if not input_items:
             return []
@@ -156,7 +172,7 @@ class OpenAILLMAdapter:
         try:
             for attempt in range(self._max_retries + 1):
                 try:
-                    yield from self._stream_once(instructions, input_items)
+                    yield from self._stream_once(instructions, input_items, effective_model)
                     return
                 except RETRYABLE_EXCEPTIONS as exc:
                     last_exc = exc
@@ -180,15 +196,14 @@ class OpenAILLMAdapter:
         raise _map_openai_error(last_exc or Exception("Unknown OpenAI error"))
 
     def _stream_once(
-        self, instructions: str, input_items: list[dict[str, Any]]
+        self, instructions: str, input_items: list[dict[str, Any]], effective_model: str
     ) -> Iterable[StreamEvent]:
         """Single attempt at streaming; used by stream() with retry wrapper."""
         start = time.perf_counter()
         first_delta_ms = 0
-        model = self._model
 
         with self._client.responses.stream(
-            model=self._model,
+            model=effective_model,
             instructions=instructions,
             input=input_items,
             max_output_tokens=self._max_output_tokens,
@@ -204,7 +219,7 @@ class OpenAILLMAdapter:
                     yield StreamEvent(
                         type="delta",
                         delta=delta,
-                        model=self._model,
+                        model=effective_model,
                         ttfb_ms=first_delta_ms,
                         total_ms=0,
                     )
@@ -212,11 +227,11 @@ class OpenAILLMAdapter:
 
         total_ms = round((time.perf_counter() - start) * 1000)
         text = _extract_output_text(final_response)
-        model = getattr(final_response, "model", self._model) or self._model
+        resolved_model = getattr(final_response, "model", effective_model) or effective_model
         yield StreamEvent(
             type="final",
             text=text,
-            model=model,
+            model=resolved_model,
             ttfb_ms=first_delta_ms or total_ms,
             total_ms=total_ms,
         )

@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { CornerDownLeft, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
+import { ModelSelector } from "./ModelSelector";
 import { PromptSelector } from "./PromptSelector";
 import { ConversationList } from "@/components/history/ConversationList";
 import { useChatStore } from "@/hooks/useChatStore";
@@ -22,9 +23,9 @@ interface ChatShellProps {
 
 export function ChatShell({ conversationId }: ChatShellProps) {
   const router = useRouter();
-  const { isSidebarOpen, toggleSidebar, selectedPromptSlug, enterToSend, toggleEnterToSend } = useChatStore();
+  const { isSidebarOpen, toggleSidebar, selectedPromptSlug, selectedModelSlug, enterToSend, toggleEnterToSend } = useChatStore();
   const { data, isLoading } = useConversation(conversationId ?? null);
-  const { status, partialText, timings, errorMessage, sendMessage, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
+  const { status, partialText, timings, model, errorMessage, sendMessage, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat();
 
   // After the first turn the hook captures the server-assigned ID; use it for
@@ -100,7 +101,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     ]);
 
     sendMessage(
-      { messages: [{ role: "user", content: text }], prompt_slug: selectedPromptSlug },
+      { messages: [{ role: "user", content: text }], prompt_slug: selectedPromptSlug, model_slug: selectedModelSlug },
       activeConversationId
     );
   };
@@ -139,6 +140,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
             <SquarePen className="h-4 w-4" />
           </Button>
           <PromptSelector />
+          <ModelSelector />
           <div className="ml-auto">
             <Button
               variant={enterToSend ? "secondary" : "ghost"}
@@ -160,6 +162,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
           streamStatus={status}
           partialText={partialText}
           timings={timings}
+          model={model}
           onRewind={activeConversationId ? handleRewind : undefined}
         />
 

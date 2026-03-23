@@ -14,6 +14,7 @@ interface MessageListProps {
   streamStatus: StreamStatus;
   partialText: string;
   timings: Timings | null;
+  model?: string | null;
   onRewind?: (messageId: number, newContent: string) => void;
 }
 
@@ -25,6 +26,7 @@ export function MessageList({
   streamStatus,
   partialText,
   timings,
+  model,
   onRewind,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -92,7 +94,7 @@ export function MessageList({
 
         {streamStatus === "done" && timings && (
           <div className="flex justify-start pl-1">
-            <TimingsBadge timings={timings} />
+            <TimingsBadge timings={timings} model={model} />
           </div>
         )}
 
