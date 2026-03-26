@@ -114,6 +114,18 @@ Each assistant can declare a preferred OpenAI model via a `model:` field in its 
 ### 5.5 Active / disabled state
 Prompts have an `is_active` flag. Disabled prompts are soft-deleted: they no longer appear in the conversation selector or in `GET /prompts`, but their data is preserved so existing conversation history remains intact. Disabled prompts can be re-enabled at any time. Prompts that have never been used in a conversation can be fully hard-deleted.
 
+### 5.6 Template variables in system prompts
+System prompts support `{{namespace:tag}}` template variables that are resolved at the moment each LLM call is made. This allows assistants to be dynamically time-aware without hardcoding dates.
+
+**Supported tags:**
+| Tag | Resolves to |
+|---|---|
+| `{{time:current}}` | Current UTC time at minute precision, e.g. `2026-03-26 21:42 UTC` |
+| `{{time:conversation-start}}` | UTC time when the conversation was created (minute precision, consistent across all turns) |
+| `{{time:lesson-time-spent}}` | Elapsed time since conversation start, e.g. `5 minutes 30 seconds` |
+
+Templates are validated when a prompt is saved via the Admin panel. A prompt containing an invalid tag (malformed format, unknown namespace, or unknown tag name) is rejected with an error — bad templates cannot be persisted.
+
 ---
 
 ## 6. Model Selection

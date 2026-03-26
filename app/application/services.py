@@ -1,12 +1,14 @@
 """Application services: orchestrate use cases + persistence."""
 
 from collections.abc import Callable, Iterable
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.application.ports import LLMPort, LLMResult, PromptRepo, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
 from app.domain.model_registry import validate_model_slug
+from app.domain.prompt_template import render_prompt
 from app.domain.value_objects import ConversationId
 
 
@@ -42,6 +44,30 @@ class ConversationService:
         record = self._prompt_repo.get_prompt_or_default(slug, self._default_prompt_slug)
         return record["slug"], record["system_prompt"], record.get("model")
 
+    def _render_instructions(
+        self, instructions: str, conversation_start: Optional[datetime] = None
+    ) -> str:
+        now = datetime.now(timezone.utc)
+        start = conversation_start or now
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+
+        total_seconds = max(0, int((now - start).total_seconds()))
+        minutes, secs = divmod(total_seconds, 60)
+        if minutes == 0:
+            time_spent = f"{secs} seconds"
+        elif secs == 0:
+            time_spent = f"{minutes} minutes"
+        else:
+            time_spent = f"{minutes} minutes {secs} seconds"
+
+        context = {
+            "time:current": now.strftime("%Y-%m-%d %H:%M UTC"),
+            "time:conversation-start": start.strftime("%Y-%m-%d %H:%M UTC"),
+            "time:lesson-time-spent": time_spent,
+        }
+        return render_prompt(instructions, context)
+
     def _resolve_model(
         self,
         request_model: Optional[str],
@@ -67,6 +93,7 @@ class ConversationService:
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         """
         used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
         # Create conversation with domain-generated ID
@@ -132,6 +159,9 @@ class ConversationService:
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
+            created_at = uow.repo.get_conversation_created_at(conversation_id)
+            instructions = self._render_instructions(instructions, created_at)
+
             # Persist user messages for this turn
             for msg in messages:
                 uow.repo.append_message(conversation_id, msg["role"], msg["content"])
@@ -188,6 +218,7 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
         used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
         conv_id = ConversationId.generate()
         cid_str = str(conv_id)
@@ -242,6 +273,9 @@ class ConversationService:
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
+            created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
+            instructions = self._render_instructions(instructions, created_at)
+
             for msg in messages:
                 uow_setup.repo.append_message(conversation_id, msg["role"], msg["content"])
             uow_setup.commit()
@@ -294,6 +328,10 @@ class ConversationService:
             history = uow_setup.repo.get_messages(conversation_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
+
+            created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
+            instructions = self._render_instructions(instructions, created_at)
+
             uow_setup.repo.truncate_from(conversation_id, message_id)
             uow_setup.repo.append_message(conversation_id, "user", new_content)
             uow_setup.commit()

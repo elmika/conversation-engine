@@ -28,6 +28,7 @@ from app.api.schemas import (
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
+from app.domain.prompt_template import PromptTemplateError, validate_template
 from app.infra.persistence.db import get_session
 from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -261,6 +262,8 @@ async def append_conversation_turn(
             return service.append_and_chat(
                 conversation_id, messages, body.prompt_slug, body.model_slug
             )
+        except PromptTemplateError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
@@ -301,6 +304,8 @@ async def append_conversation_turn_stream(
                     return service.append_and_stream(
                         conversation_id, messages, body.prompt_slug, body.model_slug
                     )
+                except PromptTemplateError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
                 except ValueError as e:
                     raise HTTPException(status_code=404, detail=str(e))
 
@@ -416,6 +421,8 @@ async def rewind_conversation_stream(
                         body.prompt_slug,
                         body.model_slug,
                     )
+                except PromptTemplateError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
                 except ValueError as e:
                     raise HTTPException(status_code=404, detail=str(e))
 
@@ -608,6 +615,10 @@ async def create_prompt(
 ) -> PromptSchema:
     """Create a new prompt persona."""
     try:
+        validate_template(body.system_prompt)
+    except PromptTemplateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
         await asyncio.to_thread(
             prompt_repo.create, body.slug, body.name, body.system_prompt, body.model
         )
@@ -631,6 +642,10 @@ async def update_prompt(
     db=Depends(get_session),
 ) -> PromptSchema:
     """Update name, system_prompt, and/or model of an existing prompt."""
+    try:
+        validate_template(body.system_prompt)
+    except PromptTemplateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     updated = await asyncio.to_thread(
         prompt_repo.update, slug, body.name, body.system_prompt, body.model
     )
