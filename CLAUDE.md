@@ -19,6 +19,11 @@ make up
 # UI   → http://localhost:3000
 ```
 
+> **Backend hot-reload caveat:** Only the frontend source is volume-mounted for hot-reload. The backend (`app/`) is baked into the image at build time. After any backend code change, rebuild before restarting:
+> ```bash
+> make build && make up
+> ```
+
 **Backend tests:**
 ```bash
 make test-backend

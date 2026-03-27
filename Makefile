@@ -12,9 +12,8 @@ up: ## Start both services with hot-reload (detached)
 down: ## Stop all services
 	docker compose down
 
-build: ## Build backend and frontend production images (tagged :prod)
-	docker build -t $(IMAGE):prod .
-	docker build -t $(IMAGE)-frontend:prod ./frontend
+build: ## Build backend and frontend images (used by docker compose up)
+	docker compose build
 
 logs: ## Follow logs for both services
 	docker compose logs -f
