@@ -182,7 +182,10 @@ An **eye-off** button on each active card soft-deletes the prompt (sets `is_acti
 ### 7.5 Show disabled prompts
 A **Show disabled** checkbox at the top of the admin panel toggles display of disabled prompt cards alongside active ones.
 
-### 7.6 Delete prompt
+### 7.6 Render prompt preview
+`GET /prompts/{slug}/render` returns the prompt's system prompt with all `{{namespace:tag}}` template variables resolved to their current values. An optional `?conversation_id=` query parameter anchors `{{time:conversation-start}}` and `{{time:lesson-time-spent}}` to a specific conversation's start time; without it, both resolve to the current time (a "new conversation" preview). Returns 404 if the slug or conversation ID is not found.
+
+### 7.7 Delete prompt
 A **trash** icon on each card opens a confirmation dialog to permanently delete the prompt. If the prompt has been used in any conversation, deletion is blocked with an error message (use Disable instead).
 
 ---

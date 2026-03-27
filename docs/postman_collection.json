@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Conversation Engine",
-    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Access points\n- **`base_url`** (`http://localhost:8000`) — FastAPI directly. Use this for backend development and testing.\n- **`frontend_base_url`** (`http://localhost:3000/api`) — Next.js BFF proxy. Use this to test the full stack as the browser would. All paths and schemas are identical.\n\nRun `docker compose up` to start both services together.\n\n## Quick start\n1. Choose your `base_url` or `frontend_base_url` variable.\n2. Run **Create Conversation** — the test script automatically saves `conversation_id`.\n3. Run **Append Turn** to continue the conversation.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
+    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Access points\n- **`base_url`** (`http://localhost:8000`) \u2014 FastAPI directly. Use this for backend development and testing.\n- **`frontend_base_url`** (`http://localhost:3000/api`) \u2014 Next.js BFF proxy. Use this to test the full stack as the browser would. All paths and schemas are identical.\n\nRun `docker compose up` to start both services together.\n\n## Quick start\n1. Choose your `base_url` or `frontend_base_url` variable.\n2. Run **Create Conversation** \u2014 the test script automatically saves `conversation_id`.\n3. Run **Append Turn** to continue the conversation.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -10,13 +10,13 @@
       "key": "base_url",
       "value": "http://localhost:8000",
       "type": "string",
-      "description": "FastAPI base URL — direct backend access"
+      "description": "FastAPI base URL \u2014 direct backend access"
     },
     {
       "key": "frontend_base_url",
       "value": "http://localhost:3000/api",
       "type": "string",
-      "description": "Next.js BFF base URL — same API as base_url, accessed through the frontend proxy"
+      "description": "Next.js BFF base URL \u2014 same API as base_url, accessed through the frontend proxy"
     },
     {
       "key": "conversation_id",
@@ -35,8 +35,12 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/healthz",
-              "host": ["{{base_url}}"],
-              "path": ["healthz"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "healthz"
+              ]
             },
             "description": "Returns `{\"status\": \"ok\"}` when the service is running."
           },
@@ -45,7 +49,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\"status\": \"ok\"}",
               "_postman_previewlanguage": "json"
             }
@@ -62,8 +71,12 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/conversations?page=1&page_size=20",
-              "host": ["{{base_url}}"],
-              "path": ["conversations"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -84,7 +97,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"conversations\": [\n    {\n      \"id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    }\n  ],\n  \"total\": 1,\n  \"page\": 1,\n  \"page_size\": 20\n}",
               "_postman_previewlanguage": "json"
             }
@@ -109,16 +127,29 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/conversations",
-              "host": ["{{base_url}}"],
-              "path": ["conversations"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations"
+              ]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\"\n    }\n  ]\n}",
-              "options": {"raw": {"language": "json"}}
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "description": "Creates a new conversation and processes the first user turn synchronously. The test script automatically saves `conversation_id` as a collection variable."
           },
@@ -127,7 +158,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Hello Mika! How can I help you today?\",\n  \"model\": \"gpt-4.1\",\n  \"timings\": {\n    \"ttfb_ms\": 320,\n    \"total_ms\": 980\n  }\n}",
               "_postman_previewlanguage": "json"
             },
@@ -135,7 +171,12 @@
               "name": "400 Bad Request",
               "status": "Bad Request",
               "code": 400,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"detail\": \"Total message content length (35000) exceeds max_input_chars (32000)\"\n}",
               "_postman_previewlanguage": "json"
             }
@@ -146,27 +187,47 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "Content-Type", "value": "application/json"},
-              {"key": "Accept", "value": "text/event-stream"}
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
             ],
             "url": {
               "raw": "{{base_url}}/conversations/stream",
-              "host": ["{{base_url}}"],
-              "path": ["conversations", "stream"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations",
+                "stream"
+              ]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Tell me a short story.\"\n    }\n  ]\n}",
-              "options": {"raw": {"language": "json"}}
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "description": "Creates a new conversation and streams the assistant reply as SSE.\n\nEvent order: `meta` → `chunk`* → `done`\n\nUse \"Send and Download\" in Postman, or:\n```\ncurl -N -X POST http://localhost:8000/conversations/stream \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'\n```"
+            "description": "Creates a new conversation and streams the assistant reply as SSE.\n\nEvent order: `meta` \u2192 `chunk`* \u2192 `done`\n\nUse \"Send and Download\" in Postman, or:\n```\ncurl -N -X POST http://localhost:8000/conversations/stream \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'\n```"
           },
           "response": [
             {
-              "name": "200 OK — SSE stream",
+              "name": "200 OK \u2014 SSE stream",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "text/event-stream"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "text/event-stream"
+                }
+              ],
               "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Once upon\"}\n\nevent: chunk\ndata: {\"delta\": \" a time...\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Once upon a time...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 120, \"total_ms\": 800}}\n\n",
               "_postman_previewlanguage": "text"
             }
@@ -176,16 +237,30 @@
           "name": "Append Turn (non-streaming)",
           "request": {
             "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/conversations/{{conversation_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["conversations", "{{conversation_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversation_id}}"
+              ]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is my name?\"\n    }\n  ]\n}",
-              "options": {"raw": {"language": "json"}}
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "description": "Appends a new user turn to an existing conversation. History is automatically trimmed before the LLM call.\n\nRequires `conversation_id` collection variable to be set (done automatically by the Create Conversation test script)."
           },
@@ -194,7 +269,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Your name is Mika.\",\n  \"model\": \"gpt-4.1\",\n  \"timings\": {\n    \"ttfb_ms\": 290,\n    \"total_ms\": 740\n  }\n}",
               "_postman_previewlanguage": "json"
             },
@@ -202,7 +282,12 @@
               "name": "404 Not Found",
               "status": "Not Found",
               "code": 404,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"detail\": \"Conversation abc123 not found\"\n}",
               "_postman_previewlanguage": "json"
             }
@@ -213,27 +298,48 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "Content-Type", "value": "application/json"},
-              {"key": "Accept", "value": "text/event-stream"}
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
             ],
             "url": {
               "raw": "{{base_url}}/conversations/{{conversation_id}}/stream",
-              "host": ["{{base_url}}"],
-              "path": ["conversations", "{{conversation_id}}", "stream"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversation_id}}",
+                "stream"
+              ]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Continue the story.\"\n    }\n  ]\n}",
-              "options": {"raw": {"language": "json"}}
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "description": "Appends a new user turn to an existing conversation and streams the reply as SSE.\n\nEvent order: `meta` → `chunk`* → `done`\n\nUse \"Send and Download\" in Postman, or use curl with `-N`."
+            "description": "Appends a new user turn to an existing conversation and streams the reply as SSE.\n\nEvent order: `meta` \u2192 `chunk`* \u2192 `done`\n\nUse \"Send and Download\" in Postman, or use curl with `-N`."
           },
           "response": [
             {
-              "name": "200 OK — SSE stream",
+              "name": "200 OK \u2014 SSE stream",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "text/event-stream"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "text/event-stream"
+                }
+              ],
               "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"The hero\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"The hero continued on...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 115, \"total_ms\": 620}}\n\n",
               "_postman_previewlanguage": "text"
             }
@@ -245,8 +351,14 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/conversations/{{conversation_id}}/messages",
-              "host": ["{{base_url}}"],
-              "path": ["conversations", "{{conversation_id}}", "messages"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversation_id}}",
+                "messages"
+              ]
             },
             "description": "Returns all messages for a conversation ordered by id ASC. Returns an empty `messages` array for unknown conversation IDs."
           },
@@ -255,7 +367,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"messages\": [\n    {\n      \"id\": 1,\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"role\": \"assistant\",\n      \"content\": \"Hello Mika! How can I help you today?\",\n      \"created_at\": \"2026-03-02T11:00:01\"\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
             }
@@ -272,8 +389,12 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/prompts",
-              "host": ["{{base_url}}"],
-              "path": ["prompts"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prompts"
+              ]
             },
             "description": "Returns active prompt personas from the database. Each prompt includes an `is_active` field and may include a `model` field (null if using the global default)."
           },
@@ -282,7 +403,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"prompts\": [\n    {\n      \"slug\": \"default\",\n      \"name\": \"Default Assistant\",\n      \"system_prompt\": \"You are a concise and precise assistant.\",\n      \"model\": null,\n      \"is_active\": true\n    },\n    {\n      \"slug\": \"typescript-mentor\",\n      \"name\": \"TypeScript Mentor\",\n      \"system_prompt\": \"You teach TypeScript from first principles.\",\n      \"model\": \"gpt-4o-mini\",\n      \"is_active\": true\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
             }
@@ -294,8 +420,12 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/prompts?all=true",
-              "host": ["{{base_url}}"],
-              "path": ["prompts"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prompts"
+              ],
               "query": [
                 {
                   "key": "all",
@@ -311,9 +441,71 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"prompts\": [\n    {\n      \"slug\": \"default\",\n      \"name\": \"Default Assistant\",\n      \"system_prompt\": \"You are a concise and precise assistant.\",\n      \"model\": null,\n      \"is_active\": true\n    },\n    {\n      \"slug\": \"old-prompt\",\n      \"name\": \"Old Prompt\",\n      \"system_prompt\": \"An old system prompt.\",\n      \"model\": null,\n      \"is_active\": false\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "Render Prompt",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/prompts/learn-typescript/render",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "prompts",
+                "learn-typescript",
+                "render"
+              ],
+              "query": [
+                {
+                  "key": "conversation_id",
+                  "value": "",
+                  "description": "Optional: UUID of a conversation to anchor time tags",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Returns the prompt system_prompt with all {{namespace:tag}} template variables resolved."
+          },
+          "response": [
+            {
+              "name": "Rendered prompt (no conversation)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/prompts/learn-typescript/render",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "prompts",
+                    "learn-typescript",
+                    "render"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"slug\": \"learn-typescript\",\n  \"name\": \"TypeScript Mentor\",\n  \"rendered_prompt\": \"You are a technical mentor...\\n\\nCurrent time: 2026-03-27 12:00 UTC\\nConversation started: 2026-03-27 12:00 UTC\\nTime spent: 0 seconds\"\n}"
             }
           ]
         },
@@ -321,16 +513,29 @@
           "name": "Create Prompt",
           "request": {
             "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/prompts",
-              "host": ["{{base_url}}"],
-              "path": ["prompts"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prompts"
+              ]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"slug\": \"my-prompt\",\n  \"name\": \"My Prompt\",\n  \"system_prompt\": \"You are a custom assistant.\",\n  \"model\": null\n}",
-              "options": {"raw": {"language": "json"}}
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "description": "Create a new prompt persona. Returns 409 if the slug already exists."
           },
@@ -339,7 +544,12 @@
               "name": "201 Created",
               "status": "Created",
               "code": 201,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"slug\": \"my-prompt\",\n  \"name\": \"My Prompt\",\n  \"system_prompt\": \"You are a custom assistant.\",\n  \"model\": null,\n  \"is_active\": true\n}",
               "_postman_previewlanguage": "json"
             },
@@ -347,7 +557,12 @@
               "name": "409 Conflict",
               "status": "Conflict",
               "code": 409,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"detail\": \"Prompt 'my-prompt' already exists\"\n}",
               "_postman_previewlanguage": "json"
             }
@@ -357,16 +572,30 @@
           "name": "Update Prompt",
           "request": {
             "method": "PUT",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/prompts/my-prompt",
-              "host": ["{{base_url}}"],
-              "path": ["prompts", "my-prompt"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prompts",
+                "my-prompt"
+              ]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Updated Prompt\",\n  \"system_prompt\": \"Updated instructions.\",\n  \"model\": null\n}",
-              "options": {"raw": {"language": "json"}}
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "description": "Update the name, system_prompt, and/or model of an existing prompt."
           },
@@ -375,7 +604,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"slug\": \"my-prompt\",\n  \"name\": \"Updated Prompt\",\n  \"system_prompt\": \"Updated instructions.\",\n  \"model\": null,\n  \"is_active\": true\n}",
               "_postman_previewlanguage": "json"
             },
@@ -383,7 +617,12 @@
               "name": "404 Not Found",
               "status": "Not Found",
               "code": 404,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"detail\": \"Prompt 'my-prompt' not found\"\n}",
               "_postman_previewlanguage": "json"
             }
@@ -395,8 +634,14 @@
             "method": "PATCH",
             "url": {
               "raw": "{{base_url}}/prompts/my-prompt/disable",
-              "host": ["{{base_url}}"],
-              "path": ["prompts", "my-prompt", "disable"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prompts",
+                "my-prompt",
+                "disable"
+              ]
             },
             "description": "Soft-delete a prompt by setting is_active=false. Hidden from GET /prompts but preserved in history."
           },
@@ -405,7 +650,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"slug\": \"my-prompt\",\n  \"name\": \"My Prompt\",\n  \"system_prompt\": \"You are a custom assistant.\",\n  \"model\": null,\n  \"is_active\": false\n}",
               "_postman_previewlanguage": "json"
             },
@@ -413,7 +663,12 @@
               "name": "404 Not Found",
               "status": "Not Found",
               "code": 404,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"detail\": \"Prompt 'my-prompt' not found\"\n}",
               "_postman_previewlanguage": "json"
             }
@@ -425,8 +680,14 @@
             "method": "PATCH",
             "url": {
               "raw": "{{base_url}}/prompts/my-prompt/enable",
-              "host": ["{{base_url}}"],
-              "path": ["prompts", "my-prompt", "enable"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prompts",
+                "my-prompt",
+                "enable"
+              ]
             },
             "description": "Re-enable a disabled prompt by setting is_active=true."
           },
@@ -435,7 +696,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"slug\": \"my-prompt\",\n  \"name\": \"My Prompt\",\n  \"system_prompt\": \"You are a custom assistant.\",\n  \"model\": null,\n  \"is_active\": true\n}",
               "_postman_previewlanguage": "json"
             },
@@ -443,7 +709,12 @@
               "name": "404 Not Found",
               "status": "Not Found",
               "code": 404,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"detail\": \"Prompt 'my-prompt' not found\"\n}",
               "_postman_previewlanguage": "json"
             }
@@ -455,8 +726,13 @@
             "method": "DELETE",
             "url": {
               "raw": "{{base_url}}/prompts/my-prompt",
-              "host": ["{{base_url}}"],
-              "path": ["prompts", "my-prompt"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prompts",
+                "my-prompt"
+              ]
             },
             "description": "Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation run."
           },
@@ -471,7 +747,12 @@
               "name": "409 Conflict",
               "status": "Conflict",
               "code": 409,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"detail\": \"Prompt has been used in conversations\"\n}",
               "_postman_previewlanguage": "json"
             }
@@ -488,8 +769,12 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/models",
-              "host": ["{{base_url}}"],
-              "path": ["models"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "models"
+              ]
             },
             "description": "Returns all models available in the static model registry. Use a `slug` value as `model_slug` in conversation requests to override the model for that request."
           },
@@ -498,7 +783,12 @@
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
               "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5\",\n      \"name\": \"GPT-5\",\n      \"description\": \"Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort\"\n    },\n    {\n      \"slug\": \"gpt-5-mini\",\n      \"name\": \"GPT-5 mini\",\n      \"description\": \"Near-frontier intelligence for cost sensitive, low latency, high volume workloads\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
             }

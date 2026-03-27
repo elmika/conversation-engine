@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -20,6 +20,7 @@ from app.api.schemas import (
     ModelSchema,
     ModelsResponse,
     PromptCreateRequest,
+    PromptRenderResponse,
     PromptSchema,
     PromptUpdateRequest,
     PromptsResponse,
@@ -632,6 +633,27 @@ async def create_prompt(
         model=body.model,
         is_active=True,
     )
+
+
+@router.get("/prompts/{slug}/render", response_model=PromptRenderResponse)
+async def render_prompt_preview(
+    slug: str,
+    conversation_id: Optional[str] = None,
+    service: ConversationService = Depends(get_conversation_service),
+) -> PromptRenderResponse:
+    """Return the prompt's system_prompt with all template variables resolved.
+
+    Pass ?conversation_id= to anchor time:conversation-start and
+    time:lesson-time-spent to a specific conversation's start time.
+    """
+    def _run() -> dict:
+        try:
+            return service.preview_prompt(slug, conversation_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+    result = await asyncio.to_thread(_run)
+    return PromptRenderResponse(**result)
 
 
 @router.put("/prompts/{slug}", response_model=PromptSchema)

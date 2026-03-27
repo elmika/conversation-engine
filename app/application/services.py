@@ -358,6 +358,31 @@ class ConversationService:
         uow_final = self._uow_factory()
         return conv_id, events, used_prompt_slug, resolved_model, uow_final
 
+    def preview_prompt(
+        self,
+        slug: str,
+        conversation_id: Optional[str] = None,
+    ) -> dict:
+        """Return the prompt's system_prompt with template variables resolved.
+
+        If conversation_id is provided, time:conversation-start and
+        time:lesson-time-spent are anchored to that conversation's created_at.
+        Raises ValueError if the slug or conversation_id is not found.
+        """
+        record = self._prompt_repo.get_prompt(slug)
+        if record is None:
+            raise ValueError(f"Prompt '{slug}' not found")
+
+        created_at = None
+        if conversation_id:
+            with self._uow_factory() as uow:
+                created_at = uow.repo.get_conversation_created_at(conversation_id)
+            if created_at is None:
+                raise ValueError(f"Conversation '{conversation_id}' not found")
+
+        rendered = self._render_instructions(record["system_prompt"], created_at)
+        return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
+
     def persist_stream_result(
         self,
         uow: UnitOfWork,
