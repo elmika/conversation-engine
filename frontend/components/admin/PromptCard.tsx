@@ -9,8 +9,9 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Check, ChevronDown, ChevronUp, Clipboard, Copy, Eye, EyeOff, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clipboard, Copy, Eye, EyeOff, Loader2, Pencil, ScanText, Trash2 } from "lucide-react";
 import { useDisablePrompt, useEnablePrompt } from "@/hooks/usePrompts";
+import { PromptPreviewDialog } from "@/components/admin/PromptPreviewDialog";
 import type { Prompt } from "@/lib/types";
 
 interface PromptCardProps {
@@ -23,6 +24,7 @@ interface PromptCardProps {
 export function PromptCard({ prompt, onEdit, onDuplicate, onDelete }: PromptCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [previewSlug, setPreviewSlug] = useState<string | null>(null);
   const isDisabled = !prompt.is_active;
 
   const disableMutation = useDisablePrompt();
@@ -37,6 +39,8 @@ export function PromptCard({ prompt, onEdit, onDuplicate, onDelete }: PromptCard
   }
 
   return (
+    <>
+    <PromptPreviewDialog slug={previewSlug} onClose={() => setPreviewSlug(null)} />
     <Card className={isDisabled ? "opacity-60" : undefined}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
@@ -77,6 +81,15 @@ export function PromptCard({ prompt, onEdit, onDuplicate, onDelete }: PromptCard
                 <Copy className="h-3.5 w-3.5" />
               </Button>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setPreviewSlug(prompt.slug)}
+              title="Preview rendered prompt"
+            >
+              <ScanText className="h-3.5 w-3.5" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -158,5 +171,6 @@ export function PromptCard({ prompt, onEdit, onDuplicate, onDelete }: PromptCard
         )}
       </CardContent>
     </Card>
+    </>
   );
 }

@@ -75,6 +75,7 @@ def get_conversation_service(
         default_model=settings.openai_model,
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
+        sections_dir=settings.sections_dir,
     )
 
 

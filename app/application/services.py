@@ -8,7 +8,7 @@ from app.application.ports import LLMPort, LLMResult, PromptRepo, StreamEvent, U
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
 from app.domain.model_registry import validate_model_slug
-from app.domain.prompt_template import render_prompt
+from app.domain.prompt_template import render_prompt, resolve_file_sections
 from app.domain.value_objects import ConversationId
 
 
@@ -30,6 +30,7 @@ class ConversationService:
         default_model: str,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
+        sections_dir: str = "./sections",
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
@@ -38,6 +39,7 @@ class ConversationService:
         self._default_model = default_model
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
+        self._sections_dir = sections_dir
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str]]:
         """Resolve prompt slug to (used_slug, system_prompt, prompt_model). Falls back to default."""
@@ -47,6 +49,16 @@ class ConversationService:
     def _render_instructions(
         self, instructions: str, conversation_start: Optional[datetime] = None
     ) -> str:
+        # Pass 1: expand {{course}}, {{user}}, {{progress}} from files
+        from pathlib import Path
+
+        def _loader(tag: str) -> Optional[str]:
+            path = Path(self._sections_dir) / tag / "default.md"
+            return path.read_text(encoding="utf-8") if path.exists() else None
+
+        instructions = resolve_file_sections(instructions, _loader)
+
+        # Pass 2: resolve {{time:*}} tags
         now = datetime.now(timezone.utc)
         start = conversation_start or now
         if start.tzinfo is None:

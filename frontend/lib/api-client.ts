@@ -16,6 +16,7 @@ import type {
   ModelsResponse,
   Prompt,
   PromptCreateRequest,
+  PromptRenderResponse,
   PromptUpdateRequest,
   PromptsResponse,
 } from "./types";
@@ -118,6 +119,11 @@ export async function enablePrompt(slug: string): Promise<void> {
 export async function deletePrompt(slug: string): Promise<void> {
   const res = await fetch(`/api/prompts/${slug}`, { method: "DELETE" });
   if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
+}
+
+export async function fetchRenderedPrompt(slug: string): Promise<PromptRenderResponse> {
+  const res = await fetch(`/api/prompts/${slug}/render`);
+  return handleResponse(res);
 }
 
 export async function fetchModels(): Promise<ModelsResponse> {

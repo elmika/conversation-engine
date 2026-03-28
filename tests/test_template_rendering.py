@@ -1,7 +1,9 @@
 """Integration tests: template rendering wired through service and routes."""
 
 import re
+import tempfile
 from collections.abc import Iterable
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -194,3 +196,93 @@ def test_template_error_in_append_stream_emits_error_done(
     assert "event: done" in body
     assert '"error"' in body
     assert "Bad tag" in body
+
+
+# ── File section tags ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def sections_dir(tmp_path):
+    """Temporary sections directory with default.md files for each tag."""
+    for tag in ("course", "user", "progress"):
+        (tmp_path / tag).mkdir()
+        (tmp_path / tag / "default.md").write_text(f"# {tag.capitalize()} Content")
+    return tmp_path
+
+
+@pytest.fixture
+def client_with_sections(mock_llm, sections_dir):
+    """Test client with mock LLM and a custom sections_dir injected via settings override."""
+    from app.api import routes as api_routes
+    from app.settings import Settings
+
+    def _override_settings():
+        s = Settings()
+        s.sections_dir = str(sections_dir)
+        return s
+
+    main_app.dependency_overrides[api_routes.get_llm] = lambda: mock_llm
+    main_app.dependency_overrides[api_routes.get_settings] = _override_settings
+    with TestClient(main_app) as c:
+        yield c
+    main_app.dependency_overrides.clear()
+
+
+def test_file_section_resolved_before_llm_call(client_with_sections, mock_llm, sections_dir) -> None:
+    """{{course}} must be expanded with file content before the LLM receives instructions."""
+    (sections_dir / "course" / "default.md").write_text("Docker for CI/CD")
+    _create_template_prompt(client_with_sections, "section-test", "Context: {{course}}")
+
+    r = client_with_sections.post("/conversations", json={
+        "messages": [{"role": "user", "content": "hi"}],
+        "prompt_slug": "section-test",
+    })
+    assert r.status_code == 200
+
+    instructions = mock_llm.complete.call_args[0][0]
+    assert "{{course}}" not in instructions
+    assert "Docker for CI/CD" in instructions
+
+
+def test_missing_section_file_returns_400(client_with_sections, sections_dir) -> None:
+    """Missing section file at render time must return 400."""
+    # Remove the course default.md so it's missing
+    (sections_dir / "course" / "default.md").unlink()
+    _create_template_prompt(client_with_sections, "missing-section", "{{course}}")
+
+    r = client_with_sections.post("/conversations", json={
+        "messages": [{"role": "user", "content": "hi"}],
+        "prompt_slug": "missing-section",
+    })
+    assert r.status_code == 400
+    assert "Section file not found" in r.json()["detail"]
+
+
+def test_section_containing_time_tag_resolved_end_to_end(
+    client_with_sections, mock_llm, sections_dir
+) -> None:
+    """Section file content containing {{time:current}} is resolved in Pass 2."""
+    (sections_dir / "user" / "default.md").write_text("Time: {{time:current}}")
+    _create_template_prompt(client_with_sections, "time-in-section", "{{user}}")
+
+    r = client_with_sections.post("/conversations", json={
+        "messages": [{"role": "user", "content": "hi"}],
+        "prompt_slug": "time-in-section",
+    })
+    assert r.status_code == 200
+
+    instructions = mock_llm.complete.call_args[0][0]
+    assert "{{time:current}}" not in instructions
+    assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC", instructions)
+
+
+def test_render_endpoint_returns_section_content(client_with_sections, sections_dir) -> None:
+    """GET /prompts/{slug}/render must include expanded section content."""
+    (sections_dir / "course" / "default.md").write_text("# Rendered Course")
+    _create_template_prompt(client_with_sections, "render-section-test", "Course: {{course}}")
+
+    r = client_with_sections.get("/prompts/render-section-test/render")
+    assert r.status_code == 200
+    data = r.json()
+    assert "{{course}}" not in data["rendered_prompt"]
+    assert "# Rendered Course" in data["rendered_prompt"]
