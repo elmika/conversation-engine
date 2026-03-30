@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from datetime import timezone
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -84,6 +86,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
                 "created_at": r.Conversation.created_at.isoformat(),
                 "last_activity": (r.last_activity or r.Conversation.created_at).isoformat(),
                 "first_message": (r.first_message or "")[:120],
+                "ended_at": r.Conversation.ended_at.isoformat() if r.Conversation.ended_at else None,
             }
             for r in rows
         ], total
@@ -132,10 +135,33 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             for m in rows
         ]
 
+    def get_conversation(self, conversation_id: str) -> Optional[dict]:
+        """Return {id, name, created_at, ended_at} for the conversation, or None if not found."""
+        row = self._session.get(Conversation, conversation_id)
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "name": row.name,
+            "created_at": row.created_at.isoformat(),
+            "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+        }
+
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""
         row = self._session.get(Conversation, conversation_id)
         return row.created_at if row else None
+
+    def end_conversation(self, conversation_id: str) -> None:
+        """Set ended_at to the current UTC time for the given conversation."""
+        row = self._session.get(Conversation, conversation_id)
+        if row:
+            row.ended_at = datetime.now(timezone.utc)
+
+    def get_active_conversation(self) -> Optional[str]:
+        """Return the id of the conversation where ended_at IS NULL, or None."""
+        stmt = select(Conversation.id).where(Conversation.ended_at.is_(None)).limit(1)
+        return self._session.execute(stmt).scalar_one_or_none()
 
     def record_run(
         self,

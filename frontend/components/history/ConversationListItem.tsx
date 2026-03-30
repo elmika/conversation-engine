@@ -63,8 +63,16 @@ export function ConversationListItem({
     isActive && "bg-accent text-accent-foreground"
   );
 
+  const isSessionActive = !conversation.ended_at;
+
   const actions = (
     <div className="flex shrink-0 items-center gap-1">
+      {isSessionActive && (
+        <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+          Active
+        </span>
+      )}
       {!editing && (
         <button
           onClick={startEditing}

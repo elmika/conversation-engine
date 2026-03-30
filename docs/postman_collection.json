@@ -360,7 +360,7 @@
                 "messages"
               ]
             },
-            "description": "Returns all messages for a conversation ordered by id ASC. Returns an empty `messages` array for unknown conversation IDs."
+            "description": "Returns all messages for a conversation ordered by id ASC. Returns an empty `messages` array for unknown conversation IDs. Includes `ended_at` field (null if still active)."
           },
           "response": [
             {
@@ -373,7 +373,53 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"messages\": [\n    {\n      \"id\": 1,\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"role\": \"assistant\",\n      \"content\": \"Hello Mika! How can I help you today?\",\n      \"created_at\": \"2026-03-02T11:00:01\"\n    }\n  ]\n}",
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"ended_at\": null,\n  \"messages\": [\n    {\n      \"id\": 1,\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"role\": \"assistant\",\n      \"content\": \"Hello Mika! How can I help you today?\",\n      \"created_at\": \"2026-03-02T11:00:01\"\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "End Session",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/conversations/{{conversation_id}}/end-session",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversation_id}}",
+                "end-session"
+              ]
+            },
+            "description": "Ends an active conversation. Calls the LLM to synthesise a progress snapshot from the conversation history, archives the old progress file, writes the new one, and marks the conversation as ended. Returns 409 if already ended."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"progress\": \"## What the student knows\\n\\n* Docker basics...\\n\"\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "409 Conflict — already ended",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Conversation has ended\"\n}",
               "_postman_previewlanguage": "json"
             }
           ]

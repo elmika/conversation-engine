@@ -57,6 +57,20 @@ Any conversation can be deleted. A confirmation modal prevents accidental deleti
 ### 2.5 Resume conversation
 Clicking a conversation in the sidebar or history table reopens it with its full message history.
 
+### 2.6 End Session
+An **End Session** button (exit icon) in the chat header bar is shown when an active conversation is open and the stream is not running. Clicking it:
+1. Sends `POST /conversations/{id}/end-session` to the backend.
+2. While the request is in flight, the button shows a spinner and is disabled.
+3. On success, the backend calls the LLM to synthesise an updated progress snapshot from the conversation, archives the old `sections/progress/default.md` with a timestamp filename, and writes the new snapshot. The conversation is then marked as ended in the database.
+4. The chat input is replaced by a locked banner: *"This session has ended. Start a new conversation to continue."*
+
+Only one active (non-ended) conversation is allowed at a time. Attempting to start a new conversation while one is active returns 409.
+
+### 2.7 Active / ended conversation state
+Conversations have an `ended_at` timestamp (null when active). In the sidebar and history table:
+- **Active conversations** show a green **Active** badge.
+- Ended conversations show no badge (most conversations are ended).
+
 ---
 
 ## 3. Conversation History

@@ -42,6 +42,7 @@ export interface ConversationSummary {
   created_at: string; // ISO 8601
   last_activity?: string | null;
   first_message?: string | null;
+  ended_at?: string | null; // ISO 8601; null/undefined means still active
 }
 
 export interface ConversationListResponse {
@@ -60,6 +61,7 @@ export interface Message {
 
 export interface MessagesResponse {
   conversation_id: string;
+  ended_at?: string | null; // ISO 8601; null/undefined means still active
   messages: Message[];
 }
 

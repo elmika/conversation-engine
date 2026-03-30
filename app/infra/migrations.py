@@ -11,6 +11,18 @@ def run_migrations(engine: Engine) -> None:
     """Apply any schema changes that create_all() cannot handle (e.g. new columns)."""
     with engine.connect() as conn:
         _add_column_if_missing(conn, "conversations", "name", "VARCHAR(256)")
+        _add_ended_at_and_mark_existing(conn)
+
+
+def _add_ended_at_and_mark_existing(conn) -> None:
+    """Add ended_at to conversations and mark all pre-existing rows as ended (one-time)."""
+    rows = conn.execute(text("PRAGMA table_info(conversations)")).fetchall()
+    existing = {row[1] for row in rows}
+    if "ended_at" not in existing:
+        conn.execute(text("ALTER TABLE conversations ADD COLUMN ended_at TIMESTAMP"))
+        conn.execute(text("UPDATE conversations SET ended_at = created_at WHERE ended_at IS NULL"))
+        conn.commit()
+        logger.info("Migration: added conversations.ended_at, marked existing rows as ended")
 
 
 def _add_column_if_missing(conn, table: str, column: str, col_type: str) -> None:

@@ -92,6 +92,18 @@ class ConversationService:
         slug = request_model or prompt_model or self._default_model
         return validate_model_slug(slug)
 
+    def _guard_not_ended(self, uow, conversation_id: str) -> None:
+        """Raise ValueError if the conversation is ended."""
+        conv = uow.repo.get_conversation(conversation_id)
+        if conv and conv["ended_at"]:
+            raise ValueError("conversation_ended")
+
+    def _guard_no_active_conversation(self, uow) -> None:
+        """Raise ValueError if there is already an active (non-ended) conversation."""
+        active = uow.repo.get_active_conversation()
+        if active:
+            raise ValueError("active_conversation_exists")
+
     def create_and_chat(
         self,
         messages: list[dict[str, str]],
@@ -113,6 +125,7 @@ class ConversationService:
         cid_str = str(conv_id)
 
         with self._uow_factory() as uow:
+            self._guard_no_active_conversation(uow)
             # Persist conversation and user messages
             uow.repo.create_conversation_with_id(cid_str)
             first_user = next((m for m in messages if m["role"] == "user"), None)
@@ -170,6 +183,8 @@ class ConversationService:
             history = uow.repo.get_messages(conversation_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
+
+            self._guard_not_ended(uow, conversation_id)
 
             created_at = uow.repo.get_conversation_created_at(conversation_id)
             instructions = self._render_instructions(instructions, created_at)
@@ -238,6 +253,7 @@ class ConversationService:
         # Create a UoW for the initial setup (conversation + user messages)
         uow_setup = self._uow_factory()
         with uow_setup:
+            self._guard_no_active_conversation(uow_setup)
             uow_setup.repo.create_conversation_with_id(cid_str)
             first_user = next((m for m in messages if m["role"] == "user"), None)
             if first_user:
@@ -284,6 +300,8 @@ class ConversationService:
             history = uow_setup.repo.get_messages(conversation_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
+
+            self._guard_not_ended(uow_setup, conversation_id)
 
             created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
             instructions = self._render_instructions(instructions, created_at)
@@ -341,6 +359,8 @@ class ConversationService:
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
+            self._guard_not_ended(uow_setup, conversation_id)
+
             created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
             instructions = self._render_instructions(instructions, created_at)
 
@@ -394,6 +414,47 @@ class ConversationService:
 
         rendered = self._render_instructions(record["system_prompt"], created_at)
         return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
+
+    def end_session(self, conversation_id: str) -> str:
+        """
+        End a conversation session: generate updated progress, archive old file, mark ended.
+
+        Returns the new progress markdown text.
+        Raises ValueError if conversation not found or already ended.
+        """
+        from pathlib import Path
+        import shutil
+
+        with self._uow_factory() as uow:
+            conv = uow.repo.get_conversation(conversation_id)
+            if not conv:
+                raise ValueError(f"Conversation {conversation_id} not found")
+            if conv["ended_at"]:
+                raise ValueError("conversation_ended")
+
+            messages = uow.repo.get_messages(conversation_id)
+
+            # Read wrap-up instructions
+            wrap_up_path = Path(self._sections_dir) / "progress" / "progress-wrap-up.md"
+            instructions = wrap_up_path.read_text(encoding="utf-8")
+
+            # Call LLM to synthesise new progress snapshot
+            result = self._llm.complete(instructions, messages)
+            new_progress = result["text"]
+
+            # Archive old progress file then write new content
+            progress_dir = Path(self._sections_dir) / "progress"
+            default_path = progress_dir / "default.md"
+            if default_path.exists():
+                archive_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".md"
+                shutil.copy2(str(default_path), str(progress_dir / archive_name))
+            default_path.write_text(new_progress, encoding="utf-8")
+
+            # Mark conversation as ended and persist
+            uow.repo.end_conversation(conversation_id)
+            uow.commit()
+
+        return new_progress
 
     def persist_stream_result(
         self,
