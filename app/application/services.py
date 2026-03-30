@@ -31,6 +31,7 @@ class ConversationService:
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
         sections_dir: str = "./sections",
+        wrap_up_model: str = "gpt-5.4-pro",
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
@@ -40,6 +41,7 @@ class ConversationService:
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
         self._sections_dir = sections_dir
+        self._wrap_up_model = wrap_up_model
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str]]:
         """Resolve prompt slug to (used_slug, system_prompt, prompt_model). Falls back to default."""
@@ -439,8 +441,8 @@ class ConversationService:
             raw_instructions = wrap_up_path.read_text(encoding="utf-8")
             instructions = self._render_instructions(raw_instructions)
 
-            # Call LLM to synthesise new progress snapshot
-            result = self._llm.complete(instructions, messages)
+            # Call LLM to synthesise new progress snapshot using the configured wrap-up model
+            result = self._llm.complete(instructions, messages, model=self._wrap_up_model)
             new_progress = result["text"]
 
             # Archive old progress file then write new content

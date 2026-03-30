@@ -185,7 +185,7 @@ After each streaming response, the timings badge shows the model that was actual
 API callers can pass `model_slug` in any conversation request body to override the model for that specific request. Resolution priority (highest → lowest):
 1. `model_slug` in the request body
 2. `model` field on the selected prompt
-3. Global `settings.openai_model` (default: `gpt-4.1`)
+3. Global `settings.default_model` (default: `gpt-4.1`)
 
 Passing an unknown `model_slug` returns a 400 error.
 

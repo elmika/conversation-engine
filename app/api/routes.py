@@ -73,10 +73,11 @@ def get_conversation_service(
         llm=llm,
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
-        default_model=settings.openai_model,
+        default_model=settings.default_model,
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
         sections_dir=settings.sections_dir,
+        wrap_up_model=settings.wrap_up_model,
     )
 
 

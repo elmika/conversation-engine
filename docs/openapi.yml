@@ -582,7 +582,7 @@ components:
           nullable: true
           description: |
             Model override for this request. Resolution priority:
-            `model_slug` (request) → prompt's `model` field → `settings.openai_model`.
+            `model_slug` (request) → prompt's `model` field → `settings.default_model`.
             Must be a slug from `GET /models`. Returns 400 if unknown.
           example: gpt-4o
         messages:

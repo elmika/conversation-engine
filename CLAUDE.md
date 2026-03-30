@@ -178,7 +178,8 @@ app/
 ### Settings (key knobs)
 | Setting | Default | Purpose |
 |---|---|---|
-| `openai_model` | `gpt-4.1-mini` | OpenAI model |
+| `default_model` | `gpt-4.1` | Model used for conversations |
+| `wrap_up_model` | `gpt-5.4-pro` | Model used to synthesise progress at session end |
 | `max_input_chars` | 32,000 | Input validation guard |
 | `max_output_tokens` | 4,096 | Output cap |
 | `request_timeout_s` | 60 | OpenAI call timeout |

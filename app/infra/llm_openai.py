@@ -85,7 +85,7 @@ class OpenAILLMAdapter:
 
     def __init__(self, settings: Settings) -> None:
         self._client = OpenAI(api_key=settings.openai_api_key)
-        self._model = settings.openai_model
+        self._model = settings.default_model
         self._timeout = settings.request_timeout_s
         self._max_output_tokens = settings.max_output_tokens
         self._max_retries = settings.max_retries
