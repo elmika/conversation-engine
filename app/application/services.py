@@ -434,9 +434,10 @@ class ConversationService:
 
             messages = uow.repo.get_messages(conversation_id)
 
-            # Read wrap-up instructions
+            # Read wrap-up instructions and resolve {{progress}} (and any other file/time tags)
             wrap_up_path = Path(self._sections_dir) / "progress" / "progress-wrap-up.md"
-            instructions = wrap_up_path.read_text(encoding="utf-8")
+            raw_instructions = wrap_up_path.read_text(encoding="utf-8")
+            instructions = self._render_instructions(raw_instructions)
 
             # Call LLM to synthesise new progress snapshot
             result = self._llm.complete(instructions, messages)
