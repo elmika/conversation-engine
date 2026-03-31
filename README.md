@@ -1,6 +1,6 @@
 # Conversation Engine
 
-Production-ready conversation engine built with FastAPI and OpenAI. Features dynamic prompts, streaming responses, conversation history management, and clean hexagonal architecture. Designed for flexibility, quality control, and maintainability.
+Adaptive learning platform with retrieval practice, learner profiling, and session memory. Built with FastAPI, Python, hexagonal architecture.
 
 ## Setup (OpenAI API key)
 
