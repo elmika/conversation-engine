@@ -373,6 +373,42 @@ paths:
               example:
                 detail: "Prompt 'my-prompt' already exists"
 
+  /prompts/{slug}/render:
+    get:
+      operationId: renderPrompt
+      summary: Render prompt
+      description: |
+        Returns the prompt's `system_prompt` with all `{{namespace:tag}}` template
+        variables resolved to their current values.
+
+        Pass `?conversation_id=` to anchor `{{time:conversation-start}}` and
+        `{{time:lesson-time-spent}}` to a specific conversation's start time.
+        Without it, both resolve to the current time (i.e. a "new conversation" preview).
+      tags: [prompts]
+      parameters:
+        - $ref: "#/components/parameters/promptSlug"
+        - name: conversation_id
+          in: query
+          required: false
+          description: UUID of a conversation to anchor time tags. Returns 404 if not found.
+          schema:
+            type: string
+            format: uuid
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+      responses:
+        "200":
+          description: Prompt with template variables resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptRenderResponse"
+              example:
+                slug: learn-typescript
+                name: TypeScript Mentor
+                rendered_prompt: "You are a technical mentor...\n\nCurrent time: 2026-03-27 12:00 UTC\nConversation started: 2026-03-27 11:45 UTC\nTime spent: 15 minutes"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /prompts/{slug}:
     put:
       operationId: updatePrompt
@@ -630,6 +666,22 @@ components:
           type: boolean
           description: When false the prompt is soft-deleted and excluded from GET /prompts (unless ?all=true)
           example: true
+
+    PromptRenderResponse:
+      type: object
+      required: [slug, name, rendered_prompt]
+      properties:
+        slug:
+          type: string
+          description: Prompt slug
+          example: learn-typescript
+        name:
+          type: string
+          description: Human-readable prompt name
+          example: TypeScript Mentor
+        rendered_prompt:
+          type: string
+          description: System prompt with all {{namespace:tag}} variables resolved to their current values
 
     PromptCreateRequest:
       type: object

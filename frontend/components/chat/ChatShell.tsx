@@ -24,13 +24,16 @@ interface ChatShellProps {
 export function ChatShell({ conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug, selectedModelSlug, enterToSend, toggleEnterToSend } = useChatStore();
-  const { data, isLoading } = useConversation(conversationId ?? null);
   const { status, partialText, timings, model, errorMessage, sendMessage, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat();
 
   // After the first turn the hook captures the server-assigned ID; use it for
   // follow-up turns when there is no URL-based conversationId.
   const activeConversationId = conversationId ?? streamedConversationId ?? undefined;
+
+  // Use activeConversationId so that new conversations (no URL param yet) also
+  // get a query refetch once the server assigns an ID after the first turn.
+  const { data, isLoading, isFetching } = useConversation(activeConversationId ?? null);
 
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const prevStatusRef = useRef(status);
@@ -163,7 +166,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
           partialText={partialText}
           timings={timings}
           model={model}
-          onRewind={activeConversationId ? handleRewind : undefined}
+          onRewind={activeConversationId && !isStreaming && !isFetching ? handleRewind : undefined}
         />
 
         {/* Error banner */}

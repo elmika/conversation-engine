@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import delete, func, select
@@ -130,6 +131,11 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             }
             for m in rows
         ]
+
+    def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
+        """Return the created_at timestamp of the conversation, or None if not found."""
+        row = self._session.get(Conversation, conversation_id)
+        return row.created_at if row else None
 
     def record_run(
         self,

@@ -21,14 +21,14 @@ export function ModelSelector() {
 
   return (
     <Select
-      value={selectedModelSlug ?? ""}
-      onValueChange={(value) => setSelectedModelSlug(value || null)}
+      value={selectedModelSlug ?? "__default__"}
+      onValueChange={(value) => setSelectedModelSlug(value === "__default__" ? null : value)}
     >
       <SelectTrigger className="w-44">
         <SelectValue placeholder="Default (auto)" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="">Default (auto)</SelectItem>
+        <SelectItem value="__default__">Default (auto)</SelectItem>
         {data?.models.map((m) => (
           <SelectItem key={m.slug} value={m.slug} title={m.description}>
             {m.name}

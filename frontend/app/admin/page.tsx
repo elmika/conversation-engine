@@ -7,21 +7,19 @@ import { PromptDialog } from "@/components/admin/PromptDialog";
 import { DeletePromptDialog } from "@/components/admin/DeletePromptDialog";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { usePrompts, useAllPrompts, useDisablePrompt, useEnablePrompt } from "@/hooks/usePrompts";
+import { usePrompts, useAllPrompts } from "@/hooks/usePrompts";
 import type { Prompt } from "@/lib/types";
 
 export default function AdminPage() {
   const [showAll, setShowAll] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editPrompt, setEditPrompt] = useState<Prompt | null>(null);
+  const [duplicateSource, setDuplicateSource] = useState<Prompt | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Prompt | null>(null);
 
   const activeResult = usePrompts();
   const allResult = useAllPrompts();
   const { data, isLoading, isError } = showAll ? allResult : activeResult;
-
-  const disableMutation = useDisablePrompt();
-  const enableMutation = useEnablePrompt();
 
   function handleEdit(prompt: Prompt) {
     setEditPrompt(prompt);
@@ -30,12 +28,22 @@ export default function AdminPage() {
 
   function handleNewPrompt() {
     setEditPrompt(null);
+    setDuplicateSource(null);
+    setDialogOpen(true);
+  }
+
+  function handleDuplicate(prompt: Prompt) {
+    setEditPrompt(null);
+    setDuplicateSource(prompt);
     setDialogOpen(true);
   }
 
   function handleDialogClose(open: boolean) {
     setDialogOpen(open);
-    if (!open) setEditPrompt(null);
+    if (!open) {
+      setEditPrompt(null);
+      setDuplicateSource(null);
+    }
   }
 
   return (
@@ -72,8 +80,7 @@ export default function AdminPage() {
                 key={p.slug}
                 prompt={p}
                 onEdit={handleEdit}
-                onDisable={(slug) => disableMutation.mutate(slug)}
-                onEnable={(slug) => enableMutation.mutate(slug)}
+                onDuplicate={handleDuplicate}
                 onDelete={setDeleteTarget}
               />
             ))}
@@ -90,6 +97,12 @@ export default function AdminPage() {
         open={dialogOpen}
         onOpenChange={handleDialogClose}
         prompt={editPrompt}
+        initialValues={duplicateSource ? {
+          slug: `${duplicateSource.slug}-copy`,
+          name: `${duplicateSource.name} (copy)`,
+          system_prompt: duplicateSource.system_prompt,
+          model: duplicateSource.model,
+        } : undefined}
       />
 
       {deleteTarget && (

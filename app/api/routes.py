@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -20,6 +20,7 @@ from app.api.schemas import (
     ModelSchema,
     ModelsResponse,
     PromptCreateRequest,
+    PromptRenderResponse,
     PromptSchema,
     PromptUpdateRequest,
     PromptsResponse,
@@ -28,6 +29,7 @@ from app.api.schemas import (
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
+from app.domain.prompt_template import PromptTemplateError, validate_template
 from app.infra.persistence.db import get_session
 from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -73,6 +75,7 @@ def get_conversation_service(
         default_model=settings.openai_model,
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
+        sections_dir=settings.sections_dir,
     )
 
 
@@ -261,6 +264,8 @@ async def append_conversation_turn(
             return service.append_and_chat(
                 conversation_id, messages, body.prompt_slug, body.model_slug
             )
+        except PromptTemplateError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
@@ -301,6 +306,8 @@ async def append_conversation_turn_stream(
                     return service.append_and_stream(
                         conversation_id, messages, body.prompt_slug, body.model_slug
                     )
+                except PromptTemplateError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
                 except ValueError as e:
                     raise HTTPException(status_code=404, detail=str(e))
 
@@ -416,6 +423,8 @@ async def rewind_conversation_stream(
                         body.prompt_slug,
                         body.model_slug,
                     )
+                except PromptTemplateError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
                 except ValueError as e:
                     raise HTTPException(status_code=404, detail=str(e))
 
@@ -608,6 +617,10 @@ async def create_prompt(
 ) -> PromptSchema:
     """Create a new prompt persona."""
     try:
+        validate_template(body.system_prompt)
+    except PromptTemplateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
         await asyncio.to_thread(
             prompt_repo.create, body.slug, body.name, body.system_prompt, body.model
         )
@@ -623,6 +636,27 @@ async def create_prompt(
     )
 
 
+@router.get("/prompts/{slug}/render", response_model=PromptRenderResponse)
+async def render_prompt_preview(
+    slug: str,
+    conversation_id: Optional[str] = None,
+    service: ConversationService = Depends(get_conversation_service),
+) -> PromptRenderResponse:
+    """Return the prompt's system_prompt with all template variables resolved.
+
+    Pass ?conversation_id= to anchor time:conversation-start and
+    time:lesson-time-spent to a specific conversation's start time.
+    """
+    def _run() -> dict:
+        try:
+            return service.preview_prompt(slug, conversation_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+    result = await asyncio.to_thread(_run)
+    return PromptRenderResponse(**result)
+
+
 @router.put("/prompts/{slug}", response_model=PromptSchema)
 async def update_prompt(
     slug: str,
@@ -631,6 +665,10 @@ async def update_prompt(
     db=Depends(get_session),
 ) -> PromptSchema:
     """Update name, system_prompt, and/or model of an existing prompt."""
+    try:
+        validate_template(body.system_prompt)
+    except PromptTemplateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     updated = await asyncio.to_thread(
         prompt_repo.update, slug, body.name, body.system_prompt, body.model
     )

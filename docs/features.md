@@ -114,6 +114,30 @@ Each assistant can declare a preferred OpenAI model via a `model:` field in its 
 ### 5.5 Active / disabled state
 Prompts have an `is_active` flag. Disabled prompts are soft-deleted: they no longer appear in the conversation selector or in `GET /prompts`, but their data is preserved so existing conversation history remains intact. Disabled prompts can be re-enabled at any time. Prompts that have never been used in a conversation can be fully hard-deleted.
 
+### 5.6 Template variables in system prompts
+System prompts support template variables that are resolved at the moment each LLM call is made. Resolution happens in two passes: file section tags are expanded first, then time tags are resolved on the assembled text.
+
+**Time tags (`{{namespace:tag}}` format):**
+| Tag | Resolves to |
+|---|---|
+| `{{time:current}}` | Current UTC time at minute precision, e.g. `2026-03-26 21:42 UTC` |
+| `{{time:conversation-start}}` | UTC time when the conversation was created (minute precision, consistent across all turns) |
+| `{{time:lesson-time-spent}}` | Elapsed time since conversation start, e.g. `5 minutes 30 seconds` |
+
+**File section tags (valueless, no colon):**
+| Tag | Resolves to |
+|---|---|
+| `{{course}}` | Contents of `sections/course/default.md` |
+| `{{user}}` | Contents of `sections/user/default.md` |
+| `{{progress}}` | Contents of `sections/progress/default.md` |
+
+File section tags allow prompts to reference large, stable content blocks (course material, user profiles, session progress) stored in separate Markdown files. The files are read at render time — editing a section file takes effect immediately without restarting the service. Section files may themselves contain `{{time:*}}` tags, which are resolved in the second pass. A missing section file at render time produces a 400 error.
+
+Templates are validated when a prompt is saved via the Admin panel. A prompt containing an invalid tag (malformed format, unknown namespace, or unknown tag name) is rejected with an error — bad templates cannot be persisted. File section tags are accepted at save time; file existence is not checked until render time.
+
+### 5.7 Preview rendered prompt
+A **Preview** button (scan icon) on each prompt card in the Admin panel opens a dialog showing the fully assembled and rendered system prompt — with all template variables (time tags and file section tags) resolved to their current values. The preview is read-only and can be scrolled for long prompts.
+
 ---
 
 ## 6. Model Selection
@@ -170,7 +194,10 @@ An **eye-off** button on each active card soft-deletes the prompt (sets `is_acti
 ### 7.5 Show disabled prompts
 A **Show disabled** checkbox at the top of the admin panel toggles display of disabled prompt cards alongside active ones.
 
-### 7.6 Delete prompt
+### 7.6 Render prompt preview
+`GET /prompts/{slug}/render` returns the prompt's system prompt with all `{{namespace:tag}}` template variables resolved to their current values. An optional `?conversation_id=` query parameter anchors `{{time:conversation-start}}` and `{{time:lesson-time-spent}}` to a specific conversation's start time; without it, both resolve to the current time (a "new conversation" preview). Returns 404 if the slug or conversation ID is not found.
+
+### 7.7 Delete prompt
 A **trash** icon on each card opens a confirmation dialog to permanently delete the prompt. If the prompt has been used in any conversation, deletion is blocked with an error message (use Disable instead).
 
 ---

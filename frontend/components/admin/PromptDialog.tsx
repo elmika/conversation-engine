@@ -23,9 +23,11 @@ interface PromptDialogProps {
   onOpenChange: (open: boolean) => void;
   /** When provided the dialog is in edit mode; otherwise create mode. */
   prompt?: Prompt | null;
+  /** Pre-fill fields for create mode (e.g. when duplicating). */
+  initialValues?: Partial<Pick<Prompt, "slug" | "name" | "system_prompt" | "model">>;
 }
 
-export function PromptDialog({ open, onOpenChange, prompt }: PromptDialogProps) {
+export function PromptDialog({ open, onOpenChange, prompt, initialValues }: PromptDialogProps) {
   const isEdit = Boolean(prompt);
 
   const [slug, setSlug] = useState("");
@@ -41,13 +43,13 @@ export function PromptDialog({ open, onOpenChange, prompt }: PromptDialogProps) 
 
   useEffect(() => {
     if (open) {
-      setSlug(prompt?.slug ?? "");
-      setName(prompt?.name ?? "");
-      setSystemPrompt(prompt?.system_prompt ?? "");
-      setModel(prompt?.model ?? "");
+      setSlug(prompt?.slug ?? initialValues?.slug ?? "");
+      setName(prompt?.name ?? initialValues?.name ?? "");
+      setSystemPrompt(prompt?.system_prompt ?? initialValues?.system_prompt ?? "");
+      setModel(prompt?.model ?? initialValues?.model ?? "");
       setError(null);
     }
-  }, [open, prompt]);
+  }, [open, prompt, initialValues]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

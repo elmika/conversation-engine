@@ -88,6 +88,12 @@ export interface PromptsResponse {
   prompts: Prompt[];
 }
 
+export interface PromptRenderResponse {
+  slug: string;
+  name: string;
+  rendered_prompt: string;
+}
+
 export interface ModelSchema {
   slug: string;
   name: string;

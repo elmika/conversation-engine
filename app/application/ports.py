@@ -1,6 +1,7 @@
 """Application ports: abstract interfaces for infra adapters."""
 
 from collections.abc import Iterable
+from datetime import datetime
 from typing import Optional, Protocol, TypedDict
 from types import TracebackType
 
@@ -118,6 +119,10 @@ class ConversationRepo(Protocol):
 
     def truncate_from(self, conversation_id: str, message_id: int) -> None:
         """Delete messages with id >= message_id and their associated runs."""
+        ...
+
+    def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
+        """Return the created_at timestamp of the conversation, or None if not found."""
         ...
 
 

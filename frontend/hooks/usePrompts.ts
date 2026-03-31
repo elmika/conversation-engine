@@ -6,9 +6,10 @@ import {
   enablePrompt,
   fetchAllPrompts,
   fetchPrompts,
+  fetchRenderedPrompt,
   updatePrompt,
 } from "@/lib/api-client";
-import type { Prompt, PromptCreateRequest, PromptUpdateRequest, PromptsResponse } from "@/lib/types";
+import type { Prompt, PromptCreateRequest, PromptRenderResponse, PromptUpdateRequest, PromptsResponse } from "@/lib/types";
 
 export function usePrompts() {
   return useQuery<PromptsResponse>({
@@ -73,5 +74,13 @@ export function useDeletePrompt() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prompts"] });
     },
+  });
+}
+
+export function useRenderPrompt(slug: string | null) {
+  return useQuery<PromptRenderResponse>({
+    queryKey: ["prompts", slug, "render"],
+    queryFn: () => fetchRenderedPrompt(slug!),
+    enabled: !!slug,
   });
 }

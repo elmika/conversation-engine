@@ -23,10 +23,11 @@ WORKDIR /app
 # by running `docker compose run --rm frontend pnpm install`
 EXPOSE 3000
 ENV NODE_ENV=development
-# WATCHPACK_POLLING enables file-system polling inside Docker so Next.js
-# hot-reload works across the host→container volume boundary.
-ENV WATCHPACK_POLLING=true
-CMD ["sh", "-c", "pnpm install && pnpm dev"]
+# WATCHPACK_POLLING: enable only if hot-reload stops working without it.
+# Docker Desktop with VirtioFS supports native filesystem events, so polling
+# is usually unnecessary and adds latency to each rebuild.
+# ENV WATCHPACK_POLLING=true
+CMD ["sh", "-c", "[ -d node_modules/.pnpm ] || pnpm install && pnpm dev"]
 
 # ---- builder: production build ----
 FROM base AS builder

@@ -107,3 +107,9 @@ class ModelSchema(BaseModel):
 
 class ModelsResponse(BaseModel):
     models: list[ModelSchema]
+
+
+class PromptRenderResponse(BaseModel):
+    slug: str
+    name: str
+    rendered_prompt: str

@@ -1,12 +1,14 @@
 """Application services: orchestrate use cases + persistence."""
 
 from collections.abc import Callable, Iterable
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.application.ports import LLMPort, LLMResult, PromptRepo, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
 from app.domain.model_registry import validate_model_slug
+from app.domain.prompt_template import render_prompt, resolve_file_sections
 from app.domain.value_objects import ConversationId
 
 
@@ -28,6 +30,7 @@ class ConversationService:
         default_model: str,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
+        sections_dir: str = "./sections",
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
@@ -36,11 +39,46 @@ class ConversationService:
         self._default_model = default_model
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
+        self._sections_dir = sections_dir
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str]]:
         """Resolve prompt slug to (used_slug, system_prompt, prompt_model). Falls back to default."""
         record = self._prompt_repo.get_prompt_or_default(slug, self._default_prompt_slug)
         return record["slug"], record["system_prompt"], record.get("model")
+
+    def _render_instructions(
+        self, instructions: str, conversation_start: Optional[datetime] = None
+    ) -> str:
+        # Pass 1: expand {{course}}, {{user}}, {{progress}} from files
+        from pathlib import Path
+
+        def _loader(tag: str) -> Optional[str]:
+            path = Path(self._sections_dir) / tag / "default.md"
+            return path.read_text(encoding="utf-8") if path.exists() else None
+
+        instructions = resolve_file_sections(instructions, _loader)
+
+        # Pass 2: resolve {{time:*}} tags
+        now = datetime.now(timezone.utc)
+        start = conversation_start or now
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+
+        total_seconds = max(0, int((now - start).total_seconds()))
+        minutes, secs = divmod(total_seconds, 60)
+        if minutes == 0:
+            time_spent = f"{secs} seconds"
+        elif secs == 0:
+            time_spent = f"{minutes} minutes"
+        else:
+            time_spent = f"{minutes} minutes {secs} seconds"
+
+        context = {
+            "time:current": now.strftime("%Y-%m-%d %H:%M UTC"),
+            "time:conversation-start": start.strftime("%Y-%m-%d %H:%M UTC"),
+            "time:lesson-time-spent": time_spent,
+        }
+        return render_prompt(instructions, context)
 
     def _resolve_model(
         self,
@@ -67,6 +105,7 @@ class ConversationService:
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         """
         used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
         # Create conversation with domain-generated ID
@@ -132,6 +171,9 @@ class ConversationService:
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
+            created_at = uow.repo.get_conversation_created_at(conversation_id)
+            instructions = self._render_instructions(instructions, created_at)
+
             # Persist user messages for this turn
             for msg in messages:
                 uow.repo.append_message(conversation_id, msg["role"], msg["content"])
@@ -188,6 +230,7 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
         used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
         conv_id = ConversationId.generate()
         cid_str = str(conv_id)
@@ -242,6 +285,9 @@ class ConversationService:
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
+            created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
+            instructions = self._render_instructions(instructions, created_at)
+
             for msg in messages:
                 uow_setup.repo.append_message(conversation_id, msg["role"], msg["content"])
             uow_setup.commit()
@@ -294,6 +340,10 @@ class ConversationService:
             history = uow_setup.repo.get_messages(conversation_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
+
+            created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
+            instructions = self._render_instructions(instructions, created_at)
+
             uow_setup.repo.truncate_from(conversation_id, message_id)
             uow_setup.repo.append_message(conversation_id, "user", new_content)
             uow_setup.commit()
@@ -319,6 +369,31 @@ class ConversationService:
 
         uow_final = self._uow_factory()
         return conv_id, events, used_prompt_slug, resolved_model, uow_final
+
+    def preview_prompt(
+        self,
+        slug: str,
+        conversation_id: Optional[str] = None,
+    ) -> dict:
+        """Return the prompt's system_prompt with template variables resolved.
+
+        If conversation_id is provided, time:conversation-start and
+        time:lesson-time-spent are anchored to that conversation's created_at.
+        Raises ValueError if the slug or conversation_id is not found.
+        """
+        record = self._prompt_repo.get_prompt(slug)
+        if record is None:
+            raise ValueError(f"Prompt '{slug}' not found")
+
+        created_at = None
+        if conversation_id:
+            with self._uow_factory() as uow:
+                created_at = uow.repo.get_conversation_created_at(conversation_id)
+            if created_at is None:
+                raise ValueError(f"Conversation '{conversation_id}' not found")
+
+        rendered = self._render_instructions(record["system_prompt"], created_at)
+        return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
 
     def persist_stream_result(
         self,

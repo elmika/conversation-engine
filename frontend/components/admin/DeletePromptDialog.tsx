@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useDeletePrompt } from "@/hooks/usePrompts";
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { ApiError } from "@/lib/api-client";
 
 interface DeletePromptDialogProps {
@@ -52,12 +53,15 @@ export function DeletePromptDialog({ open, onOpenChange, slug, name }: DeletePro
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
+            disabled={deleteMutation.isPending}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Delete
+            {deleteMutation.isPending ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deleting…</>
+            ) : "Delete"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
