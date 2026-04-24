@@ -1,3 +1,12 @@
-# Course
+# Course: Docker for CI/CD
 
-This is the default course content placeholder. Replace with actual course material.
+8 Modules:
+
+1. Multi-stage Builds
+2. Docker Networking
+3. Docker Compose
+4. Building for CI
+5. Registry Workflow — tag, push, pull, local registry
+6. GitHub Actions + Docker — workflows, build/test/push, caching
+7. Production Patterns — non-root, secrets, graceful shutdown, .dockerignore
+8. Deploy with Docker — restart policies, logging, resource limits

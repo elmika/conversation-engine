@@ -18,7 +18,8 @@ List mistakes, misunderstandings, or gaps that surfaced during this session. Kee
 
 ## Side quests: Dynamic topics
 
-Keep the existing format (Completed / Available lists). Update "Completed" if a side quest was finished in this session. Remove from "Available" if completed.
+Keep the existing format (Completed / Available lists). Update "Completed" if a side quest was finished in this session. Remove from "Available" if completed. Add any side quest that has been requested by the user during the session. 
+
 
 ## Progress - Current state
 
