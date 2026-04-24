@@ -1,4 +1,5 @@
 data
+sections
 .env
 frontend/.pnpm-store
 .DS_Store

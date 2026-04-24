@@ -69,20 +69,30 @@ def test_list_conversations_returns_created(client) -> None:
 
 def test_list_conversations_pagination(client) -> None:
     """Verify page_size limits results and page/page_size fields are echoed back."""
-    # Create 5 conversations via the injected client (shares the same in-memory DB)
     from app.api import routes as api_routes
+    from app.infra.persistence.db import get_engine
+    from sqlalchemy import text
 
     mock_llm = main_app.dependency_overrides.get(api_routes.get_llm)
-    # Reset side_effect for additional calls
     if mock_llm:
         mock_llm().complete.side_effect = None
         mock_llm().complete.return_value = _make_llm_result()
 
+    engine = get_engine()
     for _ in range(5):
-        client.post(
+        r = client.post(
             "/conversations",
             json={"messages": [{"role": "user", "content": "Ping"}]},
         )
+        if r.status_code == 200:
+            cid = r.json()["conversation_id"]
+            # End the conversation directly in the DB so the next creation is allowed
+            with engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE conversations SET ended_at = CURRENT_TIMESTAMP WHERE id = :id"),
+                    {"id": cid},
+                )
+                conn.commit()
 
     r = client.get("/conversations?page=1&page_size=2")
     assert r.status_code == 200

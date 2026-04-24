@@ -15,6 +15,7 @@ from app.api.schemas import (
     ConversationResponse,
     ConversationRewindRequest,
     ConversationSummary,
+    EndSessionResponse,
     MessageSchema,
     MessagesResponse,
     ModelSchema,
@@ -72,10 +73,11 @@ def get_conversation_service(
         llm=llm,
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
-        default_model=settings.openai_model,
+        default_model=settings.default_model,
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
         sections_dir=settings.sections_dir,
+        wrap_up_model=settings.wrap_up_model,
     )
 
 
@@ -129,6 +131,8 @@ async def create_conversation_stream(
                         messages, body.prompt_slug, body.model_slug
                     )
                 except ValueError as e:
+                    if str(e) == "active_conversation_exists":
+                        raise HTTPException(status_code=409, detail="An active conversation already exists")
                     raise HTTPException(status_code=400, detail=str(e))
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
@@ -229,6 +233,8 @@ async def create_conversation(
             body.model_slug,
         )
     except ValueError as e:
+        if str(e) == "active_conversation_exists":
+            raise HTTPException(status_code=409, detail="An active conversation already exists")
         raise HTTPException(status_code=400, detail=str(e))
 
     return ConversationResponse(
@@ -267,6 +273,8 @@ async def append_conversation_turn(
         except PromptTemplateError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except ValueError as e:
+            if str(e) == "conversation_ended":
+                raise HTTPException(status_code=409, detail="Conversation has ended")
             raise HTTPException(status_code=404, detail=str(e))
 
     conv_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(_run)
@@ -309,6 +317,8 @@ async def append_conversation_turn_stream(
                 except PromptTemplateError as e:
                     raise HTTPException(status_code=400, detail=str(e))
                 except ValueError as e:
+                    if str(e) == "conversation_ended":
+                        raise HTTPException(status_code=409, detail="Conversation has ended")
                     raise HTTPException(status_code=404, detail=str(e))
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
@@ -426,6 +436,8 @@ async def rewind_conversation_stream(
                 except PromptTemplateError as e:
                     raise HTTPException(status_code=400, detail=str(e))
                 except ValueError as e:
+                    if str(e) == "conversation_ended":
+                        raise HTTPException(status_code=409, detail="Conversation has ended")
                     raise HTTPException(status_code=404, detail=str(e))
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
@@ -525,6 +537,7 @@ async def list_conversations(
                 created_at=r["created_at"],
                 last_activity=r.get("last_activity"),
                 first_message=r.get("first_message"),
+                ended_at=r.get("ended_at"),
             )
             for r in rows
         ],
@@ -570,13 +583,16 @@ async def get_conversation_messages(
     uow_factory=Depends(get_uow_factory),
 ) -> MessagesResponse:
     """Get all messages for a conversation, ordered by id ASC."""
-    def _run() -> list[dict]:
+    def _run() -> tuple[list[dict], Optional[dict]]:
         with uow_factory() as uow:
-            return uow.repo.get_messages_with_metadata(conversation_id)
+            msgs = uow.repo.get_messages_with_metadata(conversation_id)
+            conv = uow.repo.get_conversation(conversation_id)
+            return msgs, conv
 
-    msgs = await asyncio.to_thread(_run)
+    msgs, conv = await asyncio.to_thread(_run)
     return MessagesResponse(
         conversation_id=conversation_id,
+        ended_at=conv["ended_at"] if conv else None,
         messages=[
             MessageSchema(
                 id=m["id"],
@@ -587,6 +603,33 @@ async def get_conversation_messages(
             for m in msgs
         ],
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/end-session",
+    response_model=EndSessionResponse,
+)
+async def end_session(
+    conversation_id: str,
+    service: ConversationService = Depends(get_conversation_service),
+) -> EndSessionResponse:
+    """
+    End a conversation session.
+
+    Calls the LLM to synthesise a new progress snapshot from the conversation history,
+    archives the old progress file, writes the new one, and marks the conversation as ended.
+    Returns the updated progress markdown.
+    """
+    def _run() -> str:
+        try:
+            return service.end_session(conversation_id)
+        except ValueError as e:
+            if str(e) == "conversation_ended":
+                raise HTTPException(status_code=409, detail="Conversation has ended")
+            raise HTTPException(status_code=404, detail=str(e))
+
+    progress = await asyncio.to_thread(_run)
+    return EndSessionResponse(progress=progress)
 
 
 @router.get("/prompts", response_model=PromptsResponse)

@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CornerDownLeft, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
+import { CornerDownLeft, Loader2, LogOut, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
@@ -15,6 +16,7 @@ import { useChatStore } from "@/hooks/useChatStore";
 import { useConversation } from "@/hooks/useConversation";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { cn } from "@/lib/utils";
+import { endSession } from "@/lib/api-client";
 import type { Message } from "@/lib/types";
 
 interface ChatShellProps {
@@ -63,6 +65,16 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   }, [status, partialText]);
 
   const isStreaming = status === "connecting" || status === "streaming";
+  const isEnded = Boolean(data?.ended_at);
+
+  const queryClient = useQueryClient();
+  const { mutate: endSessionMutate, isPending: isEndingSession } = useMutation({
+    mutationFn: () => endSession(activeConversationId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["messages", activeConversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
 
   const handleNewConversation = () => {
     reset();
@@ -144,7 +156,24 @@ export function ChatShell({ conversationId }: ChatShellProps) {
           </Button>
           <PromptSelector />
           <ModelSelector />
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            {activeConversationId && !isStreaming && !isEnded && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => endSessionMutate()}
+                disabled={isEndingSession}
+                className="gap-1.5 text-xs"
+                title="End this session and update progress"
+              >
+                {isEndingSession ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <LogOut className="h-3.5 w-3.5" />
+                )}
+                {isEndingSession ? "Ending…" : "End Session"}
+              </Button>
+            )}
             <Button
               variant={enterToSend ? "secondary" : "ghost"}
               size="sm"
@@ -178,7 +207,11 @@ export function ChatShell({ conversationId }: ChatShellProps) {
 
         {/* Input */}
         <div className="border-t p-4">
-          {isStreaming ? (
+          {isEnded ? (
+            <div className="rounded-md border border-muted bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground">
+              This session has ended. Start a new conversation to continue.
+            </div>
+          ) : isStreaming ? (
             <div className="flex justify-center">
               <Button variant="outline" size="sm" onClick={cancel} className="gap-2">
                 <StopCircle className="h-4 w-4" />

@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Conversation Engine** — A production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.
 
+**Prompt system:** Prompts are stored in SQLite, seeded from `prompts/*.md` on every startup (upsert — edits via admin UI are overwritten on restart if a matching file exists). See `docs/prompts.md` for full architecture, current DB state, and safe editing workflow.
+
 ## Commands
 
 > **No local Python or Node.js required** — everything runs in Docker.
@@ -178,7 +180,8 @@ app/
 ### Settings (key knobs)
 | Setting | Default | Purpose |
 |---|---|---|
-| `openai_model` | `gpt-4.1-mini` | OpenAI model |
+| `default_model` | `gpt-4.1` | Model used for conversations |
+| `wrap_up_model` | `gpt-5.4-pro` | Model used to synthesise progress at session end |
 | `max_input_chars` | 32,000 | Input validation guard |
 | `max_output_tokens` | 4,096 | Output cap |
 | `request_timeout_s` | 60 | OpenAI call timeout |

@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-4.1"
+    default_model: str = "gpt-4.1"
+    wrap_up_model: str = "gpt-5.4-pro"
     max_input_chars: int = 32_000
     max_output_tokens: int = 4_096
     request_timeout_s: int = 60

@@ -121,8 +121,20 @@ class ConversationRepo(Protocol):
         """Delete messages with id >= message_id and their associated runs."""
         ...
 
+    def get_conversation(self, conversation_id: str) -> Optional[dict]:
+        """Return {id, name, created_at, ended_at} for the conversation, or None if not found."""
+        ...
+
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""
+        ...
+
+    def end_conversation(self, conversation_id: str) -> None:
+        """Set ended_at = now(UTC) for the given conversation."""
+        ...
+
+    def get_active_conversation(self) -> Optional[str]:
+        """Return the id of the one conversation where ended_at IS NULL, or None."""
         ...
 
 

@@ -42,6 +42,7 @@ class ConversationSummary(BaseModel):
     created_at: str  # ISO 8601
     last_activity: Optional[str] = None
     first_message: Optional[str] = None
+    ended_at: Optional[str] = None  # ISO 8601; None means still active
 
 
 class ConversationRenameRequest(BaseModel):
@@ -71,7 +72,12 @@ class MessageSchema(BaseModel):
 
 class MessagesResponse(BaseModel):
     conversation_id: str
+    ended_at: Optional[str] = None  # ISO 8601; None means still active
     messages: list[MessageSchema]
+
+
+class EndSessionResponse(BaseModel):
+    progress: str
 
 
 class PromptSchema(BaseModel):

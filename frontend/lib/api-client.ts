@@ -231,6 +231,15 @@ export async function appendConversationTurnStream(
   return getStream(res);
 }
 
+export async function endSession(
+  conversationId: string
+): Promise<{ progress: string }> {
+  const res = await fetch(`/api/conversations/${conversationId}/end-session`, {
+    method: "POST",
+  });
+  return handleResponse(res);
+}
+
 export async function rewindConversationStream(
   conversationId: string,
   messageId: number,
