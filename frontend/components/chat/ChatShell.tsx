@@ -67,12 +67,18 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);
 
+  const [endSessionError, setEndSessionError] = useState<string | null>(null);
+
   const queryClient = useQueryClient();
   const { mutate: endSessionMutate, isPending: isEndingSession } = useMutation({
     mutationFn: () => endSession(activeConversationId!),
+    onMutate: () => setEndSessionError(null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["messages", activeConversationId] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (err: Error) => {
+      setEndSessionError(err.message ?? "Failed to end session. Please try again.");
     },
   });
 
@@ -202,6 +208,11 @@ export function ChatShell({ conversationId }: ChatShellProps) {
         {status === "error" && errorMessage && (
           <div className="mx-4 mb-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {errorMessage}
+          </div>
+        )}
+        {endSessionError && (
+          <div className="mx-4 mb-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            End session failed: {endSessionError}
           </div>
         )}
 
