@@ -3,6 +3,8 @@ sections
 .env
 frontend/.pnpm-store
 .DS_Store
+.notes/
+temp/
 
 # Python build artifacts
 *.egg-info/

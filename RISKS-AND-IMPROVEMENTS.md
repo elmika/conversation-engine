@@ -1,7 +1,7 @@
 
 # Top Risks and Improvements
 
-TBD.
+- **No deployment pipeline** — no CI/CD, no automated tests on push, no staging environment. Everything runs locally. Needs a pipeline before this can go anywhere near production.
 
 
 # Exhaustive Risks and Improvements
