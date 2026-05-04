@@ -5,7 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
@@ -611,25 +611,27 @@ async def get_conversation_messages(
 )
 async def end_session(
     conversation_id: str,
+    background_tasks: BackgroundTasks,
     service: ConversationService = Depends(get_conversation_service),
 ) -> EndSessionResponse:
     """
     End a conversation session.
 
-    Calls the LLM to synthesise a new progress snapshot from the conversation history,
-    archives the old progress file, writes the new one, and marks the conversation as ended.
-    Returns the updated progress markdown.
+    Marks the conversation as ended immediately and returns. Progress synthesis
+    (LLM wrap-up + file write) runs as a background task so the learner is never
+    blocked by the LLM call. Returns 409 if the conversation is already ended.
     """
-    def _run() -> str:
+    def _end() -> list[dict]:
         try:
-            return service.end_session(conversation_id)
+            return service.end_conversation(conversation_id)
         except ValueError as e:
             if str(e) == "conversation_ended":
-                raise HTTPException(status_code=409, detail="Conversation has ended")
+                raise HTTPException(status_code=409, detail="Conversation has already ended")
             raise HTTPException(status_code=404, detail=str(e))
 
-    progress = await asyncio.to_thread(_run)
-    return EndSessionResponse(progress=progress)
+    messages = await asyncio.to_thread(_end)
+    background_tasks.add_task(service.synthesise_progress, messages)
+    return EndSessionResponse(status="ending")
 
 
 @router.get("/prompts", response_model=PromptsResponse)

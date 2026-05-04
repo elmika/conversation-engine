@@ -233,7 +233,7 @@ export async function appendConversationTurnStream(
 
 export async function endSession(
   conversationId: string
-): Promise<{ progress: string }> {
+): Promise<{ status: string }> {
   const res = await fetch(`/api/conversations/${conversationId}/end-session`, {
     method: "POST",
   });

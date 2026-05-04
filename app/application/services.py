@@ -1,8 +1,11 @@
 """Application services: orchestrate use cases + persistence."""
 
+import logging
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from app.application.ports import LLMPort, LLMResult, PromptRepo, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
@@ -417,47 +420,50 @@ class ConversationService:
         rendered = self._render_instructions(record["system_prompt"], created_at)
         return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
 
-    def end_session(self, conversation_id: str) -> str:
+    def end_conversation(self, conversation_id: str) -> list[dict]:
         """
-        End a conversation session: generate updated progress, archive old file, mark ended.
+        Mark a conversation as ended and return its messages.
 
-        Returns the new progress markdown text.
         Raises ValueError if conversation not found or already ended.
+        Returns the message list so the caller can pass it to synthesise_progress.
         """
-        from pathlib import Path
-        import shutil
-
         with self._uow_factory() as uow:
             conv = uow.repo.get_conversation(conversation_id)
             if not conv:
                 raise ValueError(f"Conversation {conversation_id} not found")
             if conv["ended_at"]:
                 raise ValueError("conversation_ended")
-
             messages = uow.repo.get_messages(conversation_id)
+            uow.repo.end_conversation(conversation_id)
+            uow.commit()
+        return messages
 
-            # Read wrap-up instructions and resolve {{progress}} (and any other file/time tags)
+    def synthesise_progress(self, messages: list[dict]) -> None:
+        """
+        Call the LLM to produce an updated progress snapshot and write it to disk.
+
+        Intended to run as a background task after end_conversation. Errors are
+        logged but not re-raised so a failing wrap-up never blocks the learner.
+        """
+        from pathlib import Path
+        import shutil
+
+        try:
             wrap_up_path = Path(self._sections_dir) / "progress" / "progress-wrap-up.md"
             raw_instructions = wrap_up_path.read_text(encoding="utf-8")
             instructions = self._render_instructions(raw_instructions)
 
-            # Call LLM to synthesise new progress snapshot using the configured wrap-up model
             result = self._llm.complete(instructions, messages, model=self._wrap_up_model)
             new_progress = result["text"]
 
-            # Archive old progress file then write new content
             progress_dir = Path(self._sections_dir) / "progress"
             default_path = progress_dir / "default.md"
             if default_path.exists():
                 archive_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".md"
                 shutil.copy2(str(default_path), str(progress_dir / archive_name))
             default_path.write_text(new_progress, encoding="utf-8")
-
-            # Mark conversation as ended and persist
-            uow.repo.end_conversation(conversation_id)
-            uow.commit()
-
-        return new_progress
+        except Exception:
+            logger.exception("Progress synthesis failed — progress file not updated")
 
     def persist_stream_result(
         self,

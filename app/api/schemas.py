@@ -77,7 +77,7 @@ class MessagesResponse(BaseModel):
 
 
 class EndSessionResponse(BaseModel):
-    progress: str
+    status: str = "ending"
 
 
 class PromptSchema(BaseModel):
