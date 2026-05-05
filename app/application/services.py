@@ -474,6 +474,8 @@ class ConversationService:
         model: str,
         ttfb_ms: int,
         total_ms: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
     ) -> None:
         """
         Persist the final assistant message and run metadata after streaming completes.
@@ -492,5 +494,7 @@ class ConversationService:
                 model=model,
                 ttfb_ms=ttfb_ms,
                 total_ms=total_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
             uow.commit()

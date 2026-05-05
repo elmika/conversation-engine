@@ -20,6 +20,8 @@ class LLMResult(TypedDict):
     model: str
     ttfb_ms: int
     total_ms: int
+    input_tokens: int
+    output_tokens: int
 
 
 class StreamEvent(TypedDict, total=False):
@@ -34,6 +36,8 @@ class StreamEvent(TypedDict, total=False):
     model: str
     ttfb_ms: int
     total_ms: int
+    input_tokens: int
+    output_tokens: int
     # Present when type == "error".
     error_type: str  # e.g., "rate_limit", "timeout", "api_error"
     error_message: str  # Human-readable error description

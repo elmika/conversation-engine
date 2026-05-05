@@ -124,11 +124,14 @@ class OpenAILLMAdapter:
                     )
                     total_ms = round((time.perf_counter() - start) * 1000)
                     text = _extract_output_text(response)
+                    usage = getattr(response, "usage", None)
                     return LLMResult(
                         text=text,
                         model=getattr(response, "model", effective_model) or effective_model,
                         ttfb_ms=total_ms,
                         total_ms=total_ms,
+                        input_tokens=getattr(usage, "input_tokens", 0) or 0,
+                        output_tokens=getattr(usage, "output_tokens", 0) or 0,
                     )
                 except RETRYABLE_EXCEPTIONS as exc:
                     last_exc = exc
@@ -228,12 +231,15 @@ class OpenAILLMAdapter:
         total_ms = round((time.perf_counter() - start) * 1000)
         text = _extract_output_text(final_response)
         resolved_model = getattr(final_response, "model", effective_model) or effective_model
+        usage = getattr(final_response, "usage", None)
         yield StreamEvent(
             type="final",
             text=text,
             model=resolved_model,
             ttfb_ms=first_delta_ms or total_ms,
             total_ms=total_ms,
+            input_tokens=getattr(usage, "input_tokens", 0) or 0,
+            output_tokens=getattr(usage, "output_tokens", 0) or 0,
         )
 
 

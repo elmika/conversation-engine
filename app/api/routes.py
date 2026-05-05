@@ -182,6 +182,8 @@ async def create_conversation_stream(
                         model,
                         ttfb_ms,
                         total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
                     )
                     done_payload = {
                         "conversation_id": conv_id,
@@ -368,6 +370,8 @@ async def append_conversation_turn_stream(
                         model,
                         ttfb_ms,
                         total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
                     )
                     done_payload = {
                         "conversation_id": conv_id,
@@ -487,6 +491,8 @@ async def rewind_conversation_stream(
                         model,
                         ttfb_ms,
                         total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
                     )
                     done_payload = {
                         "conversation_id": conv_id,
