@@ -96,6 +96,17 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         if conv:
             conv.name = name
 
+    def count_conversations_named(self, base_name: str) -> int:
+        from sqlalchemy import func, or_
+        return self._session.scalar(
+            select(func.count()).where(
+                or_(
+                    Conversation.name == base_name,
+                    Conversation.name.like(f"{base_name} (%)"),
+                )
+            )
+        ) or 0
+
     def delete_conversation(self, conversation_id: str) -> None:
         conv = self._session.get(Conversation, conversation_id)
         if conv:

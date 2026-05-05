@@ -46,10 +46,14 @@ class ConversationService:
         self._sections_dir = sections_dir
         self._wrap_up_model = wrap_up_model
 
-    def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str]]:
-        """Resolve prompt slug to (used_slug, system_prompt, prompt_model). Falls back to default."""
+    def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str], str]:
+        """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name). Falls back to default."""
         record = self._prompt_repo.get_prompt_or_default(slug, self._default_prompt_slug)
-        return record["slug"], record["system_prompt"], record.get("model")
+        return record["slug"], record["system_prompt"], record.get("model"), record.get("name", record["slug"])
+
+    def _make_conversation_name(self, prompt_name: str) -> str:
+        """Build conversation name from the prompt name. Module enrichment is a Layer 2 hook concern."""
+        return prompt_name
 
     def _render_instructions(
         self, instructions: str, conversation_start: Optional[datetime] = None
@@ -121,7 +125,7 @@ class ConversationService:
         Transaction boundary: all operations commit atomically.
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
@@ -133,9 +137,10 @@ class ConversationService:
             self._guard_no_active_conversation(uow)
             # Persist conversation and user messages
             uow.repo.create_conversation_with_id(cid_str)
-            first_user = next((m for m in messages if m["role"] == "user"), None)
-            if first_user:
-                uow.repo.rename_conversation(cid_str, first_user["content"][:60].strip())
+            base_name = self._make_conversation_name(prompt_name)
+            count = uow.repo.count_conversations_named(base_name)
+            name = base_name if count == 0 else f"{base_name} ({count + 1})"
+            uow.repo.rename_conversation(cid_str, name)
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
@@ -180,7 +185,7 @@ class ConversationService:
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
         with self._uow_factory() as uow:
@@ -249,7 +254,7 @@ class ConversationService:
 
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
         conv_id = ConversationId.generate()
@@ -260,9 +265,7 @@ class ConversationService:
         with uow_setup:
             self._guard_no_active_conversation(uow_setup)
             uow_setup.repo.create_conversation_with_id(cid_str)
-            first_user = next((m for m in messages if m["role"] == "user"), None)
-            if first_user:
-                uow_setup.repo.rename_conversation(cid_str, first_user["content"][:60].strip())
+            uow_setup.repo.rename_conversation(cid_str, self._make_conversation_name(prompt_name))
             for msg in messages:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
             uow_setup.commit()
@@ -296,7 +299,7 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
         # Load history and persist user messages in one transaction
@@ -355,7 +358,7 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
         uow_setup = self._uow_factory()

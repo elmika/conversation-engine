@@ -117,6 +117,10 @@ class ConversationRepo(Protocol):
         """Set the display name for a conversation."""
         ...
 
+    def count_conversations_named(self, base_name: str) -> int:
+        """Count conversations whose name equals base_name or matches 'base_name (N)'."""
+        ...
+
     def delete_conversation(self, conversation_id: str) -> None:
         """Delete a conversation and all its messages and runs."""
         ...
