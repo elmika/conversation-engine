@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Local references
+
+`.notes/` is gitignored and contains private architecture references for this project. Read it at the start of any session involving architecture decisions.
+
+- `.notes/architecture.md` — vault paths for the layer model and templating architecture docs
+
 ## Project
 
 **Conversation Engine** — A production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.
