@@ -217,6 +217,19 @@ export async function createConversationStream(
   return getStream(res);
 }
 
+export async function initSessionStream(
+  body: { prompt_slug?: string | null; model_slug?: string | null },
+  signal?: AbortSignal
+): Promise<ReadableStream<Uint8Array>> {
+  const res = await fetch("/api/conversations/init-stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return getStream(res);
+}
+
 export async function appendConversationTurnStream(
   conversationId: string,
   body: ConversationRequest,

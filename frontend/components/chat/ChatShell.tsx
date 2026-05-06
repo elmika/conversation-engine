@@ -26,7 +26,7 @@ interface ChatShellProps {
 export function ChatShell({ conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug, selectedModelSlug, enterToSend, toggleEnterToSend } = useChatStore();
-  const { status, partialText, timings, model, errorMessage, sendMessage, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
+  const { status, partialText, timings, model, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat();
 
   // After the first turn the hook captures the server-assigned ID; use it for
@@ -63,6 +63,15 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     }
     prevStatusRef.current = status;
   }, [status, partialText]);
+
+  // Auto-fire AI opening message when starting a new conversation
+  const initFiredRef = useRef(false);
+  useEffect(() => {
+    if (!conversationId && !initFiredRef.current) {
+      initFiredRef.current = true;
+      initSession(selectedPromptSlug, selectedModelSlug);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);

@@ -282,6 +282,47 @@ class ConversationService:
         uow_final = self._uow_factory()
         return conversation_id, events, used_prompt_slug, resolved_model, uow_final
 
+    def create_and_stream_init(
+        self,
+        prompt_slug: Optional[str] = None,
+        model_slug: Optional[str] = None,
+    ) -> tuple[str, Iterable[StreamEvent], str, str, UnitOfWork]:
+        """
+        Create a new conversation and stream an AI-initiated opening message.
+
+        No user message is stored — the LLM is called with a hidden trigger that is
+        never persisted. Only the assistant's opening message lands in the conversation.
+
+        Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
+        """
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
+        instructions = self._render_instructions(instructions)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
+        conv_id = ConversationId.generate()
+        cid_str = str(conv_id)
+
+        uow_setup = self._uow_factory()
+        with uow_setup:
+            self._guard_no_active_conversation(uow_setup)
+            uow_setup.repo.create_conversation_with_id(cid_str)
+            base_name = self._make_conversation_name(prompt_name)
+            count = uow_setup.repo.count_conversations_named(base_name)
+            name = base_name if count == 0 else f"{base_name} ({count + 1})"
+            uow_setup.repo.rename_conversation(cid_str, name)
+            uow_setup.commit()
+
+        # Hidden trigger — not stored, causes the LLM to produce the opening message
+        trigger = [{"role": "user", "content": "start"}]
+        conversation_id, events = stream_chat(
+            messages=trigger,
+            instructions=instructions,
+            llm_stream=lambda instr, msgs: self._llm.stream(instr, msgs, model=resolved_model),
+            conversation_id=conv_id,
+        )
+
+        uow_final = self._uow_factory()
+        return conversation_id, events, used_prompt_slug, resolved_model, uow_final
+
     def append_and_stream(
         self,
         conversation_id: str,

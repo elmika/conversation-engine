@@ -16,6 +16,7 @@ from app.api.schemas import (
     ConversationRewindRequest,
     ConversationSummary,
     EndSessionResponse,
+    InitSessionRequest,
     MessageSchema,
     MessagesResponse,
     ModelSchema,
@@ -212,6 +213,101 @@ async def create_conversation_stream(
             }
             yield _sse_event("done", error_payload)
             # Re-raise so middleware can log it
+            raise
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post(
+    "/conversations/init-stream",
+    name="init_session_stream",
+)
+async def init_session_stream(
+    body: InitSessionRequest,
+    service: ConversationService = Depends(get_conversation_service),
+) -> StreamingResponse:
+    """
+    Create a new conversation and stream an AI-initiated opening message.
+
+    The LLM opens the session with a course recap and progress summary.
+    No user message is stored — only the assistant's opening message lands in the conversation.
+
+    Emits SSE events:
+      - meta: conversation_id, model, prompt_slug
+      - chunk: incremental text delta
+      - done: final assistant message + timings
+    """
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
+                try:
+                    return service.create_and_stream_init(
+                        body.prompt_slug, body.model_slug
+                    )
+                except ValueError as e:
+                    if str(e) == "active_conversation_exists":
+                        raise HTTPException(status_code=409, detail="An active conversation already exists")
+                    raise HTTPException(status_code=400, detail=str(e))
+
+            conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
+                _stream_setup
+            )
+
+            yield _sse_event("meta", {
+                "conversation_id": conv_id,
+                "model": resolved_model,
+                "prompt_slug": used_prompt_slug,
+            })
+
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = resolved_model
+
+            for ev in events:
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
+                    )
+                    yield _sse_event("done", {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    })
+                elif ev.get("type") == "error":
+                    yield _sse_event("done", {"error": ev.get("error_message", "Stream error")})
+        except HTTPException as exc:
+            yield _sse_event("done", {"error": {"type": "http_error", "status_code": exc.status_code, "message": exc.detail}})
+        except Exception:
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred"}})
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

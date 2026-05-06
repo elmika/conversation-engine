@@ -20,6 +20,13 @@ class ConversationRequest(BaseModel):
     messages: list[ConversationMessage] = Field(..., min_length=1)
 
 
+class InitSessionRequest(BaseModel):
+    """Request body for AI-initiated session opening."""
+
+    prompt_slug: Optional[str] = None
+    model_slug: Optional[str] = None
+
+
 class TimingsSchema(BaseModel):
     """TTFB and total latency in ms."""
 

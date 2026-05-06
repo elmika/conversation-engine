@@ -6,6 +6,7 @@ import {
   createConversationStream,
   appendConversationTurnStream,
   rewindConversationStream,
+  initSessionStream,
 } from "@/lib/api-client";
 import { parseSSEStream } from "@/lib/stream-parser";
 import type { ConversationRequest, Timings } from "@/lib/types";
@@ -228,6 +229,89 @@ export function useStreamingChat() {
     [queryClient]
   );
 
+  const initSession = useCallback(
+    async (promptSlug?: string | null, modelSlug?: string | null) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setState({
+        status: "connecting",
+        partialText: "",
+        conversationId: null,
+        timings: null,
+        model: null,
+        errorMessage: null,
+      });
+
+      try {
+        const stream = await initSessionStream(
+          { prompt_slug: promptSlug, model_slug: modelSlug },
+          controller.signal
+        );
+
+        setState((s) => ({ ...s, status: "streaming" }));
+
+        let finalConversationId: string | null = null;
+        let finalTimings: Timings | null = null;
+        let finalModel: string | null = null;
+        let accText = "";
+
+        for await (const event of parseSSEStream(stream)) {
+          if (controller.signal.aborted) break;
+
+          if (event.event === "meta") {
+            finalConversationId = event.data.conversation_id;
+            finalModel = event.data.model;
+          } else if (event.event === "chunk") {
+            accText += event.data.delta;
+            setState((s) => ({ ...s, partialText: accText }));
+          } else if (event.event === "done") {
+            if (event.data.error) {
+              setState({
+                status: "error",
+                partialText: accText,
+                conversationId: finalConversationId,
+                timings: null,
+                model: finalModel,
+                errorMessage: event.data.error.message ?? "Failed to open session",
+              });
+              return;
+            }
+            finalTimings = event.data.timings ?? null;
+          }
+        }
+
+        if (controller.signal.aborted) {
+          setState((s) => ({ ...s, status: "idle" }));
+          return;
+        }
+
+        setState({
+          status: "done",
+          partialText: accText,
+          conversationId: finalConversationId,
+          timings: finalTimings,
+          model: finalModel,
+          errorMessage: null,
+        });
+
+        if (finalConversationId) {
+          queryClient.invalidateQueries({ queryKey: ["messages", finalConversationId] });
+          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        }
+      } catch (err) {
+        if (controller.signal.aborted) {
+          setState((s) => ({ ...s, status: "idle" }));
+          return;
+        }
+        const message = err instanceof Error ? err.message : "An unexpected error occurred.";
+        setState((s) => ({ ...s, status: "error", errorMessage: message }));
+      }
+    },
+    [queryClient]
+  );
+
   const cancel = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -237,5 +321,5 @@ export function useStreamingChat() {
     setState(INITIAL_STATE);
   }, []);
 
-  return { ...state, sendMessage, rewindAndStream, cancel, reset };
+  return { ...state, sendMessage, initSession, rewindAndStream, cancel, reset };
 }
