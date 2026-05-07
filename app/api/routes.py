@@ -242,7 +242,7 @@ async def init_session_stream(
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.create_and_stream_init(
-                        body.prompt_slug, body.model_slug
+                        "course-session-init", body.model_slug
                     )
                 except ValueError as e:
                     if str(e) == "active_conversation_exists":

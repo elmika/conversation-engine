@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -64,14 +63,15 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     prevStatusRef.current = status;
   }, [status, partialText]);
 
-  // Auto-fire AI opening message when starting a new conversation
+  // Auto-fire AI opening message when starting a new (no-URL) conversation.
+  // Also re-fires when status returns to "idle" after handleNewConversation resets the ref.
   const initFiredRef = useRef(false);
   useEffect(() => {
-    if (!conversationId && !initFiredRef.current) {
+    if (!conversationId && !initFiredRef.current && status === "idle") {
       initFiredRef.current = true;
       initSession(selectedPromptSlug, selectedModelSlug);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conversationId, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);
@@ -92,7 +92,8 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   });
 
   const handleNewConversation = () => {
-    reset();
+    initFiredRef.current = false; // allow init to re-fire after reset()
+    reset();                       // sets status → "idle", triggering the effect above
     setLocalMessages([]);
     router.push("/chat");
   };
@@ -147,11 +148,9 @@ export function ChatShell({ conversationId }: ChatShellProps) {
       >
         <div className="flex items-center justify-between p-3">
           <span className="text-sm font-semibold">History</span>
-          <Link href="/chat">
-            <Button variant="ghost" size="icon" title="New conversation">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" title="New conversation" onClick={handleNewConversation}>
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
         <Separator />
         <div className="flex-1 overflow-y-auto">

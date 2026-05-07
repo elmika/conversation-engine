@@ -91,24 +91,28 @@ def test_render_repeated_tag():
     assert result == "2026-03-26 21:42 UTC and again 2026-03-26 21:42 UTC."
 
 
-def test_render_malformed_tag_raises():
-    with pytest.raises(PromptTemplateError, match="Malformed tag"):
-        render_prompt("{{current}}", CONTEXT)
+def test_render_unknown_tag_passed_through():
+    # render_prompt does not validate — injected slot content may contain arbitrary {{ }}
+    result = render_prompt("{{current}}", CONTEXT)
+    assert result == "{{current}}"
 
 
-def test_render_unknown_namespace_raises():
-    with pytest.raises(PromptTemplateError, match="Unknown namespace"):
-        render_prompt("{{foo:bar}}", CONTEXT)
+def test_render_unknown_namespace_passed_through():
+    result = render_prompt("{{foo:bar}}", CONTEXT)
+    assert result == "{{foo:bar}}"
 
 
-def test_render_unknown_tag_raises():
-    with pytest.raises(PromptTemplateError, match="Unknown tag"):
-        render_prompt("{{time:whatever}}", CONTEXT)
+def test_render_github_actions_syntax_passed_through():
+    # Regression: progress files may contain GitHub Actions ${{ secrets.X }} syntax
+    template = "Progress:\n${{ secrets.DOCKERHUB_USERNAME }}\nTime: {{time:current}}"
+    result = render_prompt(template, CONTEXT)
+    assert "${{ secrets.DOCKERHUB_USERNAME }}" in result
+    assert "2026-03-26 21:42 UTC" in result
 
 
-def test_render_valid_and_invalid_raises():
-    with pytest.raises(PromptTemplateError):
-        render_prompt("{{time:current}} and {{current}}", CONTEXT)
+def test_render_mixed_known_and_unknown():
+    result = render_prompt("{{time:current}} and {{current}}", CONTEXT)
+    assert result == "2026-03-26 21:42 UTC and {{current}}"
 
 
 def test_render_lesson_time_spent():

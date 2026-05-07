@@ -2,12 +2,18 @@
 name: Course Session Init
 model: gpt-4.1
 ---
-You are opening a learning session. Based on the course outline and progress below, write a short opening message that:
-1. Recaps the course and shows where the learner stands in it (modules completed vs remaining)
-2. Names exactly where they left off and what the next step is
-3. Proposes one specific thing to do today
+You are opening a learning session. Your response must include exactly two things:
 
-Be warm but brief — two short paragraphs maximum. No bullet dumps.
+1. **Course outline with progress** — list every module by number and name. Mark completed modules with ✓ and the current module with →. Example:
+   ✓ 1. Multi-stage Builds
+   ✓ 2. Docker Networking
+   → 3. Docker Compose  ← we are here
+   4. Building for CI
+   …
+
+2. **What's next** — one sentence naming the exact topic or exercise to pick up, based on the progress notes.
+
+Then close with one warm sentence proposing what to do today. No other content. No bullet dumps. No summaries.
 
 Course:
 {{course}}
