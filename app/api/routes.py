@@ -132,8 +132,9 @@ async def create_conversation_stream(
                         messages, body.prompt_slug, body.model_slug
                     )
                 except ValueError as e:
-                    if str(e) == "active_conversation_exists":
-                        raise HTTPException(status_code=409, detail="An active conversation already exists")
+                    if str(e).startswith("active_conversation_exists"):
+                        active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
+                        raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
                     raise HTTPException(status_code=400, detail=str(e))
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
@@ -194,25 +195,9 @@ async def create_conversation_stream(
                     }
                     yield _sse_event("done", done_payload)
         except HTTPException as exc:
-            # Map HTTP exceptions to SSE error events
-            error_payload = {
-                "error": {
-                    "type": "http_error",
-                    "status_code": exc.status_code,
-                    "message": exc.detail,
-                }
-            }
-            yield _sse_event("done", error_payload)
-        except Exception as exc:
-            # Catch any other errors and emit terminal done event
-            error_payload = {
-                "error": {
-                    "type": "internal_error",
-                    "message": "An unexpected error occurred during streaming",
-                }
-            }
-            yield _sse_event("done", error_payload)
-            # Re-raise so middleware can log it
+            yield _sse_http_error(exc)
+        except Exception:
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -245,8 +230,9 @@ async def init_session_stream(
                         "course-session-init", body.model_slug
                     )
                 except ValueError as e:
-                    if str(e) == "active_conversation_exists":
-                        raise HTTPException(status_code=409, detail="An active conversation already exists")
+                    if str(e).startswith("active_conversation_exists"):
+                        active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
+                        raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
                     raise HTTPException(status_code=400, detail=str(e))
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
@@ -305,7 +291,7 @@ async def init_session_stream(
                 elif ev.get("type") == "error":
                     yield _sse_event("done", {"error": ev.get("error_message", "Stream error")})
         except HTTPException as exc:
-            yield _sse_event("done", {"error": {"type": "http_error", "status_code": exc.status_code, "message": exc.detail}})
+            yield _sse_http_error(exc)
         except Exception:
             yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred"}})
             raise
@@ -331,8 +317,9 @@ async def create_conversation(
             body.model_slug,
         )
     except ValueError as e:
-        if str(e) == "active_conversation_exists":
-            raise HTTPException(status_code=409, detail="An active conversation already exists")
+        if str(e).startswith("active_conversation_exists"):
+            active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
+            raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
         raise HTTPException(status_code=400, detail=str(e))
 
     return ConversationResponse(
@@ -346,6 +333,16 @@ async def create_conversation(
 def _sse_event(event: str, data: dict[str, Any]) -> str:
     """Format a server-sent event."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _sse_http_error(exc: HTTPException) -> str:
+    """Format an HTTPException as a terminal SSE done error event."""
+    detail = exc.detail
+    msg = detail.get("message", str(detail)) if isinstance(detail, dict) else str(detail)
+    error: dict[str, Any] = {"type": "http_error", "status_code": exc.status_code, "message": msg}
+    if exc.status_code == 409 and isinstance(detail, dict) and detail.get("conversation_id"):
+        error["conversation_id"] = detail["conversation_id"]
+    return _sse_event("done", {"error": error})
 
 
 @router.post(
@@ -477,25 +474,9 @@ async def append_conversation_turn_stream(
                     }
                     yield _sse_event("done", done_payload)
         except HTTPException as exc:
-            # Map HTTP exceptions to SSE error events
-            error_payload = {
-                "error": {
-                    "type": "http_error",
-                    "status_code": exc.status_code,
-                    "message": exc.detail,
-                }
-            }
-            yield _sse_event("done", error_payload)
-        except Exception as exc:
-            # Catch any other errors and emit terminal done event
-            error_payload = {
-                "error": {
-                    "type": "internal_error",
-                    "message": "An unexpected error occurred during streaming",
-                }
-            }
-            yield _sse_event("done", error_payload)
-            # Re-raise so middleware can log it
+            yield _sse_http_error(exc)
+        except Exception:
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -598,22 +579,9 @@ async def rewind_conversation_stream(
                     }
                     yield _sse_event("done", done_payload)
         except HTTPException as exc:
-            error_payload = {
-                "error": {
-                    "type": "http_error",
-                    "status_code": exc.status_code,
-                    "message": exc.detail,
-                }
-            }
-            yield _sse_event("done", error_payload)
+            yield _sse_http_error(exc)
         except Exception:
-            error_payload = {
-                "error": {
-                    "type": "internal_error",
-                    "message": "An unexpected error occurred during streaming",
-                }
-            }
-            yield _sse_event("done", error_payload)
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

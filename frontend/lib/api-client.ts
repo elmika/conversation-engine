@@ -28,9 +28,9 @@ import type {
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
-    public readonly detail: string
+    public readonly detail: unknown  // string for most errors; object for structured 409s
   ) {
-    super(`API error ${status}: ${detail}`);
+    super(`API error ${status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
     this.name = "ApiError";
   }
 }
@@ -39,9 +39,10 @@ export class ApiError extends Error {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-async function parseErrorDetail(res: Response): Promise<string> {
+async function parseErrorDetail(res: Response): Promise<unknown> {
   try {
     const body = await res.clone().json();
+    // Return the detail as-is: may be a string or a structured object (e.g. 409)
     return body.detail ?? res.statusText;
   } catch {
     return res.statusText;

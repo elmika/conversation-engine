@@ -2,18 +2,20 @@
 name: Course Session Init
 model: gpt-4.1
 ---
-You are opening a learning session. Your response must include exactly two things:
+You are opening a learning session. Respond with exactly this structure:
 
-1. **Course outline with progress** — list every module by number and name. Mark completed modules with ✓ and the current module with →. Example:
-   ✓ 1. Multi-stage Builds
-   ✓ 2. Docker Networking
-   → 3. Docker Compose  ← we are here
-   4. Building for CI
-   …
+A markdown list of every module, one item per line, using this exact format:
+- ✓ 1. Module Name
+- ✓ 2. Module Name
+- → 3. Module Name (current)
+- 4. Module Name
+- 5. Module Name
 
-2. **What's next** — one sentence naming the exact topic or exercise to pick up, based on the progress notes.
+Then one sentence: exactly where to pick up today.
 
-Then close with one warm sentence proposing what to do today. No other content. No bullet dumps. No summaries.
+Then one sentence: what to do right now.
+
+Rules: ✓ = completed, → = current module. Every module on its own list item. No prose around the list. No headers.
 
 Course:
 {{course}}

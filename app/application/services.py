@@ -125,10 +125,13 @@ class ConversationService:
             raise ValueError("conversation_ended")
 
     def _guard_no_active_conversation(self, uow) -> None:
-        """Raise ValueError if there is already an active (non-ended) conversation."""
+        """Raise ValueError if there is already an active (non-ended) conversation.
+
+        The active conversation ID is embedded in the message so routes can return it to callers.
+        """
         active = uow.repo.get_active_conversation()
         if active:
-            raise ValueError("active_conversation_exists")
+            raise ValueError(f"active_conversation_exists:{active}")
 
     def create_and_chat(
         self,
@@ -152,12 +155,10 @@ class ConversationService:
 
         with self._uow_factory() as uow:
             self._guard_no_active_conversation(uow)
-            # Persist conversation and user messages
-            uow.repo.create_conversation_with_id(cid_str)
             base_name = self._make_conversation_name(prompt_name)
             count = uow.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow.repo.rename_conversation(cid_str, name)
+            uow.repo.create_conversation_with_id(cid_str, name=name)
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
@@ -281,8 +282,10 @@ class ConversationService:
         uow_setup = self._uow_factory()
         with uow_setup:
             self._guard_no_active_conversation(uow_setup)
-            uow_setup.repo.create_conversation_with_id(cid_str)
-            uow_setup.repo.rename_conversation(cid_str, self._make_conversation_name(prompt_name))
+            base_name = self._make_conversation_name(prompt_name)
+            count = uow_setup.repo.count_conversations_named(base_name)
+            name = base_name if count == 0 else f"{base_name} ({count + 1})"
+            uow_setup.repo.create_conversation_with_id(cid_str, name=name)
             for msg in messages:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
             uow_setup.commit()
@@ -320,11 +323,11 @@ class ConversationService:
 
         uow_setup = self._uow_factory()
         with uow_setup:
-            uow_setup.repo.create_conversation_with_id(cid_str)
+            self._guard_no_active_conversation(uow_setup)
             base_name = self._course_title() or self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.rename_conversation(cid_str, name)
+            uow_setup.repo.create_conversation_with_id(cid_str, name=name)
             uow_setup.commit()
 
         # Hidden trigger — not stored, causes the LLM to produce the opening message

@@ -27,10 +27,7 @@ make up
 # UI   → http://localhost:3000
 ```
 
-> **Backend hot-reload caveat:** Only the frontend source is volume-mounted for hot-reload. The backend (`app/`) is baked into the image at build time. After any backend code change, rebuild before restarting:
-> ```bash
-> make build && make up
-> ```
+Both `app/` and `prompts/` are volume-mounted and uvicorn runs with `--reload`, so backend changes take effect immediately without a rebuild. A rebuild (`make build`) is only needed when dependencies change (`requirements.txt`) or the Dockerfile itself changes.
 
 **Backend tests:**
 ```bash

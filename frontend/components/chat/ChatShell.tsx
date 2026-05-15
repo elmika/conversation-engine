@@ -69,7 +69,9 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   useEffect(() => {
     if (!conversationId && !initFiredRef.current && status === "idle") {
       initFiredRef.current = true;
-      initSession(selectedPromptSlug, selectedModelSlug);
+      initSession(selectedPromptSlug, selectedModelSlug, (activeId) => {
+        router.push(`/chat/${activeId}`);
+      });
     }
   }, [conversationId, status]); // eslint-disable-line react-hooks/exhaustive-deps
 

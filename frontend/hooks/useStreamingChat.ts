@@ -7,6 +7,7 @@ import {
   appendConversationTurnStream,
   rewindConversationStream,
   initSessionStream,
+  ApiError,
 } from "@/lib/api-client";
 import { parseSSEStream } from "@/lib/stream-parser";
 import type { ConversationRequest, Timings } from "@/lib/types";
@@ -97,7 +98,7 @@ export function useStreamingChat() {
                 conversationId: finalConversationId,
                 timings: null,
                 model: finalModel,
-                errorMessage: event.data.error.message,
+                errorMessage: String(event.data.error.message ?? "Stream error"),
               });
               return;
             }
@@ -193,7 +194,7 @@ export function useStreamingChat() {
                 conversationId,
                 timings: null,
                 model: finalModel,
-                errorMessage: event.data.error.message,
+                errorMessage: String(event.data.error.message ?? "Stream error"),
               });
               return;
             }
@@ -230,7 +231,11 @@ export function useStreamingChat() {
   );
 
   const initSession = useCallback(
-    async (promptSlug?: string | null, modelSlug?: string | null) => {
+    async (
+      promptSlug?: string | null,
+      modelSlug?: string | null,
+      onActiveConversation?: (conversationId: string) => void,
+    ) => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -268,13 +273,21 @@ export function useStreamingChat() {
             setState((s) => ({ ...s, partialText: accText }));
           } else if (event.event === "done") {
             if (event.data.error) {
+              if (event.data.error.status_code === 409 && onActiveConversation) {
+                const activeId = event.data.error.conversation_id;
+                if (activeId) {
+                  setState(INITIAL_STATE);
+                  onActiveConversation(String(activeId));
+                  return;
+                }
+              }
               setState({
                 status: "error",
                 partialText: accText,
                 conversationId: finalConversationId,
                 timings: null,
                 model: finalModel,
-                errorMessage: event.data.error.message ?? "Failed to open session",
+                errorMessage: String(event.data.error.message ?? "Failed to open session"),
               });
               return;
             }
@@ -304,6 +317,15 @@ export function useStreamingChat() {
         if (controller.signal.aborted) {
           setState((s) => ({ ...s, status: "idle" }));
           return;
+        }
+        // 409: an active session already exists — navigate to it instead of showing an error
+        if (err instanceof ApiError && err.status === 409 && onActiveConversation) {
+          const activeId = (err.detail as { conversation_id?: string } | null)?.conversation_id;
+          if (activeId) {
+            setState(INITIAL_STATE);
+            onActiveConversation(activeId);
+            return;
+          }
         }
         const message = err instanceof Error ? err.message : "An unexpected error occurred.";
         setState((s) => ({ ...s, status: "error", errorMessage: message }));
