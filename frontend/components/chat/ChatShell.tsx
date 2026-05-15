@@ -10,9 +10,11 @@ import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
 import { PromptSelector } from "./PromptSelector";
+import { SessionSummaryCard } from "./SessionSummaryCard";
 import { ConversationList } from "@/components/history/ConversationList";
 import { useChatStore } from "@/hooks/useChatStore";
 import { useConversation } from "@/hooks/useConversation";
+import { useSessionSummary } from "@/hooks/useSessionSummary";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { cn } from "@/lib/utils";
 import { endSession } from "@/lib/api-client";
@@ -78,6 +80,9 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);
 
+  const { data: sessionSummary } = useSessionSummary(activeConversationId, isEnded);
+  const [summaryVisible, setSummaryVisible] = useState(true);
+
   const [endSessionError, setEndSessionError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
@@ -85,6 +90,8 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     mutationFn: () => endSession(activeConversationId!),
     onMutate: () => setEndSessionError(null),
     onSuccess: () => {
+      setSummaryVisible(true);
+      queryClient.invalidateQueries({ queryKey: ["session-summary", activeConversationId] });
       queryClient.invalidateQueries({ queryKey: ["messages", activeConversationId] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
@@ -97,6 +104,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     initFiredRef.current = false; // allow init to re-fire after reset()
     reset();                       // sets status → "idle", triggering the effect above
     setLocalMessages([]);
+    setSummaryVisible(true);
     router.push("/chat");
   };
 
@@ -229,9 +237,27 @@ export function ChatShell({ conversationId }: ChatShellProps) {
         {/* Input */}
         <div className="border-t p-4">
           {isEnded ? (
-            <div className="rounded-md border border-muted bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground">
-              This session has ended. Start a new conversation to continue.
-            </div>
+            sessionSummary && summaryVisible ? (
+              <SessionSummaryCard
+                summary={sessionSummary}
+                onStartNextSession={handleNewConversation}
+                onClose={() => setSummaryVisible(false)}
+              />
+            ) : (
+              <div className="flex items-center justify-between rounded-md border border-muted bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                <span>Session ended.</span>
+                <div className="flex items-center gap-2">
+                  {sessionSummary && (
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSummaryVisible(true)}>
+                      View summary
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleNewConversation}>
+                    Start new session
+                  </Button>
+                </div>
+              </div>
+            )
           ) : isStreaming ? (
             <div className="flex justify-center">
               <Button variant="outline" size="sm" onClick={cancel} className="gap-2">

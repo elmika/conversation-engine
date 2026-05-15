@@ -71,7 +71,7 @@ export function PromptDialog({ open, onOpenChange, prompt, initialValues }: Prom
       onOpenChange(false);
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.detail);
+        setError(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
       } else {
         setError("An unexpected error occurred.");
       }

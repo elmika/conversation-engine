@@ -13,6 +13,18 @@
 * `docker tag` source can be a pulled image with a full registry path
 * Tag is a pointer/symlink-like reference, and pushing sends the layers for that tag’s repository path
 * You can run directly from a full tag without retagging first
+* `docker run` syntax is `docker run [OPTIONS] IMAGE [COMMAND] [ARG...]`
+* `docker run -p 8080:80 --rm -d nginx:alpine` maps ports, detaches, and auto-removes the container
+* `docker run --rm -it ubuntu /bin/bash` starts an interactive Ubuntu shell and removes the container on exit
+* `-i` keeps STDIN open and `-t` allocates a pseudo-TTY; together `-it` makes an interactive terminal session
+* `TTY` in Docker context means a terminal-like session
+* `-d` runs a container in detached/background mode
+* `--rm` automatically removes a container after it stops
+* `--restart=always` restarts a container automatically when it exits, as long as it was not manually stopped
+* `docker run -d --restart=always -p 8080:8080 alpine:latest sh -c "busybox httpd -f -p 8080"` starts a minimal Alpine HTTP server in detached mode
+* Alpine can run a simple HTTP server via BusyBox `httpd`
+* `docker ps` lists running containers
+* `docker logs <container-name-or-id>` shows a container’s output
 * GitHub Actions workflow structure: `name`, `on`, `jobs`, `runs-on`, `steps`, `uses`, `run`
 * Top-level GitHub Actions structure includes `name`, `on`, and `jobs`
 * `jobs` contains job IDs like `build`, each with `runs-on` and `steps`
@@ -71,6 +83,10 @@
 * When publishing both `latest` and a SHA tag, both tags must be applied to the same built image
 * `docker/login-action` takes the registry host only, not the full image path
 * `docker/build-push-action` should usually specify `context: .` explicitly
+* `docker logs` is plural, not `docker log`
+* `-p` is a Docker CLI option and must go before the image name, not inside the container command
+* The container command string needs correct quoting when using `sh -c`
+* `--restart=always` still requires a long-running process; a container that exits immediately will just restart repeatedly
 
 ## Side quests: Dynamic topics
 
@@ -83,6 +99,7 @@ Completed:
 7. GitHub Actions CI for Docker build/push
 8. Advanced Docker caching in CI
 9. Multiple tags per build
+10. Deploy with Docker: restart policies, logs, and simple HTTP servers
 
 Available:
 

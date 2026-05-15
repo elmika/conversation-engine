@@ -83,8 +83,15 @@ class MessagesResponse(BaseModel):
     messages: list[MessageSchema]
 
 
+class SessionSummarySchema(BaseModel):
+    course_name: Optional[str] = None
+    modules: list[str] = []
+    next_step: Optional[str] = None
+
+
 class EndSessionResponse(BaseModel):
     status: str = "ending"
+    summary: Optional[SessionSummarySchema] = None
 
 
 class PromptSchema(BaseModel):

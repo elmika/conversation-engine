@@ -12,6 +12,7 @@ import type {
   ConversationListResponse,
   ConversationRequest,
   ConversationResponse,
+  EndSessionResponse,
   MessagesResponse,
   ModelsResponse,
   Prompt,
@@ -19,6 +20,7 @@ import type {
   PromptRenderResponse,
   PromptUpdateRequest,
   PromptsResponse,
+  SessionSummary,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -245,13 +247,20 @@ export async function appendConversationTurnStream(
   return getStream(res);
 }
 
+export async function fetchSessionSummary(
+  conversationId: string
+): Promise<SessionSummary> {
+  const res = await fetch(`/api/conversations/${conversationId}/summary`);
+  return handleResponse<SessionSummary>(res);
+}
+
 export async function endSession(
   conversationId: string
-): Promise<{ status: string }> {
+): Promise<EndSessionResponse> {
   const res = await fetch(`/api/conversations/${conversationId}/end-session`, {
     method: "POST",
   });
-  return handleResponse(res);
+  return handleResponse<EndSessionResponse>(res);
 }
 
 export async function rewindConversationStream(

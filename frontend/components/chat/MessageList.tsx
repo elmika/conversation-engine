@@ -67,7 +67,7 @@ export function MessageList({
     }
   }, [partialText]);
 
-  if (isLoading) {
+  if (isLoading && messages.length === 0) {
     return (
       <div className="flex-1 space-y-4 p-4">
         {[...Array(3)].map((_, i) => (

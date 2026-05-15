@@ -26,6 +26,7 @@ from app.api.schemas import (
     PromptSchema,
     PromptUpdateRequest,
     PromptsResponse,
+    SessionSummarySchema,
     TimingsSchema,
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
@@ -701,7 +702,31 @@ async def end_session(
 
     messages = await asyncio.to_thread(_end)
     background_tasks.add_task(service.synthesise_progress, messages)
-    return EndSessionResponse(status="ending")
+    summary_data = await asyncio.to_thread(service.build_session_summary)
+    return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
+
+
+@router.get(
+    "/conversations/{conversation_id}/summary",
+    response_model=SessionSummarySchema,
+)
+async def get_session_summary(
+    conversation_id: str,
+    service: ConversationService = Depends(get_conversation_service),
+    uow_factory=Depends(get_uow_factory),
+) -> SessionSummarySchema:
+    """Return the session summary for an ended conversation."""
+    def _check() -> None:
+        with uow_factory() as uow:
+            conv = uow.repo.get_conversation(conversation_id)
+            if not conv:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            if not conv["ended_at"]:
+                raise HTTPException(status_code=409, detail="Conversation has not ended")
+
+    await asyncio.to_thread(_check)
+    summary_data = await asyncio.to_thread(service.build_session_summary)
+    return SessionSummarySchema(**summary_data)
 
 
 @router.get("/prompts", response_model=PromptsResponse)

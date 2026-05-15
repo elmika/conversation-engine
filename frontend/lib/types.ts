@@ -127,6 +127,18 @@ export interface SSEErrorPayload {
   type: "http_error" | "internal_error";
   status_code?: number;
   message: string;
+  conversation_id?: string; // present on 409 active-conversation errors
+}
+
+export interface SessionSummary {
+  course_name: string | null;
+  modules: string[];
+  next_step: string | null;
+}
+
+export interface EndSessionResponse {
+  status: string;
+  summary: SessionSummary | null;
 }
 
 /**

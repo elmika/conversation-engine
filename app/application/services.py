@@ -483,6 +483,45 @@ class ConversationService:
         rendered = self._render_instructions(record["system_prompt"], created_at)
         return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
 
+    def build_session_summary(self) -> dict:
+        """Extract session summary from course + progress files (no LLM, no blocking)."""
+        import re
+        from pathlib import Path
+
+        course_name = None
+        modules: list[str] = []
+        course_file = Path(self._sections_dir) / "course" / "default.md"
+        if course_file.exists():
+            text = course_file.read_text(encoding="utf-8")
+            lines = text.splitlines()
+            if lines and lines[0].startswith("# "):
+                title = lines[0][2:].strip()
+                if title.lower().startswith("course: "):
+                    title = title[8:].strip()
+                course_name = title or None
+            for line in lines:
+                m = re.match(r"^\d+\.\s+(.+)$", line.strip())
+                if m:
+                    modules.append(m.group(1).strip())
+
+        next_step = None
+        progress_file = Path(self._sections_dir) / "progress" / "default.md"
+        if progress_file.exists():
+            text = progress_file.read_text(encoding="utf-8")
+            m = re.search(r"## Progress - Current state\s*\n(.*?)(?:\n##|\Z)", text, re.DOTALL)
+            if m:
+                section = m.group(1).strip()
+                stripped_lines = []
+                for line in section.splitlines():
+                    s = line.strip()
+                    if s.startswith(("* ", "- ")):
+                        s = s[2:].strip()
+                    if s:
+                        stripped_lines.append(s)
+                next_step = "\n".join(stripped_lines) or None
+
+        return {"course_name": course_name, "modules": modules, "next_step": next_step}
+
     def end_conversation(self, conversation_id: str) -> list[dict]:
         """
         Mark a conversation as ended and return its messages.
