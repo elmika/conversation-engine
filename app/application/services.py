@@ -1,8 +1,11 @@
 """Application services: orchestrate use cases + persistence."""
 
+import logging
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from app.application.ports import LLMPort, LLMResult, PromptRepo, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
@@ -43,10 +46,31 @@ class ConversationService:
         self._sections_dir = sections_dir
         self._wrap_up_model = wrap_up_model
 
-    def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str]]:
-        """Resolve prompt slug to (used_slug, system_prompt, prompt_model). Falls back to default."""
+    def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str], str]:
+        """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name). Falls back to default."""
         record = self._prompt_repo.get_prompt_or_default(slug, self._default_prompt_slug)
-        return record["slug"], record["system_prompt"], record.get("model")
+        return record["slug"], record["system_prompt"], record.get("model"), record.get("name", record["slug"])
+
+    def _make_conversation_name(self, prompt_name: str) -> str:
+        """Build conversation name from the prompt name. Module enrichment is a Layer 2 hook concern."""
+        return prompt_name
+
+    def _course_title(self) -> Optional[str]:
+        """Read the course title from the first H1 in sections/course/default.md."""
+        from pathlib import Path
+        course_file = Path(self._sections_dir) / "course" / "default.md"
+        if not course_file.exists():
+            logger.warning("_course_title: course file not found at %s", course_file.resolve())
+            return None
+        first_line = course_file.read_text(encoding="utf-8").splitlines()[0]
+        if first_line.startswith("# "):
+            title = first_line[2:].strip()
+            if title.lower().startswith("course: "):
+                title = title[8:].strip()
+            logger.debug("_course_title: resolved to %r", title)
+            return title or None
+        logger.warning("_course_title: first line is not an H1: %r", first_line)
+        return None
 
     def _render_instructions(
         self, instructions: str, conversation_start: Optional[datetime] = None
@@ -101,10 +125,13 @@ class ConversationService:
             raise ValueError("conversation_ended")
 
     def _guard_no_active_conversation(self, uow) -> None:
-        """Raise ValueError if there is already an active (non-ended) conversation."""
+        """Raise ValueError if there is already an active (non-ended) conversation.
+
+        The active conversation ID is embedded in the message so routes can return it to callers.
+        """
         active = uow.repo.get_active_conversation()
         if active:
-            raise ValueError("active_conversation_exists")
+            raise ValueError(f"active_conversation_exists:{active}")
 
     def create_and_chat(
         self,
@@ -118,7 +145,7 @@ class ConversationService:
         Transaction boundary: all operations commit atomically.
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
@@ -128,11 +155,10 @@ class ConversationService:
 
         with self._uow_factory() as uow:
             self._guard_no_active_conversation(uow)
-            # Persist conversation and user messages
-            uow.repo.create_conversation_with_id(cid_str)
-            first_user = next((m for m in messages if m["role"] == "user"), None)
-            if first_user:
-                uow.repo.rename_conversation(cid_str, first_user["content"][:60].strip())
+            base_name = self._make_conversation_name(prompt_name)
+            count = uow.repo.count_conversations_named(base_name)
+            name = base_name if count == 0 else f"{base_name} ({count + 1})"
+            uow.repo.create_conversation_with_id(cid_str, name=name)
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
@@ -177,7 +203,7 @@ class ConversationService:
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
         with self._uow_factory() as uow:
@@ -246,7 +272,7 @@ class ConversationService:
 
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
         conv_id = ConversationId.generate()
@@ -256,10 +282,10 @@ class ConversationService:
         uow_setup = self._uow_factory()
         with uow_setup:
             self._guard_no_active_conversation(uow_setup)
-            uow_setup.repo.create_conversation_with_id(cid_str)
-            first_user = next((m for m in messages if m["role"] == "user"), None)
-            if first_user:
-                uow_setup.repo.rename_conversation(cid_str, first_user["content"][:60].strip())
+            base_name = self._make_conversation_name(prompt_name)
+            count = uow_setup.repo.count_conversations_named(base_name)
+            name = base_name if count == 0 else f"{base_name} ({count + 1})"
+            uow_setup.repo.create_conversation_with_id(cid_str, name=name)
             for msg in messages:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
             uow_setup.commit()
@@ -273,6 +299,46 @@ class ConversationService:
         )
 
         # Return a new UoW for the caller to persist the final result
+        uow_final = self._uow_factory()
+        return conversation_id, events, used_prompt_slug, resolved_model, uow_final
+
+    def create_and_stream_init(
+        self,
+        prompt_slug: Optional[str] = None,
+        model_slug: Optional[str] = None,
+    ) -> tuple[str, Iterable[StreamEvent], str, str, UnitOfWork]:
+        """
+        Create a new conversation and stream an AI-initiated opening message.
+
+        No user message is stored — the LLM is called with a hidden trigger that is
+        never persisted. Only the assistant's opening message lands in the conversation.
+
+        Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
+        """
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
+        instructions = self._render_instructions(instructions)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
+        conv_id = ConversationId.generate()
+        cid_str = str(conv_id)
+
+        uow_setup = self._uow_factory()
+        with uow_setup:
+            self._guard_no_active_conversation(uow_setup)
+            base_name = self._course_title() or self._make_conversation_name(prompt_name)
+            count = uow_setup.repo.count_conversations_named(base_name)
+            name = base_name if count == 0 else f"{base_name} ({count + 1})"
+            uow_setup.repo.create_conversation_with_id(cid_str, name=name)
+            uow_setup.commit()
+
+        # Hidden trigger — not stored, causes the LLM to produce the opening message
+        trigger = [{"role": "user", "content": "start"}]
+        conversation_id, events = stream_chat(
+            messages=trigger,
+            instructions=instructions,
+            llm_stream=lambda instr, msgs: self._llm.stream(instr, msgs, model=resolved_model),
+            conversation_id=conv_id,
+        )
+
         uow_final = self._uow_factory()
         return conversation_id, events, used_prompt_slug, resolved_model, uow_final
 
@@ -293,7 +359,7 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
         # Load history and persist user messages in one transaction
@@ -352,7 +418,7 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
         uow_setup = self._uow_factory()
@@ -417,47 +483,89 @@ class ConversationService:
         rendered = self._render_instructions(record["system_prompt"], created_at)
         return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
 
-    def end_session(self, conversation_id: str) -> str:
-        """
-        End a conversation session: generate updated progress, archive old file, mark ended.
-
-        Returns the new progress markdown text.
-        Raises ValueError if conversation not found or already ended.
-        """
+    def build_session_summary(self) -> dict:
+        """Extract session summary from course + progress files (no LLM, no blocking)."""
+        import re
         from pathlib import Path
-        import shutil
 
+        course_name = None
+        modules: list[str] = []
+        course_file = Path(self._sections_dir) / "course" / "default.md"
+        if course_file.exists():
+            text = course_file.read_text(encoding="utf-8")
+            lines = text.splitlines()
+            if lines and lines[0].startswith("# "):
+                title = lines[0][2:].strip()
+                if title.lower().startswith("course: "):
+                    title = title[8:].strip()
+                course_name = title or None
+            for line in lines:
+                m = re.match(r"^\d+\.\s+(.+)$", line.strip())
+                if m:
+                    modules.append(m.group(1).strip())
+
+        next_step = None
+        progress_file = Path(self._sections_dir) / "progress" / "default.md"
+        if progress_file.exists():
+            text = progress_file.read_text(encoding="utf-8")
+            m = re.search(r"## Progress - Current state\s*\n(.*?)(?:\n##|\Z)", text, re.DOTALL)
+            if m:
+                section = m.group(1).strip()
+                stripped_lines = []
+                for line in section.splitlines():
+                    s = line.strip()
+                    if s.startswith(("* ", "- ")):
+                        s = s[2:].strip()
+                    if s:
+                        stripped_lines.append(s)
+                next_step = "\n".join(stripped_lines) or None
+
+        return {"course_name": course_name, "modules": modules, "next_step": next_step}
+
+    def end_conversation(self, conversation_id: str) -> list[dict]:
+        """
+        Mark a conversation as ended and return its messages.
+
+        Raises ValueError if conversation not found or already ended.
+        Returns the message list so the caller can pass it to synthesise_progress.
+        """
         with self._uow_factory() as uow:
             conv = uow.repo.get_conversation(conversation_id)
             if not conv:
                 raise ValueError(f"Conversation {conversation_id} not found")
             if conv["ended_at"]:
                 raise ValueError("conversation_ended")
-
             messages = uow.repo.get_messages(conversation_id)
+            uow.repo.end_conversation(conversation_id)
+            uow.commit()
+        return messages
 
-            # Read wrap-up instructions and resolve {{progress}} (and any other file/time tags)
+    def synthesise_progress(self, messages: list[dict]) -> None:
+        """
+        Call the LLM to produce an updated progress snapshot and write it to disk.
+
+        Intended to run as a background task after end_conversation. Errors are
+        logged but not re-raised so a failing wrap-up never blocks the learner.
+        """
+        from pathlib import Path
+        import shutil
+
+        try:
             wrap_up_path = Path(self._sections_dir) / "progress" / "progress-wrap-up.md"
             raw_instructions = wrap_up_path.read_text(encoding="utf-8")
             instructions = self._render_instructions(raw_instructions)
 
-            # Call LLM to synthesise new progress snapshot using the configured wrap-up model
             result = self._llm.complete(instructions, messages, model=self._wrap_up_model)
             new_progress = result["text"]
 
-            # Archive old progress file then write new content
             progress_dir = Path(self._sections_dir) / "progress"
             default_path = progress_dir / "default.md"
             if default_path.exists():
                 archive_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".md"
                 shutil.copy2(str(default_path), str(progress_dir / archive_name))
             default_path.write_text(new_progress, encoding="utf-8")
-
-            # Mark conversation as ended and persist
-            uow.repo.end_conversation(conversation_id)
-            uow.commit()
-
-        return new_progress
+        except Exception:
+            logger.exception("Progress synthesis failed — progress file not updated")
 
     def persist_stream_result(
         self,
@@ -468,6 +576,8 @@ class ConversationService:
         model: str,
         ttfb_ms: int,
         total_ms: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
     ) -> None:
         """
         Persist the final assistant message and run metadata after streaming completes.
@@ -486,5 +596,7 @@ class ConversationService:
                 model=model,
                 ttfb_ms=ttfb_ms,
                 total_ms=total_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
             uow.commit()

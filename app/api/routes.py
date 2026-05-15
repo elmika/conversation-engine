@@ -5,7 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
@@ -16,6 +16,7 @@ from app.api.schemas import (
     ConversationRewindRequest,
     ConversationSummary,
     EndSessionResponse,
+    InitSessionRequest,
     MessageSchema,
     MessagesResponse,
     ModelSchema,
@@ -25,6 +26,7 @@ from app.api.schemas import (
     PromptSchema,
     PromptUpdateRequest,
     PromptsResponse,
+    SessionSummarySchema,
     TimingsSchema,
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
@@ -131,8 +133,9 @@ async def create_conversation_stream(
                         messages, body.prompt_slug, body.model_slug
                     )
                 except ValueError as e:
-                    if str(e) == "active_conversation_exists":
-                        raise HTTPException(status_code=409, detail="An active conversation already exists")
+                    if str(e).startswith("active_conversation_exists"):
+                        active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
+                        raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
                     raise HTTPException(status_code=400, detail=str(e))
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
@@ -182,6 +185,8 @@ async def create_conversation_stream(
                         model,
                         ttfb_ms,
                         total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
                     )
                     done_payload = {
                         "conversation_id": conv_id,
@@ -191,25 +196,105 @@ async def create_conversation_stream(
                     }
                     yield _sse_event("done", done_payload)
         except HTTPException as exc:
-            # Map HTTP exceptions to SSE error events
-            error_payload = {
-                "error": {
-                    "type": "http_error",
-                    "status_code": exc.status_code,
-                    "message": exc.detail,
-                }
-            }
-            yield _sse_event("done", error_payload)
-        except Exception as exc:
-            # Catch any other errors and emit terminal done event
-            error_payload = {
-                "error": {
-                    "type": "internal_error",
-                    "message": "An unexpected error occurred during streaming",
-                }
-            }
-            yield _sse_event("done", error_payload)
-            # Re-raise so middleware can log it
+            yield _sse_http_error(exc)
+        except Exception:
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
+            raise
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post(
+    "/conversations/init-stream",
+    name="init_session_stream",
+)
+async def init_session_stream(
+    body: InitSessionRequest,
+    service: ConversationService = Depends(get_conversation_service),
+) -> StreamingResponse:
+    """
+    Create a new conversation and stream an AI-initiated opening message.
+
+    The LLM opens the session with a course recap and progress summary.
+    No user message is stored — only the assistant's opening message lands in the conversation.
+
+    Emits SSE events:
+      - meta: conversation_id, model, prompt_slug
+      - chunk: incremental text delta
+      - done: final assistant message + timings
+    """
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
+                try:
+                    return service.create_and_stream_init(
+                        "course-session-init", body.model_slug
+                    )
+                except ValueError as e:
+                    if str(e).startswith("active_conversation_exists"):
+                        active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
+                        raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
+                    raise HTTPException(status_code=400, detail=str(e))
+
+            conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
+                _stream_setup
+            )
+
+            yield _sse_event("meta", {
+                "conversation_id": conv_id,
+                "model": resolved_model,
+                "prompt_slug": used_prompt_slug,
+            })
+
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = resolved_model
+
+            for ev in events:
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
+                    )
+                    yield _sse_event("done", {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    })
+                elif ev.get("type") == "error":
+                    yield _sse_event("done", {"error": ev.get("error_message", "Stream error")})
+        except HTTPException as exc:
+            yield _sse_http_error(exc)
+        except Exception:
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred"}})
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -233,8 +318,9 @@ async def create_conversation(
             body.model_slug,
         )
     except ValueError as e:
-        if str(e) == "active_conversation_exists":
-            raise HTTPException(status_code=409, detail="An active conversation already exists")
+        if str(e).startswith("active_conversation_exists"):
+            active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
+            raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
         raise HTTPException(status_code=400, detail=str(e))
 
     return ConversationResponse(
@@ -248,6 +334,16 @@ async def create_conversation(
 def _sse_event(event: str, data: dict[str, Any]) -> str:
     """Format a server-sent event."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _sse_http_error(exc: HTTPException) -> str:
+    """Format an HTTPException as a terminal SSE done error event."""
+    detail = exc.detail
+    msg = detail.get("message", str(detail)) if isinstance(detail, dict) else str(detail)
+    error: dict[str, Any] = {"type": "http_error", "status_code": exc.status_code, "message": msg}
+    if exc.status_code == 409 and isinstance(detail, dict) and detail.get("conversation_id"):
+        error["conversation_id"] = detail["conversation_id"]
+    return _sse_event("done", {"error": error})
 
 
 @router.post(
@@ -368,6 +464,8 @@ async def append_conversation_turn_stream(
                         model,
                         ttfb_ms,
                         total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
                     )
                     done_payload = {
                         "conversation_id": conv_id,
@@ -377,25 +475,9 @@ async def append_conversation_turn_stream(
                     }
                     yield _sse_event("done", done_payload)
         except HTTPException as exc:
-            # Map HTTP exceptions to SSE error events
-            error_payload = {
-                "error": {
-                    "type": "http_error",
-                    "status_code": exc.status_code,
-                    "message": exc.detail,
-                }
-            }
-            yield _sse_event("done", error_payload)
-        except Exception as exc:
-            # Catch any other errors and emit terminal done event
-            error_payload = {
-                "error": {
-                    "type": "internal_error",
-                    "message": "An unexpected error occurred during streaming",
-                }
-            }
-            yield _sse_event("done", error_payload)
-            # Re-raise so middleware can log it
+            yield _sse_http_error(exc)
+        except Exception:
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -487,6 +569,8 @@ async def rewind_conversation_stream(
                         model,
                         ttfb_ms,
                         total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
                     )
                     done_payload = {
                         "conversation_id": conv_id,
@@ -496,22 +580,9 @@ async def rewind_conversation_stream(
                     }
                     yield _sse_event("done", done_payload)
         except HTTPException as exc:
-            error_payload = {
-                "error": {
-                    "type": "http_error",
-                    "status_code": exc.status_code,
-                    "message": exc.detail,
-                }
-            }
-            yield _sse_event("done", error_payload)
+            yield _sse_http_error(exc)
         except Exception:
-            error_payload = {
-                "error": {
-                    "type": "internal_error",
-                    "message": "An unexpected error occurred during streaming",
-                }
-            }
-            yield _sse_event("done", error_payload)
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -611,25 +682,51 @@ async def get_conversation_messages(
 )
 async def end_session(
     conversation_id: str,
+    background_tasks: BackgroundTasks,
     service: ConversationService = Depends(get_conversation_service),
 ) -> EndSessionResponse:
     """
     End a conversation session.
 
-    Calls the LLM to synthesise a new progress snapshot from the conversation history,
-    archives the old progress file, writes the new one, and marks the conversation as ended.
-    Returns the updated progress markdown.
+    Marks the conversation as ended immediately and returns. Progress synthesis
+    (LLM wrap-up + file write) runs as a background task so the learner is never
+    blocked by the LLM call. Returns 409 if the conversation is already ended.
     """
-    def _run() -> str:
+    def _end() -> list[dict]:
         try:
-            return service.end_session(conversation_id)
+            return service.end_conversation(conversation_id)
         except ValueError as e:
             if str(e) == "conversation_ended":
-                raise HTTPException(status_code=409, detail="Conversation has ended")
+                raise HTTPException(status_code=409, detail="Conversation has already ended")
             raise HTTPException(status_code=404, detail=str(e))
 
-    progress = await asyncio.to_thread(_run)
-    return EndSessionResponse(progress=progress)
+    messages = await asyncio.to_thread(_end)
+    background_tasks.add_task(service.synthesise_progress, messages)
+    summary_data = await asyncio.to_thread(service.build_session_summary)
+    return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
+
+
+@router.get(
+    "/conversations/{conversation_id}/summary",
+    response_model=SessionSummarySchema,
+)
+async def get_session_summary(
+    conversation_id: str,
+    service: ConversationService = Depends(get_conversation_service),
+    uow_factory=Depends(get_uow_factory),
+) -> SessionSummarySchema:
+    """Return the session summary for an ended conversation."""
+    def _check() -> None:
+        with uow_factory() as uow:
+            conv = uow.repo.get_conversation(conversation_id)
+            if not conv:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            if not conv["ended_at"]:
+                raise HTTPException(status_code=409, detail="Conversation has not ended")
+
+    await asyncio.to_thread(_check)
+    summary_data = await asyncio.to_thread(service.build_session_summary)
+    return SessionSummarySchema(**summary_data)
 
 
 @router.get("/prompts", response_model=PromptsResponse)

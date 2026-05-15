@@ -12,6 +12,7 @@ import type {
   ConversationListResponse,
   ConversationRequest,
   ConversationResponse,
+  EndSessionResponse,
   MessagesResponse,
   ModelsResponse,
   Prompt,
@@ -19,6 +20,7 @@ import type {
   PromptRenderResponse,
   PromptUpdateRequest,
   PromptsResponse,
+  SessionSummary,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -28,9 +30,9 @@ import type {
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
-    public readonly detail: string
+    public readonly detail: unknown  // string for most errors; object for structured 409s
   ) {
-    super(`API error ${status}: ${detail}`);
+    super(`API error ${status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
     this.name = "ApiError";
   }
 }
@@ -39,9 +41,10 @@ export class ApiError extends Error {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-async function parseErrorDetail(res: Response): Promise<string> {
+async function parseErrorDetail(res: Response): Promise<unknown> {
   try {
     const body = await res.clone().json();
+    // Return the detail as-is: may be a string or a structured object (e.g. 409)
     return body.detail ?? res.statusText;
   } catch {
     return res.statusText;
@@ -217,6 +220,19 @@ export async function createConversationStream(
   return getStream(res);
 }
 
+export async function initSessionStream(
+  body: { prompt_slug?: string | null; model_slug?: string | null },
+  signal?: AbortSignal
+): Promise<ReadableStream<Uint8Array>> {
+  const res = await fetch("/api/conversations/init-stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return getStream(res);
+}
+
 export async function appendConversationTurnStream(
   conversationId: string,
   body: ConversationRequest,
@@ -231,13 +247,20 @@ export async function appendConversationTurnStream(
   return getStream(res);
 }
 
+export async function fetchSessionSummary(
+  conversationId: string
+): Promise<SessionSummary> {
+  const res = await fetch(`/api/conversations/${conversationId}/summary`);
+  return handleResponse<SessionSummary>(res);
+}
+
 export async function endSession(
   conversationId: string
-): Promise<{ progress: string }> {
+): Promise<EndSessionResponse> {
   const res = await fetch(`/api/conversations/${conversationId}/end-session`, {
     method: "POST",
   });
-  return handleResponse(res);
+  return handleResponse<EndSessionResponse>(res);
 }
 
 export async function rewindConversationStream(

@@ -12,6 +12,10 @@ services:
     volumes:
       - ./data:/app/data
       - ./sections:/app/sections
+      - ./app:/app/app
+      - ./prompts:/app/prompts
+      - ./tests:/app/tests
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --reload-dir prompts
 
   # Next.js frontend — hot-reload dev server
   frontend:

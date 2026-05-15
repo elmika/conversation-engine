@@ -393,7 +393,7 @@
                 "end-session"
               ]
             },
-            "description": "Ends an active conversation. Calls the LLM to synthesise a progress snapshot from the conversation history, archives the old progress file, writes the new one, and marks the conversation as ended. Returns 409 if already ended."
+            "description": "Marks the conversation as ended immediately. Progress synthesis (LLM wrap-up + file write) runs as a background task. Returns 409 if already ended."
           },
           "response": [
             {
@@ -406,7 +406,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"progress\": \"## What the student knows\\n\\n* Docker basics...\\n\"\n}",
+              "body": "{\n  \"status\": \"ending\"\n}",
               "_postman_previewlanguage": "json"
             },
             {

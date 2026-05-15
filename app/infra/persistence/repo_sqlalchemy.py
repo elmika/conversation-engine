@@ -27,11 +27,10 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self.create_conversation_with_id(conv_id)
         return conv_id
 
-    def create_conversation_with_id(self, conversation_id: str) -> None:
-        """Create a new conversation with a specific ID (domain-generated)."""
-        conv = Conversation(id=conversation_id)
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None) -> None:
+        """Create a new conversation with a specific ID and optional name (domain-generated)."""
+        conv = Conversation(id=conversation_id, name=name)
         self._session.add(conv)
-        # No commit - UnitOfWork handles transaction boundaries
 
     def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
         stmt = (
@@ -95,6 +94,17 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         conv = self._session.get(Conversation, conversation_id)
         if conv:
             conv.name = name
+
+    def count_conversations_named(self, base_name: str) -> int:
+        from sqlalchemy import func, or_
+        return self._session.scalar(
+            select(func.count()).where(
+                or_(
+                    Conversation.name == base_name,
+                    Conversation.name.like(f"{base_name} (%)"),
+                )
+            )
+        ) or 0
 
     def delete_conversation(self, conversation_id: str) -> None:
         conv = self._session.get(Conversation, conversation_id)

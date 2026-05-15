@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Local references
+
+`.notes/` is gitignored and contains private architecture references for this project. Read it at the start of any session involving architecture decisions.
+
+- `.notes/architecture.md` — vault paths for the layer model and templating architecture docs
+
 ## Project
 
 **Conversation Engine** — A production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.
@@ -21,10 +27,7 @@ make up
 # UI   → http://localhost:3000
 ```
 
-> **Backend hot-reload caveat:** Only the frontend source is volume-mounted for hot-reload. The backend (`app/`) is baked into the image at build time. After any backend code change, rebuild before restarting:
-> ```bash
-> make build && make up
-> ```
+Both `app/` and `prompts/` are volume-mounted and uvicorn runs with `--reload`, so backend changes take effect immediately without a rebuild. A rebuild (`make build`) is only needed when dependencies change (`requirements.txt`) or the Dockerfile itself changes.
 
 **Backend tests:**
 ```bash

@@ -7,10 +7,6 @@ MODELS: dict[str, dict] = {
         "name": "GPT-4.1",
         "description": "Smartest non-reasoning model",
     },
-    "gpt-5": {
-        "name": "GPT-5",
-        "description": "Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort",
-    },
     "gpt-5-mini": {
         "name": "GPT-5 mini",
         "description": "Near-frontier intelligence for cost sensitive, low latency, high volume workloads",
@@ -18,38 +14,6 @@ MODELS: dict[str, dict] = {
     "gpt-5-nano": {
         "name": "GPT-5 nano",
         "description": "Fastest, most cost-efficient version of GPT-5",
-    },
-    "gpt-5-codex": {
-        "name": "GPT-5 Codex",
-        "description": "A version of GPT-5 optimized for agentic coding in Codex",
-    },
-    "gpt-5.1-codex": {
-        "name": "GPT-5.1 Codex",
-        "description": "A version of GPT-5.1 optimized for agentic coding in Codex",
-    },
-    "gpt-5.1-codex-max": {
-        "name": "GPT-5.1 Codex Max",
-        "description": "A version of GPT-5.1-codex optimized for long running tasks",
-    },
-    "gpt-5.1-codex-mini": {
-        "name": "GPT-5.1 Codex mini",
-        "description": "Smaller, more cost-effective, less-capable version of GPT-5.1-Codex",
-    },
-    "gpt-5.2-codex": {
-        "name": "GPT-5.2 Codex",
-        "description": "Our most intelligent coding model optimized for long-horizon, agentic coding tasks",
-    },
-    "gpt-5.3-codex": {
-        "name": "GPT-5.3 Codex",
-        "description": "The most capable agentic coding model to date",
-    },
-    "gpt-5.4": {
-        "name": "GPT-5.4",
-        "description": "Best intelligence at scale for agentic, coding, and professional workflows",
-    },
-    "gpt-5.4-pro": {
-        "name": "GPT-5.4 pro",
-        "description": "Version of GPT-5.4 that produces smarter and more precise responses",
     },
     "gpt-5.4-mini": {
         "name": "GPT-5.4 mini",
@@ -59,22 +23,24 @@ MODELS: dict[str, dict] = {
         "name": "GPT-5.4 nano",
         "description": "Our cheapest GPT-5.4-class model for simple high-volume tasks",
     },
+
+    # --- Expensive models: commented out to prevent accidental use during development ---
+    # "gpt-5": {"name": "GPT-5", "description": "Reasoning model"},
+    # "gpt-5-codex": {"name": "GPT-5 Codex", ...},
+    # "gpt-5.1-codex": {"name": "GPT-5.1 Codex", ...},
+    # "gpt-5.1-codex-max": {"name": "GPT-5.1 Codex Max", ...},
+    # "gpt-5.1-codex-mini": {"name": "GPT-5.1 Codex mini", ...},
+    # "gpt-5.2-codex": {"name": "GPT-5.2 Codex", ...},
+    # "gpt-5.3-codex": {"name": "GPT-5.3 Codex", ...},
+    # "gpt-5.4": {"name": "GPT-5.4", ...},
+    # "gpt-5.4-pro": {"name": "GPT-5.4 pro", ...},
 }
 
-# Display order (as specified)
+# Display order
 _DISPLAY_ORDER = [
     "gpt-4.1",
-    "gpt-5",
     "gpt-5-mini",
     "gpt-5-nano",
-    "gpt-5-codex",
-    "gpt-5.1-codex",
-    "gpt-5.1-codex-max",
-    "gpt-5.1-codex-mini",
-    "gpt-5.2-codex",
-    "gpt-5.3-codex",
-    "gpt-5.4",
-    "gpt-5.4-pro",
     "gpt-5.4-mini",
     "gpt-5.4-nano",
 ]

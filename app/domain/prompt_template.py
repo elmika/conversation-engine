@@ -66,10 +66,15 @@ def resolve_file_sections(
 
 
 def render_prompt(template: str, context: dict[str, str]) -> str:
-    """Replace {{tags}} with context values. Raises PromptTemplateError for bad tags."""
+    """Replace known {{tags}} with context values; leave unrecognized patterns untouched.
+
+    Validation of the original template happens at write time (validate_template).
+    Injected slot content may contain arbitrary {{ }} syntax — it is never re-validated.
+    """
     def _replace(match: re.Match) -> str:
         raw = match.group(1)
-        _validate_tag(raw)
+        if raw not in context:
+            return match.group(0)
         return context[raw]
 
     return TAG_PATTERN.sub(_replace, template)

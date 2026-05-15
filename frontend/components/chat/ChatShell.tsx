@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -11,9 +10,11 @@ import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
 import { PromptSelector } from "./PromptSelector";
+import { SessionSummaryCard } from "./SessionSummaryCard";
 import { ConversationList } from "@/components/history/ConversationList";
 import { useChatStore } from "@/hooks/useChatStore";
 import { useConversation } from "@/hooks/useConversation";
+import { useSessionSummary } from "@/hooks/useSessionSummary";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { cn } from "@/lib/utils";
 import { endSession } from "@/lib/api-client";
@@ -26,7 +27,7 @@ interface ChatShellProps {
 export function ChatShell({ conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug, selectedModelSlug, enterToSend, toggleEnterToSend } = useChatStore();
-  const { status, partialText, timings, model, errorMessage, sendMessage, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
+  const { status, partialText, timings, model, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat();
 
   // After the first turn the hook captures the server-assigned ID; use it for
@@ -64,21 +65,46 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     prevStatusRef.current = status;
   }, [status, partialText]);
 
+  // Auto-fire AI opening message when starting a new (no-URL) conversation.
+  // Also re-fires when status returns to "idle" after handleNewConversation resets the ref.
+  const initFiredRef = useRef(false);
+  useEffect(() => {
+    if (!conversationId && !initFiredRef.current && status === "idle") {
+      initFiredRef.current = true;
+      initSession(selectedPromptSlug, selectedModelSlug, (activeId) => {
+        router.push(`/chat/${activeId}`);
+      });
+    }
+  }, [conversationId, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);
+
+  const { data: sessionSummary } = useSessionSummary(activeConversationId, isEnded);
+  const [summaryVisible, setSummaryVisible] = useState(true);
+
+  const [endSessionError, setEndSessionError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { mutate: endSessionMutate, isPending: isEndingSession } = useMutation({
     mutationFn: () => endSession(activeConversationId!),
+    onMutate: () => setEndSessionError(null),
     onSuccess: () => {
+      setSummaryVisible(true);
+      queryClient.invalidateQueries({ queryKey: ["session-summary", activeConversationId] });
       queryClient.invalidateQueries({ queryKey: ["messages", activeConversationId] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (err: Error) => {
+      setEndSessionError(err.message ?? "Failed to end session. Please try again.");
     },
   });
 
   const handleNewConversation = () => {
-    reset();
+    initFiredRef.current = false; // allow init to re-fire after reset()
+    reset();                       // sets status → "idle", triggering the effect above
     setLocalMessages([]);
+    setSummaryVisible(true);
     router.push("/chat");
   };
 
@@ -132,11 +158,9 @@ export function ChatShell({ conversationId }: ChatShellProps) {
       >
         <div className="flex items-center justify-between p-3">
           <span className="text-sm font-semibold">History</span>
-          <Link href="/chat">
-            <Button variant="ghost" size="icon" title="New conversation">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" title="New conversation" onClick={handleNewConversation}>
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
         <Separator />
         <div className="flex-1 overflow-y-auto">
@@ -204,13 +228,36 @@ export function ChatShell({ conversationId }: ChatShellProps) {
             {errorMessage}
           </div>
         )}
+        {endSessionError && (
+          <div className="mx-4 mb-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            End session failed: {endSessionError}
+          </div>
+        )}
 
         {/* Input */}
         <div className="border-t p-4">
           {isEnded ? (
-            <div className="rounded-md border border-muted bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground">
-              This session has ended. Start a new conversation to continue.
-            </div>
+            sessionSummary && summaryVisible ? (
+              <SessionSummaryCard
+                summary={sessionSummary}
+                onStartNextSession={handleNewConversation}
+                onClose={() => setSummaryVisible(false)}
+              />
+            ) : (
+              <div className="flex items-center justify-between rounded-md border border-muted bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                <span>Session ended.</span>
+                <div className="flex items-center gap-2">
+                  {sessionSummary && (
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSummaryVisible(true)}>
+                      View summary
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleNewConversation}>
+                    Start new session
+                  </Button>
+                </div>
+              </div>
+            )
           ) : isStreaming ? (
             <div className="flex justify-center">
               <Button variant="outline" size="sm" onClick={cancel} className="gap-2">

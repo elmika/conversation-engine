@@ -1,4 +1,4 @@
-.PHONY: up down build test test-backend test-frontend test-watch lint format backup help
+.PHONY: up down build test test-backend test-frontend test-watch lint format backup usage help
 
 IMAGE := conversation-engine
 
@@ -29,6 +29,10 @@ test-frontend: ## Run frontend tests
 
 test-watch: ## Run frontend tests in watch mode
 	docker compose run --rm frontend pnpm test:watch
+
+usage: ## Show token usage per run (last 20), ordered by most recent
+	@sqlite3 -column -header data/chat.db \
+		"SELECT created_at, prompt_slug, model, input_tokens, output_tokens, (input_tokens + output_tokens) AS total_tokens FROM runs ORDER BY created_at DESC LIMIT 20"
 
 backup: ## Backup the SQLite database to data/backups/ with a timestamp
 	mkdir -p data/backups

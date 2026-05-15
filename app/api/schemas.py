@@ -20,6 +20,13 @@ class ConversationRequest(BaseModel):
     messages: list[ConversationMessage] = Field(..., min_length=1)
 
 
+class InitSessionRequest(BaseModel):
+    """Request body for AI-initiated session opening."""
+
+    prompt_slug: Optional[str] = None
+    model_slug: Optional[str] = None
+
+
 class TimingsSchema(BaseModel):
     """TTFB and total latency in ms."""
 
@@ -76,8 +83,15 @@ class MessagesResponse(BaseModel):
     messages: list[MessageSchema]
 
 
+class SessionSummarySchema(BaseModel):
+    course_name: Optional[str] = None
+    modules: list[str] = []
+    next_step: Optional[str] = None
+
+
 class EndSessionResponse(BaseModel):
-    progress: str
+    status: str = "ending"
+    summary: Optional[SessionSummarySchema] = None
 
 
 class PromptSchema(BaseModel):

@@ -20,6 +20,8 @@ class LLMResult(TypedDict):
     model: str
     ttfb_ms: int
     total_ms: int
+    input_tokens: int
+    output_tokens: int
 
 
 class StreamEvent(TypedDict, total=False):
@@ -34,6 +36,8 @@ class StreamEvent(TypedDict, total=False):
     model: str
     ttfb_ms: int
     total_ms: int
+    input_tokens: int
+    output_tokens: int
     # Present when type == "error".
     error_type: str  # e.g., "rate_limit", "timeout", "api_error"
     error_message: str  # Human-readable error description
@@ -111,6 +115,10 @@ class ConversationRepo(Protocol):
 
     def rename_conversation(self, conversation_id: str, name: str) -> None:
         """Set the display name for a conversation."""
+        ...
+
+    def count_conversations_named(self, base_name: str) -> int:
+        """Count conversations whose name equals base_name or matches 'base_name (N)'."""
         ...
 
     def delete_conversation(self, conversation_id: str) -> None:
