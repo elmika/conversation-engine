@@ -34,8 +34,6 @@ class ConversationService:
         slot_resolver: SlotResolver,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
-        sections_dir: str = "./sections",
-        wrap_up_model: str = "gpt-5.4-pro",
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
@@ -45,8 +43,6 @@ class ConversationService:
         self._slot_resolver = slot_resolver
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
-        self._sections_dir = sections_dir
-        self._wrap_up_model = wrap_up_model
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str], str]:
         """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name). Falls back to default."""
@@ -483,33 +479,6 @@ class ConversationService:
             uow.repo.end_conversation(conversation_id)
             uow.commit()
         return messages
-
-    def synthesise_progress(self, messages: list[dict]) -> None:
-        """
-        Call the LLM to produce an updated progress snapshot and write it to disk.
-
-        Intended to run as a background task after end_conversation. Errors are
-        logged but not re-raised so a failing wrap-up never blocks the learner.
-        """
-        from pathlib import Path
-        import shutil
-
-        try:
-            wrap_up_path = Path(self._sections_dir) / "progress" / "progress-wrap-up.md"
-            raw_instructions = wrap_up_path.read_text(encoding="utf-8")
-            instructions = self._render_instructions(raw_instructions)
-
-            result = self._llm.complete(instructions, messages, model=self._wrap_up_model)
-            new_progress = result["text"]
-
-            progress_dir = Path(self._sections_dir) / "progress"
-            default_path = progress_dir / "default.md"
-            if default_path.exists():
-                archive_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".md"
-                shutil.copy2(str(default_path), str(progress_dir / archive_name))
-            default_path.write_text(new_progress, encoding="utf-8")
-        except Exception:
-            logger.exception("Progress synthesis failed — progress file not updated")
 
     def persist_stream_result(
         self,

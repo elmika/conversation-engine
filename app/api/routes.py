@@ -32,6 +32,7 @@ from app.api.schemas import (
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.infra.slot_resolver_files import FileSlotResolver
 from app.learning.session_summary import build_session_summary
+from app.learning.progress_synthesis import synthesise_progress
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
 from app.domain.prompt_template import PromptTemplateError, validate_template
@@ -81,8 +82,6 @@ def get_conversation_service(
         slot_resolver=FileSlotResolver(settings.sections_dir),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
-        sections_dir=settings.sections_dir,
-        wrap_up_model=settings.wrap_up_model,
     )
 
 
@@ -708,6 +707,7 @@ async def end_session(
     background_tasks: BackgroundTasks,
     service: ConversationService = Depends(get_conversation_service),
     settings: Settings = Depends(get_settings),
+    llm: LLMPort = Depends(get_llm),
 ) -> EndSessionResponse:
     """
     End a conversation session.
@@ -725,7 +725,14 @@ async def end_session(
             raise HTTPException(status_code=404, detail=str(e))
 
     messages = await asyncio.to_thread(_end)
-    background_tasks.add_task(service.synthesise_progress, messages)
+    background_tasks.add_task(
+        synthesise_progress,
+        messages,
+        FileSlotResolver(settings.sections_dir),
+        llm,
+        settings.sections_dir,
+        settings.wrap_up_model,
+    )
     summary_data = await asyncio.to_thread(
         build_session_summary, FileSlotResolver(settings.sections_dir)
     )
