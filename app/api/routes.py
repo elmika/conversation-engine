@@ -31,6 +31,7 @@ from app.api.schemas import (
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.infra.slot_resolver_files import FileSlotResolver
+from app.learning.session_summary import build_session_summary
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
 from app.domain.prompt_template import PromptTemplateError, validate_template
@@ -706,6 +707,7 @@ async def end_session(
     conversation_id: str,
     background_tasks: BackgroundTasks,
     service: ConversationService = Depends(get_conversation_service),
+    settings: Settings = Depends(get_settings),
 ) -> EndSessionResponse:
     """
     End a conversation session.
@@ -724,7 +726,9 @@ async def end_session(
 
     messages = await asyncio.to_thread(_end)
     background_tasks.add_task(service.synthesise_progress, messages)
-    summary_data = await asyncio.to_thread(service.build_session_summary)
+    summary_data = await asyncio.to_thread(
+        build_session_summary, FileSlotResolver(settings.sections_dir)
+    )
     return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
 
 
@@ -734,8 +738,8 @@ async def end_session(
 )
 async def get_session_summary(
     conversation_id: str,
-    service: ConversationService = Depends(get_conversation_service),
     uow_factory=Depends(get_uow_factory),
+    settings: Settings = Depends(get_settings),
 ) -> SessionSummarySchema:
     """Return the session summary for an ended conversation."""
     def _check() -> None:
@@ -747,7 +751,9 @@ async def get_session_summary(
                 raise HTTPException(status_code=409, detail="Conversation has not ended")
 
     await asyncio.to_thread(_check)
-    summary_data = await asyncio.to_thread(service.build_session_summary)
+    summary_data = await asyncio.to_thread(
+        build_session_summary, FileSlotResolver(settings.sections_dir)
+    )
     return SessionSummarySchema(**summary_data)
 
 
