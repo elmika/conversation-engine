@@ -7,7 +7,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from app.application.ports import LLMPort, LLMResult, PromptRepo, StreamEvent, UnitOfWork
+from app.application.ports import LLMPort, LLMResult, PromptRepo, SlotResolver, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
 from app.domain.model_registry import validate_model_slug
@@ -31,20 +31,18 @@ class ConversationService:
         prompt_repo: PromptRepo,
         default_prompt_slug: str,
         default_model: str,
+        slot_resolver: SlotResolver,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
-        sections_dir: str = "./sections",
-        wrap_up_model: str = "gpt-5.4-pro",
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
         self._prompt_repo = prompt_repo
         self._default_prompt_slug = default_prompt_slug
         self._default_model = default_model
+        self._slot_resolver = slot_resolver
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
-        self._sections_dir = sections_dir
-        self._wrap_up_model = wrap_up_model
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str], str]:
         """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name). Falls back to default."""
@@ -55,34 +53,11 @@ class ConversationService:
         """Build conversation name from the prompt name. Module enrichment is a Layer 2 hook concern."""
         return prompt_name
 
-    def _course_title(self) -> Optional[str]:
-        """Read the course title from the first H1 in sections/course/default.md."""
-        from pathlib import Path
-        course_file = Path(self._sections_dir) / "course" / "default.md"
-        if not course_file.exists():
-            logger.warning("_course_title: course file not found at %s", course_file.resolve())
-            return None
-        first_line = course_file.read_text(encoding="utf-8").splitlines()[0]
-        if first_line.startswith("# "):
-            title = first_line[2:].strip()
-            if title.lower().startswith("course: "):
-                title = title[8:].strip()
-            logger.debug("_course_title: resolved to %r", title)
-            return title or None
-        logger.warning("_course_title: first line is not an H1: %r", first_line)
-        return None
-
     def _render_instructions(
         self, instructions: str, conversation_start: Optional[datetime] = None
     ) -> str:
-        # Pass 1: expand {{course}}, {{user}}, {{progress}} from files
-        from pathlib import Path
-
-        def _loader(tag: str) -> Optional[str]:
-            path = Path(self._sections_dir) / tag / "default.md"
-            return path.read_text(encoding="utf-8") if path.exists() else None
-
-        instructions = resolve_file_sections(instructions, _loader)
+        # Pass 1: expand {{course}}, {{user}}, {{progress}} via SlotResolver port
+        instructions = resolve_file_sections(instructions, self._slot_resolver.resolve)
 
         # Pass 2: resolve {{time:*}} tags
         now = datetime.now(timezone.utc)
@@ -306,12 +281,16 @@ class ConversationService:
         self,
         prompt_slug: Optional[str] = None,
         model_slug: Optional[str] = None,
+        name: Optional[str] = None,
     ) -> tuple[str, Iterable[StreamEvent], str, str, UnitOfWork]:
         """
         Create a new conversation and stream an AI-initiated opening message.
 
         No user message is stored — the LLM is called with a hidden trigger that is
         never persisted. Only the assistant's opening message lands in the conversation.
+
+        name: optional display name for the conversation; caller is responsible for
+              resolving this (e.g. from a course title). Falls back to the prompt name.
 
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
@@ -324,10 +303,10 @@ class ConversationService:
         uow_setup = self._uow_factory()
         with uow_setup:
             self._guard_no_active_conversation(uow_setup)
-            base_name = self._course_title() or self._make_conversation_name(prompt_name)
+            base_name = name or self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
-            name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.create_conversation_with_id(cid_str, name=name)
+            resolved_name = base_name if count == 0 else f"{base_name} ({count + 1})"
+            uow_setup.repo.create_conversation_with_id(cid_str, name=resolved_name)
             uow_setup.commit()
 
         # Hidden trigger — not stored, causes the LLM to produce the opening message
@@ -483,45 +462,6 @@ class ConversationService:
         rendered = self._render_instructions(record["system_prompt"], created_at)
         return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
 
-    def build_session_summary(self) -> dict:
-        """Extract session summary from course + progress files (no LLM, no blocking)."""
-        import re
-        from pathlib import Path
-
-        course_name = None
-        modules: list[str] = []
-        course_file = Path(self._sections_dir) / "course" / "default.md"
-        if course_file.exists():
-            text = course_file.read_text(encoding="utf-8")
-            lines = text.splitlines()
-            if lines and lines[0].startswith("# "):
-                title = lines[0][2:].strip()
-                if title.lower().startswith("course: "):
-                    title = title[8:].strip()
-                course_name = title or None
-            for line in lines:
-                m = re.match(r"^\d+\.\s+(.+)$", line.strip())
-                if m:
-                    modules.append(m.group(1).strip())
-
-        next_step = None
-        progress_file = Path(self._sections_dir) / "progress" / "default.md"
-        if progress_file.exists():
-            text = progress_file.read_text(encoding="utf-8")
-            m = re.search(r"## Progress - Current state\s*\n(.*?)(?:\n##|\Z)", text, re.DOTALL)
-            if m:
-                section = m.group(1).strip()
-                stripped_lines = []
-                for line in section.splitlines():
-                    s = line.strip()
-                    if s.startswith(("* ", "- ")):
-                        s = s[2:].strip()
-                    if s:
-                        stripped_lines.append(s)
-                next_step = "\n".join(stripped_lines) or None
-
-        return {"course_name": course_name, "modules": modules, "next_step": next_step}
-
     def end_conversation(self, conversation_id: str) -> list[dict]:
         """
         Mark a conversation as ended and return its messages.
@@ -539,33 +479,6 @@ class ConversationService:
             uow.repo.end_conversation(conversation_id)
             uow.commit()
         return messages
-
-    def synthesise_progress(self, messages: list[dict]) -> None:
-        """
-        Call the LLM to produce an updated progress snapshot and write it to disk.
-
-        Intended to run as a background task after end_conversation. Errors are
-        logged but not re-raised so a failing wrap-up never blocks the learner.
-        """
-        from pathlib import Path
-        import shutil
-
-        try:
-            wrap_up_path = Path(self._sections_dir) / "progress" / "progress-wrap-up.md"
-            raw_instructions = wrap_up_path.read_text(encoding="utf-8")
-            instructions = self._render_instructions(raw_instructions)
-
-            result = self._llm.complete(instructions, messages, model=self._wrap_up_model)
-            new_progress = result["text"]
-
-            progress_dir = Path(self._sections_dir) / "progress"
-            default_path = progress_dir / "default.md"
-            if default_path.exists():
-                archive_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".md"
-                shutil.copy2(str(default_path), str(progress_dir / archive_name))
-            default_path.write_text(new_progress, encoding="utf-8")
-        except Exception:
-            logger.exception("Progress synthesis failed — progress file not updated")
 
     def persist_stream_result(
         self,

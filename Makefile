@@ -1,4 +1,4 @@
-.PHONY: up down build test test-backend test-frontend test-watch lint format backup usage help
+.PHONY: up down build test test-backend test-frontend test-watch check-layers lint format backup usage help
 
 IMAGE := conversation-engine
 
@@ -37,6 +37,10 @@ usage: ## Show token usage per run (last 20), ordered by most recent
 backup: ## Backup the SQLite database to data/backups/ with a timestamp
 	mkdir -p data/backups
 	@ts=$$(date +%Y%m%d-%H%M%S); sqlite3 data/chat.db .dump > data/backups/chat-$$ts.sql && echo "Backup saved to data/backups/chat-$$ts.sql"
+
+check-layers: ## Enforce architecture layer rules (no upward imports)
+	docker build -t $(IMAGE) . -q
+	docker run --rm $(IMAGE) python -m pytest tests/test_architecture.py -v
 
 lint: ## Run ruff linter on backend
 	docker run --rm $(IMAGE) python -m ruff check .

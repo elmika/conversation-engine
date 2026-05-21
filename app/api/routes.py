@@ -30,6 +30,9 @@ from app.api.schemas import (
     TimingsSchema,
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
+from app.infra.slot_resolver_files import FileSlotResolver
+from app.learning.session_summary import build_session_summary
+from app.learning.progress_synthesis import synthesise_progress
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
 from app.domain.prompt_template import PromptTemplateError, validate_template
@@ -76,11 +79,25 @@ def get_conversation_service(
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
         default_model=settings.default_model,
+        slot_resolver=FileSlotResolver(settings.sections_dir),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
-        sections_dir=settings.sections_dir,
-        wrap_up_model=settings.wrap_up_model,
     )
+
+
+def _parse_md_h1(content: str) -> Optional[str]:
+    """Extract the first H1 heading from markdown content, stripping a 'Course: ' prefix if present.
+
+    Temporary home: this is L2 knowledge about course file structure. Move to the L2
+    layer once it exists.
+    """
+    first_line = content.splitlines()[0] if content else ""
+    if not first_line.startswith("# "):
+        return None
+    title = first_line[2:].strip()
+    if title.lower().startswith("course: "):
+        title = title[8:].strip()
+    return title or None
 
 
 def _check_input_length(messages: list[dict[str, str]], max_chars: int) -> None:
@@ -211,6 +228,7 @@ async def create_conversation_stream(
 async def init_session_stream(
     body: InitSessionRequest,
     service: ConversationService = Depends(get_conversation_service),
+    settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     """
     Create a new conversation and stream an AI-initiated opening message.
@@ -223,12 +241,16 @@ async def init_session_stream(
       - chunk: incremental text delta
       - done: final assistant message + timings
     """
+    # Resolve conversation name from course content (L2 concern, lives here until L2 layer exists).
+    course_content = FileSlotResolver(settings.sections_dir).resolve("course")
+    conv_name = _parse_md_h1(course_content) if course_content else None
+
     async def event_generator() -> AsyncIterator[str]:
         try:
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.create_and_stream_init(
-                        "course-session-init", body.model_slug
+                        "course-session-init", body.model_slug, name=conv_name
                     )
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
@@ -684,6 +706,8 @@ async def end_session(
     conversation_id: str,
     background_tasks: BackgroundTasks,
     service: ConversationService = Depends(get_conversation_service),
+    settings: Settings = Depends(get_settings),
+    llm: LLMPort = Depends(get_llm),
 ) -> EndSessionResponse:
     """
     End a conversation session.
@@ -701,8 +725,17 @@ async def end_session(
             raise HTTPException(status_code=404, detail=str(e))
 
     messages = await asyncio.to_thread(_end)
-    background_tasks.add_task(service.synthesise_progress, messages)
-    summary_data = await asyncio.to_thread(service.build_session_summary)
+    background_tasks.add_task(
+        synthesise_progress,
+        messages,
+        FileSlotResolver(settings.sections_dir),
+        llm,
+        settings.sections_dir,
+        settings.wrap_up_model,
+    )
+    summary_data = await asyncio.to_thread(
+        build_session_summary, FileSlotResolver(settings.sections_dir)
+    )
     return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
 
 
@@ -712,8 +745,8 @@ async def end_session(
 )
 async def get_session_summary(
     conversation_id: str,
-    service: ConversationService = Depends(get_conversation_service),
     uow_factory=Depends(get_uow_factory),
+    settings: Settings = Depends(get_settings),
 ) -> SessionSummarySchema:
     """Return the session summary for an ended conversation."""
     def _check() -> None:
@@ -725,7 +758,9 @@ async def get_session_summary(
                 raise HTTPException(status_code=409, detail="Conversation has not ended")
 
     await asyncio.to_thread(_check)
-    summary_data = await asyncio.to_thread(service.build_session_summary)
+    summary_data = await asyncio.to_thread(
+        build_session_summary, FileSlotResolver(settings.sections_dir)
+    )
     return SessionSummarySchema(**summary_data)
 
 
