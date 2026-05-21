@@ -6,6 +6,19 @@ from typing import Optional, Protocol, TypedDict
 from types import TracebackType
 
 
+class SlotResolver(Protocol):
+    """Port for resolving prompt template slot tags to content strings.
+
+    Layer 1b owns this interface. Layer 2 provides the concrete adapter that
+    reads from its domain tables. Layer 1b ships a default FileSlotResolver
+    so the engine works standalone without any upper layer bound.
+    """
+
+    def resolve(self, tag: str) -> Optional[str]:
+        """Return the rendered content for the given tag, or None if not found."""
+        ...
+
+
 class Timings(TypedDict):
     """TTFB and total latency in ms."""
 

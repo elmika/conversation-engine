@@ -7,7 +7,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from app.application.ports import LLMPort, LLMResult, PromptRepo, StreamEvent, UnitOfWork
+from app.application.ports import LLMPort, LLMResult, PromptRepo, SlotResolver, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
 from app.domain.model_registry import validate_model_slug
@@ -31,6 +31,7 @@ class ConversationService:
         prompt_repo: PromptRepo,
         default_prompt_slug: str,
         default_model: str,
+        slot_resolver: SlotResolver,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
         sections_dir: str = "./sections",
@@ -41,6 +42,7 @@ class ConversationService:
         self._prompt_repo = prompt_repo
         self._default_prompt_slug = default_prompt_slug
         self._default_model = default_model
+        self._slot_resolver = slot_resolver
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
         self._sections_dir = sections_dir
@@ -75,14 +77,8 @@ class ConversationService:
     def _render_instructions(
         self, instructions: str, conversation_start: Optional[datetime] = None
     ) -> str:
-        # Pass 1: expand {{course}}, {{user}}, {{progress}} from files
-        from pathlib import Path
-
-        def _loader(tag: str) -> Optional[str]:
-            path = Path(self._sections_dir) / tag / "default.md"
-            return path.read_text(encoding="utf-8") if path.exists() else None
-
-        instructions = resolve_file_sections(instructions, _loader)
+        # Pass 1: expand {{course}}, {{user}}, {{progress}} via SlotResolver port
+        instructions = resolve_file_sections(instructions, self._slot_resolver.resolve)
 
         # Pass 2: resolve {{time:*}} tags
         now = datetime.now(timezone.utc)

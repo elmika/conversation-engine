@@ -30,6 +30,7 @@ from app.api.schemas import (
     TimingsSchema,
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
+from app.infra.slot_resolver_files import FileSlotResolver
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
 from app.domain.prompt_template import PromptTemplateError, validate_template
@@ -76,6 +77,7 @@ def get_conversation_service(
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
         default_model=settings.default_model,
+        slot_resolver=FileSlotResolver(settings.sections_dir),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
         sections_dir=settings.sections_dir,
