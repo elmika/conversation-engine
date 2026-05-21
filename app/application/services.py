@@ -57,23 +57,6 @@ class ConversationService:
         """Build conversation name from the prompt name. Module enrichment is a Layer 2 hook concern."""
         return prompt_name
 
-    def _course_title(self) -> Optional[str]:
-        """Read the course title from the first H1 in sections/course/default.md."""
-        from pathlib import Path
-        course_file = Path(self._sections_dir) / "course" / "default.md"
-        if not course_file.exists():
-            logger.warning("_course_title: course file not found at %s", course_file.resolve())
-            return None
-        first_line = course_file.read_text(encoding="utf-8").splitlines()[0]
-        if first_line.startswith("# "):
-            title = first_line[2:].strip()
-            if title.lower().startswith("course: "):
-                title = title[8:].strip()
-            logger.debug("_course_title: resolved to %r", title)
-            return title or None
-        logger.warning("_course_title: first line is not an H1: %r", first_line)
-        return None
-
     def _render_instructions(
         self, instructions: str, conversation_start: Optional[datetime] = None
     ) -> str:
@@ -302,12 +285,16 @@ class ConversationService:
         self,
         prompt_slug: Optional[str] = None,
         model_slug: Optional[str] = None,
+        name: Optional[str] = None,
     ) -> tuple[str, Iterable[StreamEvent], str, str, UnitOfWork]:
         """
         Create a new conversation and stream an AI-initiated opening message.
 
         No user message is stored — the LLM is called with a hidden trigger that is
         never persisted. Only the assistant's opening message lands in the conversation.
+
+        name: optional display name for the conversation; caller is responsible for
+              resolving this (e.g. from a course title). Falls back to the prompt name.
 
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
@@ -320,10 +307,10 @@ class ConversationService:
         uow_setup = self._uow_factory()
         with uow_setup:
             self._guard_no_active_conversation(uow_setup)
-            base_name = self._course_title() or self._make_conversation_name(prompt_name)
+            base_name = name or self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
-            name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.create_conversation_with_id(cid_str, name=name)
+            resolved_name = base_name if count == 0 else f"{base_name} ({count + 1})"
+            uow_setup.repo.create_conversation_with_id(cid_str, name=resolved_name)
             uow_setup.commit()
 
         # Hidden trigger — not stored, causes the LLM to produce the opening message

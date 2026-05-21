@@ -85,6 +85,21 @@ def get_conversation_service(
     )
 
 
+def _parse_md_h1(content: str) -> Optional[str]:
+    """Extract the first H1 heading from markdown content, stripping a 'Course: ' prefix if present.
+
+    Temporary home: this is L2 knowledge about course file structure. Move to the L2
+    layer once it exists.
+    """
+    first_line = content.splitlines()[0] if content else ""
+    if not first_line.startswith("# "):
+        return None
+    title = first_line[2:].strip()
+    if title.lower().startswith("course: "):
+        title = title[8:].strip()
+    return title or None
+
+
 def _check_input_length(messages: list[dict[str, str]], max_chars: int) -> None:
     """Raise 400 if total message content length exceeds max_chars."""
     total = sum(len(m.get("content") or "") for m in messages)
@@ -213,6 +228,7 @@ async def create_conversation_stream(
 async def init_session_stream(
     body: InitSessionRequest,
     service: ConversationService = Depends(get_conversation_service),
+    settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     """
     Create a new conversation and stream an AI-initiated opening message.
@@ -225,12 +241,16 @@ async def init_session_stream(
       - chunk: incremental text delta
       - done: final assistant message + timings
     """
+    # Resolve conversation name from course content (L2 concern, lives here until L2 layer exists).
+    course_content = FileSlotResolver(settings.sections_dir).resolve("course")
+    conv_name = _parse_md_h1(course_content) if course_content else None
+
     async def event_generator() -> AsyncIterator[str]:
         try:
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.create_and_stream_init(
-                        "course-session-init", body.model_slug
+                        "course-session-init", body.model_slug, name=conv_name
                     )
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
