@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from app.application.ports import LLMResult
 from app.main import app as main_app
+from tests.conftest import TEST_USER
 
 
 def _make_llm_result(text: str = "Reply") -> LLMResult:
@@ -44,7 +45,7 @@ def _end_conversation(cid: str) -> None:
 
 def _create_conversation(client: TestClient) -> str:
     r = client.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={"messages": [{"role": "user", "content": "Hello"}]},
     )
     assert r.status_code == 200
@@ -52,7 +53,7 @@ def _create_conversation(client: TestClient) -> str:
 
 
 def _get_conversation(client: TestClient, cid: str) -> dict:
-    r = client.get("/conversations?page_size=100")
+    r = client.get(f"/u/{TEST_USER}/conversations?page_size=100")
     assert r.status_code == 200
     convs = r.json()["conversations"]
     return next((c for c in convs if c["id"] == cid), {})
@@ -70,9 +71,9 @@ def test_new_conversation_has_non_null_name(client) -> None:
 
 
 def test_new_conversation_name_appears_in_list(client) -> None:
-    """GET /conversations must return the name field for newly created conversations."""
+    """GET /u/{user_id}/conversations must return the name field for newly created conversations."""
     cid = _create_conversation(client)
-    r = client.get("/conversations?page_size=100")
+    r = client.get(f"/u/{TEST_USER}/conversations?page_size=100")
     assert r.status_code == 200
     conv = next((c for c in r.json()["conversations"] if c["id"] == cid), None)
     assert conv is not None

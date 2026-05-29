@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.application.ports import LLMResult, StreamEvent
 from app.domain.prompt_template import PromptTemplateError
 from app.main import app as main_app
+from tests.conftest import TEST_USER
 
 
 # ── Helpers & fixtures ─────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ def test_template_tags_rendered_before_llm_call(client_with_mock_llm, mock_llm) 
     """{{time:current}} must be replaced with a real datetime before the LLM receives it."""
     _create_template_prompt(client_with_mock_llm, "current-time-test", "Now: {{time:current}}.")
 
-    r = client_with_mock_llm.post("/conversations", json={
+    r = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
         "messages": [{"role": "user", "content": "What time is it?"}],
         "prompt_slug": "current-time-test",
     })
@@ -93,14 +94,14 @@ def test_conversation_start_consistent_across_turns(client_with_mock_llm, mock_l
     )
     mock_llm.complete.side_effect = [_make_llm_result("first reply"), _make_llm_result("second reply")]
 
-    r1 = client_with_mock_llm.post("/conversations", json={
+    r1 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
         "messages": [{"role": "user", "content": "hello"}],
         "prompt_slug": "start-time-test",
     })
     assert r1.status_code == 200
     cid = r1.json()["conversation_id"]
 
-    r2 = client_with_mock_llm.post(f"/conversations/{cid}", json={
+    r2 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations/{cid}", json={
         "messages": [{"role": "user", "content": "hello again"}],
         "prompt_slug": "start-time-test",
     })
@@ -129,7 +130,7 @@ def test_template_error_in_create_route_returns_400(client_with_mock_llm) -> Non
         "app.application.services.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
-        r = client_with_mock_llm.post("/conversations", json={
+        r = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
             "messages": [{"role": "user", "content": "hi"}],
         })
     assert r.status_code == 400
@@ -138,7 +139,7 @@ def test_template_error_in_create_route_returns_400(client_with_mock_llm) -> Non
 
 def test_template_error_in_append_route_returns_400(client_with_mock_llm, mock_llm) -> None:
     """PromptTemplateError during append_and_chat must surface as HTTP 400, not 404."""
-    r1 = client_with_mock_llm.post("/conversations", json={
+    r1 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
         "messages": [{"role": "user", "content": "first"}],
     })
     cid = r1.json()["conversation_id"]
@@ -147,7 +148,7 @@ def test_template_error_in_append_route_returns_400(client_with_mock_llm, mock_l
         "app.application.services.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
-        r2 = client_with_mock_llm.post(f"/conversations/{cid}", json={
+        r2 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations/{cid}", json={
             "messages": [{"role": "user", "content": "second"}],
         })
     assert r2.status_code == 400
@@ -163,7 +164,7 @@ def test_template_error_in_create_stream_emits_error_done(client_with_mock_strea
         "app.application.services.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
-        r = client_with_mock_stream.post("/conversations/stream", json={
+        r = client_with_mock_stream.post(f"/u/{TEST_USER}/conversations/stream", json={
             "messages": [{"role": "user", "content": "hi"}],
         })
     assert r.status_code == 200
@@ -177,7 +178,7 @@ def test_template_error_in_append_stream_emits_error_done(
     client_with_mock_stream, mock_llm_streaming
 ) -> None:
     """PromptTemplateError during append_and_stream must emit a done SSE error event."""
-    r1 = client_with_mock_stream.post("/conversations", json={
+    r1 = client_with_mock_stream.post(f"/u/{TEST_USER}/conversations", json={
         "messages": [{"role": "user", "content": "first"}],
     })
     assert r1.status_code == 200
@@ -188,7 +189,7 @@ def test_template_error_in_append_stream_emits_error_done(
         "app.application.services.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
-        r2 = client_with_mock_stream.post(f"/conversations/{cid}/stream", json={
+        r2 = client_with_mock_stream.post(f"/u/{TEST_USER}/conversations/{cid}/stream", json={
             "messages": [{"role": "user", "content": "second"}],
         })
     assert r2.status_code == 200
@@ -203,9 +204,14 @@ def test_template_error_in_append_stream_emits_error_done(
 
 @pytest.fixture
 def sections_dir(tmp_path):
-    """Temporary sections directory with default.md files for each tag."""
+    """Temporary sections directory with <TEST_USER>.md and default.md files for each tag.
+
+    The render-preview endpoint uses get_preview_service which resolves slots
+    with user_id="default", so default.md must also exist alongside the per-user file.
+    """
     for tag in ("course", "user", "progress"):
         (tmp_path / tag).mkdir()
+        (tmp_path / tag / f"{TEST_USER}.md").write_text(f"# {tag.capitalize()} Content")
         (tmp_path / tag / "default.md").write_text(f"# {tag.capitalize()} Content")
     return tmp_path
 
@@ -230,10 +236,10 @@ def client_with_sections(mock_llm, sections_dir):
 
 def test_file_section_resolved_before_llm_call(client_with_sections, mock_llm, sections_dir) -> None:
     """{{course}} must be expanded with file content before the LLM receives instructions."""
-    (sections_dir / "course" / "default.md").write_text("Docker for CI/CD")
+    (sections_dir / "course" / f"{TEST_USER}.md").write_text("Docker for CI/CD")
     _create_template_prompt(client_with_sections, "section-test", "Context: {{course}}")
 
-    r = client_with_sections.post("/conversations", json={
+    r = client_with_sections.post(f"/u/{TEST_USER}/conversations", json={
         "messages": [{"role": "user", "content": "hi"}],
         "prompt_slug": "section-test",
     })
@@ -246,11 +252,11 @@ def test_file_section_resolved_before_llm_call(client_with_sections, mock_llm, s
 
 def test_missing_section_file_returns_400(client_with_sections, sections_dir) -> None:
     """Missing section file at render time must return 400."""
-    # Remove the course default.md so it's missing
-    (sections_dir / "course" / "default.md").unlink()
+    # Remove the course file so it's missing
+    (sections_dir / "course" / f"{TEST_USER}.md").unlink()
     _create_template_prompt(client_with_sections, "missing-section", "{{course}}")
 
-    r = client_with_sections.post("/conversations", json={
+    r = client_with_sections.post(f"/u/{TEST_USER}/conversations", json={
         "messages": [{"role": "user", "content": "hi"}],
         "prompt_slug": "missing-section",
     })
@@ -262,10 +268,10 @@ def test_section_containing_time_tag_resolved_end_to_end(
     client_with_sections, mock_llm, sections_dir
 ) -> None:
     """Section file content containing {{time:current}} is resolved in Pass 2."""
-    (sections_dir / "user" / "default.md").write_text("Time: {{time:current}}")
+    (sections_dir / "user" / f"{TEST_USER}.md").write_text("Time: {{time:current}}")
     _create_template_prompt(client_with_sections, "time-in-section", "{{user}}")
 
-    r = client_with_sections.post("/conversations", json={
+    r = client_with_sections.post(f"/u/{TEST_USER}/conversations", json={
         "messages": [{"role": "user", "content": "hi"}],
         "prompt_slug": "time-in-section",
     })
@@ -278,6 +284,9 @@ def test_section_containing_time_tag_resolved_end_to_end(
 
 def test_render_endpoint_returns_section_content(client_with_sections, sections_dir) -> None:
     """GET /prompts/{slug}/render must include expanded section content."""
+    # Write to both the per-user file and default.md; the render endpoint
+    # uses get_preview_service which resolves with user_id="default".
+    (sections_dir / "course" / f"{TEST_USER}.md").write_text("# Rendered Course")
     (sections_dir / "course" / "default.md").write_text("# Rendered Course")
     _create_template_prompt(client_with_sections, "render-section-test", "Course: {{course}}")
 

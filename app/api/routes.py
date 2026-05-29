@@ -41,7 +41,11 @@ from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from app.settings import Settings
 
+# Root router — healthz, models, prompts (no user prefix).
 router = APIRouter()
+
+# User-scoped router — all conversation routes live under /u/{user_id}.
+user_router = APIRouter(prefix="/u/{user_id}")
 
 
 def get_settings(request: Request) -> Settings:
@@ -66,31 +70,56 @@ def get_prompt_repo(db=Depends(get_session)) -> PromptRepo:
     return SQLAlchemyPromptRepo(db)
 
 
-def get_conversation_service(
+def get_preview_service(
     uow_factory=Depends(get_uow_factory),
     llm: LLMPort = Depends(get_llm),
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     settings: Settings = Depends(get_settings),
 ) -> ConversationService:
-    """Provide conversation service with injected dependencies."""
+    """ConversationService for the prompt preview admin route.
+
+    No user_id needed — slot resolver uses 'default' so this route works
+    standalone without any user context.
+    """
     return ConversationService(
         uow_factory=uow_factory,
         llm=llm,
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
         default_model=settings.default_model,
-        slot_resolver=FileSlotResolver(settings.sections_dir, "default"),
+        slot_resolver=FileSlotResolver(settings.sections_dir),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
     )
 
 
-def _parse_md_h1(content: str) -> Optional[str]:
-    """Extract the first H1 heading from markdown content, stripping a 'Course: ' prefix if present.
+def get_conversation_service(
+    user_id: str = "default",
+    uow_factory=Depends(get_uow_factory),
+    llm: LLMPort = Depends(get_llm),
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+    settings: Settings = Depends(get_settings),
+) -> ConversationService:
+    """Provide conversation service with injected dependencies.
 
-    Temporary home: this is L2 knowledge about course file structure. Move to the L2
-    layer once it exists.
+    user_id is injected from the path param /u/{user_id} when used under
+    user_router; defaults to 'default' for root-level routes (e.g. prompt preview).
     """
+    return ConversationService(
+        uow_factory=uow_factory,
+        llm=llm,
+        prompt_repo=prompt_repo,
+        default_prompt_slug=settings.default_prompt_slug,
+        default_model=settings.default_model,
+        slot_resolver=FileSlotResolver(settings.sections_dir, user_id),
+        max_history_turns=settings.max_history_turns,
+        max_history_tokens=settings.max_history_tokens,
+        user_id=user_id,
+    )
+
+
+def _parse_md_h1(content: str) -> Optional[str]:
+    """Extract the first H1 heading from markdown content, stripping a 'Course: ' prefix if present."""
     first_line = content.splitlines()[0] if content else ""
     if not first_line.startswith("# "):
         return None
@@ -110,6 +139,8 @@ def _check_input_length(messages: list[dict[str, str]], max_chars: int) -> None:
         )
 
 
+# ── Root routes (no user prefix) ─────────────────────────────────────────────
+
 @router.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Health check."""
@@ -122,7 +153,23 @@ async def list_models_endpoint() -> ModelsResponse:
     return ModelsResponse(models=[ModelSchema(**m) for m in list_models()])
 
 
-@router.post(
+# ── User-scoped routes (/u/{user_id}/...) ────────────────────────────────────
+
+@user_router.get("/status")
+async def get_user_status(
+    user_id: str,
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Return whether a learner profile exists for this user_id.
+
+    Response: {"has_profile": bool}
+    Frontend uses this to route new users to the setup flow.
+    """
+    has_profile = FileSlotResolver(settings.sections_dir, user_id).resolve("user") is not None
+    return {"has_profile": has_profile}
+
+
+@user_router.post(
     "/conversations/stream",
     name="create_conversation_stream",
 )
@@ -221,11 +268,12 @@ async def create_conversation_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.post(
+@user_router.post(
     "/conversations/init-stream",
     name="init_session_stream",
 )
 async def init_session_stream(
+    user_id: str,
     body: InitSessionRequest,
     service: ConversationService = Depends(get_conversation_service),
     settings: Settings = Depends(get_settings),
@@ -242,7 +290,7 @@ async def init_session_stream(
       - done: final assistant message + timings
     """
     # Resolve conversation name from course content (L2 concern, lives here until L2 layer exists).
-    course_content = FileSlotResolver(settings.sections_dir, "default").resolve("course")
+    course_content = FileSlotResolver(settings.sections_dir, user_id).resolve("course")
     conv_name = _parse_md_h1(course_content) if course_content else None
 
     async def event_generator() -> AsyncIterator[str]:
@@ -322,7 +370,7 @@ async def init_session_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.post("/conversations", name="create_conversation", response_model=ConversationResponse)
+@user_router.post("/conversations", name="create_conversation", response_model=ConversationResponse)
 async def create_conversation(
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
@@ -368,7 +416,7 @@ def _sse_http_error(exc: HTTPException) -> str:
     return _sse_event("done", {"error": error})
 
 
-@router.post(
+@user_router.post(
     "/conversations/{conversation_id}",
     name="append_conversation_turn",
     response_model=ConversationResponse,
@@ -404,7 +452,7 @@ async def append_conversation_turn(
     )
 
 
-@router.post(
+@user_router.post(
     "/conversations/{conversation_id}/stream",
     name="append_conversation_turn_stream",
 )
@@ -505,7 +553,7 @@ async def append_conversation_turn_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.post(
+@user_router.post(
     "/conversations/{conversation_id}/rewind/stream",
     name="rewind_conversation_stream",
 )
@@ -610,16 +658,17 @@ async def rewind_conversation_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get("/conversations", response_model=ConversationListResponse)
+@user_router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
+    user_id: str,
     page: int = 1,
     page_size: int = 20,
     uow_factory=Depends(get_uow_factory),
 ) -> ConversationListResponse:
-    """List conversations with pagination, ordered by created_at DESC."""
+    """List conversations for user_id with pagination, ordered by created_at DESC."""
     def _run() -> tuple[list[dict], int]:
         with uow_factory() as uow:
-            return uow.repo.list_conversations("default", page, page_size)
+            return uow.repo.list_conversations(user_id, page, page_size)
 
     rows, total = await asyncio.to_thread(_run)
     return ConversationListResponse(
@@ -640,7 +689,7 @@ async def list_conversations(
     )
 
 
-@router.delete("/conversations/{conversation_id}", status_code=204)
+@user_router.delete("/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
@@ -654,7 +703,7 @@ async def delete_conversation(
     await asyncio.to_thread(_run)
 
 
-@router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)
+@user_router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)
 async def rename_conversation(
     conversation_id: str,
     body: ConversationRenameRequest,
@@ -670,7 +719,7 @@ async def rename_conversation(
     return ConversationSummary(id=conversation_id, name=body.name, created_at="")
 
 
-@router.get("/conversations/{conversation_id}/messages", response_model=MessagesResponse)
+@user_router.get("/conversations/{conversation_id}/messages", response_model=MessagesResponse)
 async def get_conversation_messages(
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
@@ -698,11 +747,12 @@ async def get_conversation_messages(
     )
 
 
-@router.post(
+@user_router.post(
     "/conversations/{conversation_id}/end-session",
     response_model=EndSessionResponse,
 )
 async def end_session(
+    user_id: str,
     conversation_id: str,
     background_tasks: BackgroundTasks,
     service: ConversationService = Depends(get_conversation_service),
@@ -728,23 +778,24 @@ async def end_session(
     background_tasks.add_task(
         synthesise_progress,
         messages,
-        FileSlotResolver(settings.sections_dir, "default"),
+        FileSlotResolver(settings.sections_dir, user_id),
         llm,
         settings.sections_dir,
         settings.wrap_up_model,
-        "default",
+        user_id,
     )
     summary_data = await asyncio.to_thread(
-        build_session_summary, FileSlotResolver(settings.sections_dir, "default")
+        build_session_summary, FileSlotResolver(settings.sections_dir, user_id)
     )
     return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
 
 
-@router.get(
+@user_router.get(
     "/conversations/{conversation_id}/summary",
     response_model=SessionSummarySchema,
 )
 async def get_session_summary(
+    user_id: str,
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
     settings: Settings = Depends(get_settings),
@@ -760,10 +811,12 @@ async def get_session_summary(
 
     await asyncio.to_thread(_check)
     summary_data = await asyncio.to_thread(
-        build_session_summary, FileSlotResolver(settings.sections_dir, "default")
+        build_session_summary, FileSlotResolver(settings.sections_dir, user_id)
     )
     return SessionSummarySchema(**summary_data)
 
+
+# ── Prompt admin routes (root, no user prefix) ────────────────────────────────
 
 @router.get("/prompts", response_model=PromptsResponse)
 async def list_prompts(
@@ -816,7 +869,7 @@ async def create_prompt(
 async def render_prompt_preview(
     slug: str,
     conversation_id: Optional[str] = None,
-    service: ConversationService = Depends(get_conversation_service),
+    service: ConversationService = Depends(get_preview_service),
 ) -> PromptRenderResponse:
     """Return the prompt's system_prompt with all template variables resolved.
 

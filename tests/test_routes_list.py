@@ -1,4 +1,4 @@
-"""Integration tests for GET /conversations, GET /conversations/{id}/messages, GET /prompts."""
+"""Integration tests for GET /u/{user_id}/conversations, messages, and GET /prompts."""
 
 from unittest.mock import MagicMock
 
@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.application.ports import LLMResult
 from app.main import app as main_app
+from tests.conftest import TEST_USER
 
 
 def _make_llm_result(text: str = "Reply") -> LLMResult:
@@ -28,19 +29,19 @@ def client():
 
 def _create_conversation(client, message: str = "Hi") -> str:
     r = client.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={"messages": [{"role": "user", "content": message}]},
     )
     assert r.status_code == 200
     return r.json()["conversation_id"]
 
 
-# --- GET /conversations ---
+# --- GET /u/{user_id}/conversations ---
 
 
 def test_list_conversations_response_shape(client) -> None:
     """Response has the correct envelope shape regardless of DB state."""
-    r = client.get("/conversations")
+    r = client.get(f"/u/{TEST_USER}/conversations")
     assert r.status_code == 200
     data = r.json()
     assert "conversations" in data
@@ -53,12 +54,12 @@ def test_list_conversations_response_shape(client) -> None:
 
 def test_list_conversations_returns_created(client) -> None:
     """A newly created conversation appears in the list."""
-    r_before = client.get("/conversations")
+    r_before = client.get(f"/u/{TEST_USER}/conversations")
     total_before = r_before.json()["total"]
 
     cid = _create_conversation(client)
 
-    r = client.get("/conversations?page_size=100")
+    r = client.get(f"/u/{TEST_USER}/conversations?page_size=100")
     assert r.status_code == 200
     data = r.json()
     assert data["total"] == total_before + 1
@@ -81,7 +82,7 @@ def test_list_conversations_pagination(client) -> None:
     engine = get_engine()
     for _ in range(5):
         r = client.post(
-            "/conversations",
+            f"/u/{TEST_USER}/conversations",
             json={"messages": [{"role": "user", "content": "Ping"}]},
         )
         if r.status_code == 200:
@@ -94,7 +95,7 @@ def test_list_conversations_pagination(client) -> None:
                 )
                 conn.commit()
 
-    r = client.get("/conversations?page=1&page_size=2")
+    r = client.get(f"/u/{TEST_USER}/conversations?page=1&page_size=2")
     assert r.status_code == 200
     data = r.json()
     # Total includes all conversations created across the test session
@@ -103,18 +104,18 @@ def test_list_conversations_pagination(client) -> None:
     assert data["page"] == 1
     assert data["page_size"] == 2
 
-    r2 = client.get("/conversations?page=2&page_size=2")
+    r2 = client.get(f"/u/{TEST_USER}/conversations?page=2&page_size=2")
     data2 = r2.json()
     assert len(data2["conversations"]) == 2
     assert data2["page"] == 2
 
 
-# --- GET /conversations/{id}/messages ---
+# --- GET /u/{user_id}/conversations/{id}/messages ---
 
 
 def test_get_conversation_messages(client) -> None:
     cid = _create_conversation(client, "Hello there")
-    r = client.get(f"/conversations/{cid}/messages")
+    r = client.get(f"/u/{TEST_USER}/conversations/{cid}/messages")
     assert r.status_code == 200
     data = r.json()
     assert data["conversation_id"] == cid
@@ -128,14 +129,14 @@ def test_get_conversation_messages(client) -> None:
 
 
 def test_get_conversation_messages_unknown_id(client) -> None:
-    r = client.get("/conversations/nonexistent-id/messages")
+    r = client.get(f"/u/{TEST_USER}/conversations/nonexistent-id/messages")
     assert r.status_code == 200
     data = r.json()
     assert data["conversation_id"] == "nonexistent-id"
     assert data["messages"] == []
 
 
-# --- GET /prompts ---
+# --- GET /prompts (root — no user prefix) ---
 
 
 def test_get_prompts(client) -> None:

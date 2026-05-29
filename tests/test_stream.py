@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.application.ports import StreamEvent
 from app.main import app
 from app.settings import Settings
+from tests.conftest import TEST_USER
 
 
 def _make_events() -> Iterable[StreamEvent]:
@@ -46,10 +47,10 @@ def client_with_mock_stream(mock_llm_streaming):
 def test_conversation_stream_sends_meta_chunk_done(
     client_with_mock_stream, mock_llm_streaming
 ) -> None:
-    """POST /conversations/{conversation_id}/stream emits meta, chunk, done, and includes history."""
+    """POST /u/{user_id}/conversations/{conversation_id}/stream emits meta, chunk, done."""
     # First create a conversation to obtain a valid id.
     create_resp = client_with_mock_stream.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={
             "messages": [{"role": "user", "content": "First"}],
         },
@@ -59,7 +60,7 @@ def test_conversation_stream_sends_meta_chunk_done(
 
     # Stream a new turn on that conversation.
     response = client_with_mock_stream.post(
-        f"/conversations/{cid}/stream",
+        f"/u/{TEST_USER}/conversations/{cid}/stream",
         json={
             "messages": [{"role": "user", "content": "Hello"}],
         },
@@ -86,7 +87,7 @@ def test_conversation_stream_sends_meta_chunk_done(
     _, messages_arg = mock_llm_streaming.stream.call_args[0]
     roles = [m["role"] for m in messages_arg]
     contents = [m["content"] for m in messages_arg]
-    # History for streaming append: user \"First\", assistant \"Hi there\", plus new user \"Hello\".
+    # History for streaming append: user "First", assistant "Hi there", plus new user "Hello".
     assert roles == ["user", "assistant", "user"]
     assert contents == ["First", "Hi there", "Hello"]
 
@@ -94,9 +95,9 @@ def test_conversation_stream_sends_meta_chunk_done(
 def test_conversation_stream_first_turn_creates_conversation(
     client_with_mock_stream, mock_llm_streaming
 ) -> None:
-    """POST /conversations/stream streams the first turn and creates a conversation."""
+    """POST /u/{user_id}/conversations/stream streams the first turn and creates a conversation."""
     response = client_with_mock_stream.post(
-        "/conversations/stream",
+        f"/u/{TEST_USER}/conversations/stream",
         json={
             "messages": [{"role": "user", "content": "Hello from scratch"}],
         },
@@ -112,13 +113,13 @@ def test_conversation_stream_first_turn_creates_conversation(
 
 
 def test_conversation_stream_rejects_input_over_max_chars(client_with_mock_stream) -> None:
-    """POST /conversations/stream returns 400 when total message content exceeds max_input_chars."""
+    """POST /u/{user_id}/conversations/stream returns 400 when input exceeds max_input_chars."""
     from app.api import routes
 
     app.dependency_overrides[routes.get_settings] = lambda: Settings(max_input_chars=10)
     try:
         response = client_with_mock_stream.post(
-            "/conversations/stream",
+            f"/u/{TEST_USER}/conversations/stream",
             json={
                 "messages": [{"role": "user", "content": "way over ten chars here"}],
             },
@@ -130,7 +131,7 @@ def test_conversation_stream_rejects_input_over_max_chars(client_with_mock_strea
 
 
 def test_conversation_stream_emits_done_on_llm_error(client_with_mock_stream) -> None:
-    """POST /conversations/stream emits done event with error when LLM adapter raises HTTPException."""
+    """POST /u/{user_id}/conversations/stream emits done event with error when LLM raises."""
     from app.api import routes
     from fastapi import HTTPException
 
@@ -140,7 +141,7 @@ def test_conversation_stream_emits_done_on_llm_error(client_with_mock_stream) ->
     app.dependency_overrides[routes.get_llm] = lambda: mock_llm
     try:
         response = client_with_mock_stream.post(
-            "/conversations/stream",
+            f"/u/{TEST_USER}/conversations/stream",
             json={
                 "messages": [{"role": "user", "content": "Hello"}],
             },
@@ -159,13 +160,13 @@ def test_conversation_stream_emits_done_on_llm_error(client_with_mock_stream) ->
 
 
 def test_conversation_stream_append_emits_done_on_llm_error(client_with_mock_stream) -> None:
-    """POST /conversations/{id}/stream emits done event with error when LLM adapter raises HTTPException."""
+    """POST /u/{user_id}/conversations/{id}/stream emits done event with error when LLM raises."""
     from app.api import routes
     from fastapi import HTTPException
 
     # First create a conversation
     create_resp = client_with_mock_stream.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={
             "messages": [{"role": "user", "content": "First"}],
         },
@@ -180,7 +181,7 @@ def test_conversation_stream_append_emits_done_on_llm_error(client_with_mock_str
     app.dependency_overrides[routes.get_llm] = lambda: mock_llm
     try:
         response = client_with_mock_stream.post(
-            f"/conversations/{cid}/stream",
+            f"/u/{TEST_USER}/conversations/{cid}/stream",
             json={
                 "messages": [{"role": "user", "content": "Hello"}],
             },
@@ -196,4 +197,3 @@ def test_conversation_stream_append_emits_done_on_llm_error(client_with_mock_str
         assert "Upstream timeout" in body
     finally:
         app.dependency_overrides.pop(routes.get_llm, None)
-
