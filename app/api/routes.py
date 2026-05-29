@@ -79,7 +79,7 @@ def get_conversation_service(
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
         default_model=settings.default_model,
-        slot_resolver=FileSlotResolver(settings.sections_dir),
+        slot_resolver=FileSlotResolver(settings.sections_dir, "default"),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
     )
@@ -242,7 +242,7 @@ async def init_session_stream(
       - done: final assistant message + timings
     """
     # Resolve conversation name from course content (L2 concern, lives here until L2 layer exists).
-    course_content = FileSlotResolver(settings.sections_dir).resolve("course")
+    course_content = FileSlotResolver(settings.sections_dir, "default").resolve("course")
     conv_name = _parse_md_h1(course_content) if course_content else None
 
     async def event_generator() -> AsyncIterator[str]:
@@ -728,13 +728,14 @@ async def end_session(
     background_tasks.add_task(
         synthesise_progress,
         messages,
-        FileSlotResolver(settings.sections_dir),
+        FileSlotResolver(settings.sections_dir, "default"),
         llm,
         settings.sections_dir,
         settings.wrap_up_model,
+        "default",
     )
     summary_data = await asyncio.to_thread(
-        build_session_summary, FileSlotResolver(settings.sections_dir)
+        build_session_summary, FileSlotResolver(settings.sections_dir, "default")
     )
     return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
 
@@ -759,7 +760,7 @@ async def get_session_summary(
 
     await asyncio.to_thread(_check)
     summary_data = await asyncio.to_thread(
-        build_session_summary, FileSlotResolver(settings.sections_dir)
+        build_session_summary, FileSlotResolver(settings.sections_dir, "default")
     )
     return SessionSummarySchema(**summary_data)
 
