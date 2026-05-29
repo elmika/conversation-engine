@@ -1,10 +1,9 @@
-import { ChatShell } from "@/components/chat/ChatShell";
+import { redirect } from "next/navigation";
 
-interface Props {
-  params: Promise<{ conversationId: string }>;
-}
-
-export default async function ConversationPage({ params }: Props) {
-  const { conversationId } = await params;
-  return <ChatShell conversationId={conversationId} />;
+/**
+ * Legacy route — the canonical URL is now /u/{userId}/chat/{conversationId}.
+ * Redirect to root so the entry point can assign a userId and redirect properly.
+ */
+export default function ConversationPage() {
+  redirect("/");
 }

@@ -21,14 +21,15 @@ import { endSession } from "@/lib/api-client";
 import type { Message } from "@/lib/types";
 
 interface ChatShellProps {
+  userId: string;
   conversationId?: string;
 }
 
-export function ChatShell({ conversationId }: ChatShellProps) {
+export function ChatShell({ userId, conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug, selectedModelSlug, enterToSend, toggleEnterToSend } = useChatStore();
   const { status, partialText, timings, model, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
-    useStreamingChat();
+    useStreamingChat(userId);
 
   // After the first turn the hook captures the server-assigned ID; use it for
   // follow-up turns when there is no URL-based conversationId.
@@ -36,7 +37,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
 
   // Use activeConversationId so that new conversations (no URL param yet) also
   // get a query refetch once the server assigns an ID after the first turn.
-  const { data, isLoading, isFetching } = useConversation(activeConversationId ?? null);
+  const { data, isLoading, isFetching } = useConversation(userId, activeConversationId ?? null);
 
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const prevStatusRef = useRef(status);
@@ -72,7 +73,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     if (!conversationId && !initFiredRef.current && status === "idle") {
       initFiredRef.current = true;
       initSession(selectedPromptSlug, selectedModelSlug, (activeId) => {
-        router.push(`/chat/${activeId}`);
+        router.push(`/u/${userId}/chat/${activeId}`);
       });
     }
   }, [conversationId, status]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -80,20 +81,20 @@ export function ChatShell({ conversationId }: ChatShellProps) {
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);
 
-  const { data: sessionSummary } = useSessionSummary(activeConversationId, isEnded);
+  const { data: sessionSummary } = useSessionSummary(userId, activeConversationId, isEnded);
   const [summaryVisible, setSummaryVisible] = useState(true);
 
   const [endSessionError, setEndSessionError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { mutate: endSessionMutate, isPending: isEndingSession } = useMutation({
-    mutationFn: () => endSession(activeConversationId!),
+    mutationFn: () => endSession(userId, activeConversationId!),
     onMutate: () => setEndSessionError(null),
     onSuccess: () => {
       setSummaryVisible(true);
-      queryClient.invalidateQueries({ queryKey: ["session-summary", activeConversationId] });
-      queryClient.invalidateQueries({ queryKey: ["messages", activeConversationId] });
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["session-summary", userId, activeConversationId] });
+      queryClient.invalidateQueries({ queryKey: ["messages", userId, activeConversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
     },
     onError: (err: Error) => {
       setEndSessionError(err.message ?? "Failed to end session. Please try again.");
@@ -105,7 +106,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     reset();                       // sets status → "idle", triggering the effect above
     setLocalMessages([]);
     setSummaryVisible(true);
-    router.push("/chat");
+    router.push(`/u/${userId}/chat`);
   };
 
   const handleRewind = (messageId: number, newContent: string) => {
@@ -164,7 +165,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
         </div>
         <Separator />
         <div className="flex-1 overflow-y-auto">
-          <ConversationList activeConversationId={conversationId} />
+          <ConversationList userId={userId} activeConversationId={conversationId} />
         </div>
       </aside>
 

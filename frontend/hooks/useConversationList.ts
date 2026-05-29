@@ -2,12 +2,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchConversations } from "@/lib/api-client";
 import type { ConversationListResponse } from "@/lib/types";
 
-export function useConversationList(page = 1, pageSize = 20) {
+export function useConversationList(userId: string, page = 1, pageSize = 20) {
   const queryClient = useQueryClient();
 
   const query = useQuery<ConversationListResponse>({
-    queryKey: ["conversations", page, pageSize],
-    queryFn: () => fetchConversations(page, pageSize),
+    queryKey: ["conversations", userId, page, pageSize],
+    queryFn: () => fetchConversations(userId, page, pageSize),
   });
 
   // Prefetch next page if there are more results
@@ -15,8 +15,8 @@ export function useConversationList(page = 1, pageSize = 20) {
   const hasNextPage = page * pageSize < total;
   if (hasNextPage) {
     queryClient.prefetchQuery({
-      queryKey: ["conversations", page + 1, pageSize],
-      queryFn: () => fetchConversations(page + 1, pageSize),
+      queryKey: ["conversations", userId, page + 1, pageSize],
+      queryFn: () => fetchConversations(userId, page + 1, pageSize),
     });
   }
 

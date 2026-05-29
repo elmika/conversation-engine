@@ -135,21 +135,31 @@ export async function fetchModels(): Promise<ModelsResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// User status
+// ---------------------------------------------------------------------------
+
+export async function fetchUserStatus(userId: string): Promise<{ has_profile: boolean }> {
+  const res = await fetch(`/api/u/${userId}/status`);
+  return handleResponse(res);
+}
+
+// ---------------------------------------------------------------------------
 // Conversation list & messages
 // ---------------------------------------------------------------------------
 
 export async function fetchConversations(
+  userId: string,
   page = 1,
   pageSize = 20
 ): Promise<ConversationListResponse> {
   const res = await fetch(
-    `/api/conversations?page=${page}&page_size=${pageSize}`
+    `/api/u/${userId}/conversations?page=${page}&page_size=${pageSize}`
   );
   return handleResponse(res);
 }
 
-export async function deleteConversation(conversationId: string): Promise<void> {
-  const res = await fetch(`/api/conversations/${conversationId}`, {
+export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -158,10 +168,11 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 }
 
 export async function renameConversation(
+  userId: string,
   conversationId: string,
   name: string
 ): Promise<void> {
-  const res = await fetch(`/api/conversations/${conversationId}`, {
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -170,9 +181,10 @@ export async function renameConversation(
 }
 
 export async function fetchConversationMessages(
+  userId: string,
   conversationId: string
 ): Promise<MessagesResponse> {
-  const res = await fetch(`/api/conversations/${conversationId}/messages`);
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}/messages`);
   return handleResponse(res);
 }
 
@@ -181,9 +193,10 @@ export async function fetchConversationMessages(
 // ---------------------------------------------------------------------------
 
 export async function createConversation(
+  userId: string,
   body: ConversationRequest
 ): Promise<ConversationResponse> {
-  const res = await fetch("/api/conversations", {
+  const res = await fetch(`/api/u/${userId}/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -192,10 +205,11 @@ export async function createConversation(
 }
 
 export async function appendConversationTurn(
+  userId: string,
   conversationId: string,
   body: ConversationRequest
 ): Promise<ConversationResponse> {
-  const res = await fetch(`/api/conversations/${conversationId}`, {
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -208,10 +222,11 @@ export async function appendConversationTurn(
 // ---------------------------------------------------------------------------
 
 export async function createConversationStream(
+  userId: string,
   body: ConversationRequest,
   signal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
-  const res = await fetch("/api/conversations/stream", {
+  const res = await fetch(`/api/u/${userId}/conversations/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -221,10 +236,11 @@ export async function createConversationStream(
 }
 
 export async function initSessionStream(
+  userId: string,
   body: { prompt_slug?: string | null; model_slug?: string | null },
   signal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
-  const res = await fetch("/api/conversations/init-stream", {
+  const res = await fetch(`/api/u/${userId}/conversations/init-stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -234,11 +250,12 @@ export async function initSessionStream(
 }
 
 export async function appendConversationTurnStream(
+  userId: string,
   conversationId: string,
   body: ConversationRequest,
   signal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
-  const res = await fetch(`/api/conversations/${conversationId}/stream`, {
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -248,29 +265,32 @@ export async function appendConversationTurnStream(
 }
 
 export async function fetchSessionSummary(
+  userId: string,
   conversationId: string
 ): Promise<SessionSummary> {
-  const res = await fetch(`/api/conversations/${conversationId}/summary`);
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}/summary`);
   return handleResponse<SessionSummary>(res);
 }
 
 export async function endSession(
+  userId: string,
   conversationId: string
 ): Promise<EndSessionResponse> {
-  const res = await fetch(`/api/conversations/${conversationId}/end-session`, {
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}/end-session`, {
     method: "POST",
   });
   return handleResponse<EndSessionResponse>(res);
 }
 
 export async function rewindConversationStream(
+  userId: string,
   conversationId: string,
   messageId: number,
   content: string,
   promptSlug?: string | null,
   signal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
-  const res = await fetch(`/api/conversations/${conversationId}/rewind/stream`, {
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}/rewind/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_id: messageId, content, prompt_slug: promptSlug }),

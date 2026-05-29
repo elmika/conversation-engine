@@ -116,11 +116,11 @@ export const handlers = [
   // Delete prompt
   http.delete("/api/prompts/:slug", () => new HttpResponse(null, { status: 204 })),
 
-  // Conversation list
-  http.get("/api/conversations", () => HttpResponse.json(CONVERSATIONS_FIXTURE)),
+  // User-scoped conversation routes (/api/u/:userId/...)
+  http.get("/api/u/:userId/conversations", () => HttpResponse.json(CONVERSATIONS_FIXTURE)),
 
   // Create conversation (non-streaming)
-  http.post("/api/conversations", () =>
+  http.post("/api/u/:userId/conversations", () =>
     HttpResponse.json({
       conversation_id: CONVERSATION_ID,
       assistant_message: "Hello!",
@@ -130,7 +130,7 @@ export const handlers = [
   ),
 
   // Append turn (non-streaming)
-  http.post("/api/conversations/:conversationId", () =>
+  http.post("/api/u/:userId/conversations/:conversationId", () =>
     HttpResponse.json({
       conversation_id: CONVERSATION_ID,
       assistant_message: "Follow-up reply.",
@@ -140,12 +140,12 @@ export const handlers = [
   ),
 
   // Get messages
-  http.get("/api/conversations/:conversationId/messages", () =>
+  http.get("/api/u/:userId/conversations/:conversationId/messages", () =>
     HttpResponse.json(MESSAGES_FIXTURE)
   ),
 
   // Create conversation stream
-  http.post("/api/conversations/stream", () =>
+  http.post("/api/u/:userId/conversations/stream", () =>
     sseStream([
       { event: "meta", data: { conversation_id: CONVERSATION_ID, model: "gpt-4.1-mini", prompt_slug: "default" } },
       { event: "chunk", data: { delta: "Hello" } },
@@ -155,11 +155,14 @@ export const handlers = [
   ),
 
   // Append turn stream
-  http.post("/api/conversations/:conversationId/stream", () =>
+  http.post("/api/u/:userId/conversations/:conversationId/stream", () =>
     sseStream([
       { event: "meta", data: { conversation_id: CONVERSATION_ID, model: "gpt-4.1-mini", prompt_slug: "default" } },
       { event: "chunk", data: { delta: "Follow-up" } },
       { event: "done", data: { conversation_id: CONVERSATION_ID, assistant_message: "Follow-up", model: "gpt-4.1-mini", timings: { ttfb_ms: 30, total_ms: 120 } } },
     ])
   ),
+
+  // User status
+  http.get("/api/u/:userId/status", () => HttpResponse.json({ has_profile: false })),
 ];

@@ -15,6 +15,8 @@ import {
 
 vi.mock("@/lib/api-client");
 
+const TEST_USER = "test-user-id";
+
 function makeSseStream(
   events: Array<{ event: string; data: object }>
 ): ReadableStream<Uint8Array> {
@@ -79,7 +81,7 @@ function makeWrapper() {
 
 describe("useStreamingChat", () => {
   it("starts idle", () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
     expect(result.current.status).toBe("idle");
@@ -87,7 +89,7 @@ describe("useStreamingChat", () => {
   });
 
   it("transitions through connecting → streaming → done", async () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
 
@@ -108,7 +110,7 @@ describe("useStreamingChat", () => {
   });
 
   it("accumulates partial text during streaming", async () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
 
@@ -132,7 +134,7 @@ describe("useStreamingChat", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
 
-    const { result } = renderHook(() => useStreamingChat(), { wrapper });
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), { wrapper });
 
     act(() => {
       result.current.sendMessage({
@@ -145,14 +147,14 @@ describe("useStreamingChat", () => {
     const calls = invalidate.mock.calls.map((c) => c[0]);
     expect(calls).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ queryKey: ["messages", "test-conv-id-1"] }),
-        expect.objectContaining({ queryKey: ["conversations"] }),
+        expect.objectContaining({ queryKey: ["messages", TEST_USER, "test-conv-id-1"] }),
+        expect.objectContaining({ queryKey: ["conversations", TEST_USER] }),
       ])
     );
   });
 
   it("cancel() aborts and sets status to idle", async () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
 
@@ -174,7 +176,7 @@ describe("useStreamingChat", () => {
   });
 
   it("reset() returns to initial state", async () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
 
