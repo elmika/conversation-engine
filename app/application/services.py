@@ -34,6 +34,7 @@ class ConversationService:
         slot_resolver: SlotResolver,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
+        user_id: str = "default",
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
@@ -43,6 +44,7 @@ class ConversationService:
         self._slot_resolver = slot_resolver
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
+        self._user_id = user_id
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str], str]:
         """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name). Falls back to default."""
@@ -104,7 +106,7 @@ class ConversationService:
 
         The active conversation ID is embedded in the message so routes can return it to callers.
         """
-        active = uow.repo.get_active_conversation()
+        active = uow.repo.get_active_conversation(self._user_id)
         if active:
             raise ValueError(f"active_conversation_exists:{active}")
 
@@ -133,7 +135,7 @@ class ConversationService:
             base_name = self._make_conversation_name(prompt_name)
             count = uow.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow.repo.create_conversation_with_id(cid_str, name=name)
+            uow.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id)
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 

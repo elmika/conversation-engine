@@ -21,15 +21,15 @@ class SQLAlchemyConversationRepo(ConversationRepo):
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create_conversation(self) -> str:
+    def create_conversation(self, user_id: str = "default") -> str:
         """Create a new conversation with a generated ID; return its id."""
         conv_id = str(uuid.uuid4())
-        self.create_conversation_with_id(conv_id)
+        self.create_conversation_with_id(conv_id, user_id=user_id)
         return conv_id
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None) -> None:
-        """Create a new conversation with a specific ID and optional name (domain-generated)."""
-        conv = Conversation(id=conversation_id, name=name)
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default") -> None:
+        """Create a new conversation with a specific ID, optional name, and user_id."""
+        conv = Conversation(id=conversation_id, name=name, user_id=user_id)
         self._session.add(conv)
 
     def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
@@ -47,9 +47,11 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self._session.flush()  # Flush to get the auto-generated ID
         return msg.id
 
-    def list_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
-        """Return (rows, total) ordered by created_at DESC with pagination."""
-        total = self._session.execute(select(func.count()).select_from(Conversation)).scalar_one()
+    def list_conversations(self, user_id: str, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) for user_id ordered by created_at DESC with pagination."""
+        total = self._session.execute(
+            select(func.count()).select_from(Conversation).where(Conversation.user_id == user_id)
+        ).scalar_one()
 
         first_msg_sq = (
             select(Message.content)
@@ -73,6 +75,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
                 first_msg_sq.label("first_message"),
                 last_activity_sq.label("last_activity"),
             )
+            .where(Conversation.user_id == user_id)
             .order_by(Conversation.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -168,9 +171,14 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         if row:
             row.ended_at = datetime.now(timezone.utc)
 
-    def get_active_conversation(self) -> Optional[str]:
-        """Return the id of the conversation where ended_at IS NULL, or None."""
-        stmt = select(Conversation.id).where(Conversation.ended_at.is_(None)).limit(1)
+    def get_active_conversation(self, user_id: str) -> Optional[str]:
+        """Return the id of the active (ended_at IS NULL) conversation for user_id, or None."""
+        stmt = (
+            select(Conversation.id)
+            .where(Conversation.ended_at.is_(None))
+            .where(Conversation.user_id == user_id)
+            .limit(1)
+        )
         return self._session.execute(stmt).scalar_one_or_none()
 
     def record_run(

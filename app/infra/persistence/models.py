@@ -38,6 +38,7 @@ class Conversation(Base):
     ended_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True, default="default")
 
     messages: Mapped[list[Message]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"

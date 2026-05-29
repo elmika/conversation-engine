@@ -7,6 +7,8 @@ from app.infra.persistence.db import Base
 from app.infra.persistence.models import Conversation, Message, Run  # noqa: F401
 from app.infra.persistence.repo_sqlalchemy import SQLAlchemyConversationRepo
 
+TEST_USER = "test-user"
+
 
 def _make_session():
     engine = create_engine("sqlite:///:memory:", future=True)
@@ -19,7 +21,7 @@ def test_list_conversations_empty() -> None:
     session = _make_session()
     try:
         repo = SQLAlchemyConversationRepo(session)
-        rows, total = repo.list_conversations(page=1, page_size=20)
+        rows, total = repo.list_conversations(TEST_USER, page=1, page_size=20)
         assert rows == []
         assert total == 0
     finally:
@@ -31,9 +33,9 @@ def test_list_conversations_total_count() -> None:
     try:
         repo = SQLAlchemyConversationRepo(session)
         for _ in range(5):
-            repo.create_conversation()
+            repo.create_conversation(user_id=TEST_USER)
         session.commit()
-        rows, total = repo.list_conversations(page=1, page_size=20)
+        rows, total = repo.list_conversations(TEST_USER, page=1, page_size=20)
         assert total == 5
         assert len(rows) == 5
     finally:
@@ -45,17 +47,17 @@ def test_list_conversations_pagination() -> None:
     try:
         repo = SQLAlchemyConversationRepo(session)
         for _ in range(7):
-            repo.create_conversation()
+            repo.create_conversation(user_id=TEST_USER)
         session.commit()
-        rows_p1, total = repo.list_conversations(page=1, page_size=3)
+        rows_p1, total = repo.list_conversations(TEST_USER, page=1, page_size=3)
         assert total == 7
         assert len(rows_p1) == 3
 
-        rows_p2, total2 = repo.list_conversations(page=2, page_size=3)
+        rows_p2, total2 = repo.list_conversations(TEST_USER, page=2, page_size=3)
         assert total2 == 7
         assert len(rows_p2) == 3
 
-        rows_p3, total3 = repo.list_conversations(page=3, page_size=3)
+        rows_p3, total3 = repo.list_conversations(TEST_USER, page=3, page_size=3)
         assert total3 == 7
         assert len(rows_p3) == 1
 
@@ -70,10 +72,51 @@ def test_list_conversations_has_iso_created_at() -> None:
     session = _make_session()
     try:
         repo = SQLAlchemyConversationRepo(session)
-        repo.create_conversation()
+        repo.create_conversation(user_id=TEST_USER)
         session.commit()
-        rows, _ = repo.list_conversations(page=1, page_size=20)
+        rows, _ = repo.list_conversations(TEST_USER, page=1, page_size=20)
         assert "T" in rows[0]["created_at"]  # ISO 8601 format
+    finally:
+        session.close()
+
+
+def test_list_conversations_scoped_to_user() -> None:
+    """Each user sees only their own conversations."""
+    session = _make_session()
+    try:
+        repo = SQLAlchemyConversationRepo(session)
+        for _ in range(3):
+            repo.create_conversation(user_id="user-a")
+        for _ in range(2):
+            repo.create_conversation(user_id="user-b")
+        session.commit()
+
+        rows_a, total_a = repo.list_conversations("user-a", page=1, page_size=20)
+        rows_b, total_b = repo.list_conversations("user-b", page=1, page_size=20)
+
+        assert total_a == 3
+        assert len(rows_a) == 3
+        assert total_b == 2
+        assert len(rows_b) == 2
+
+        ids_a = {r["id"] for r in rows_a}
+        ids_b = {r["id"] for r in rows_b}
+        assert ids_a.isdisjoint(ids_b), "user-a and user-b share conversation IDs"
+    finally:
+        session.close()
+
+
+def test_list_conversations_user_a_does_not_see_user_b() -> None:
+    """list_conversations('user-a') never returns user-b's conversations."""
+    session = _make_session()
+    try:
+        repo = SQLAlchemyConversationRepo(session)
+        repo.create_conversation(user_id="user-b")
+        session.commit()
+
+        rows_a, total_a = repo.list_conversations("user-a", page=1, page_size=20)
+        assert rows_a == []
+        assert total_a == 0
     finally:
         session.close()
 
@@ -82,7 +125,7 @@ def test_get_messages_with_metadata() -> None:
     session = _make_session()
     try:
         repo = SQLAlchemyConversationRepo(session)
-        cid = repo.create_conversation()
+        cid = repo.create_conversation(user_id=TEST_USER)
         repo.append_message(cid, "user", "Hello")
         repo.append_message(cid, "assistant", "Hi there")
         session.commit()
@@ -106,7 +149,7 @@ def test_get_messages_with_metadata_empty() -> None:
     session = _make_session()
     try:
         repo = SQLAlchemyConversationRepo(session)
-        cid = repo.create_conversation()
+        cid = repo.create_conversation(user_id=TEST_USER)
         session.commit()
         msgs = repo.get_messages_with_metadata(cid)
         assert msgs == []

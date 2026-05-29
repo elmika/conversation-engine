@@ -619,7 +619,7 @@ async def list_conversations(
     """List conversations with pagination, ordered by created_at DESC."""
     def _run() -> tuple[list[dict], int]:
         with uow_factory() as uow:
-            return uow.repo.list_conversations(page, page_size)
+            return uow.repo.list_conversations("default", page, page_size)
 
     rows, total = await asyncio.to_thread(_run)
     return ConversationListResponse(

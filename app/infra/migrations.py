@@ -12,6 +12,7 @@ def run_migrations(engine: Engine) -> None:
     with engine.connect() as conn:
         _add_column_if_missing(conn, "conversations", "name", "VARCHAR(256)")
         _add_ended_at_and_mark_existing(conn)
+        _add_column_if_missing(conn, "conversations", "user_id", "VARCHAR(256) NOT NULL DEFAULT 'default'")
 
 
 def _add_ended_at_and_mark_existing(conn) -> None:

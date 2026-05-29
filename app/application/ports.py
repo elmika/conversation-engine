@@ -95,12 +95,12 @@ class ConversationRepo(Protocol):
         """Append a message to the conversation and return its id."""
         ...
 
-    def create_conversation(self) -> str:
+    def create_conversation(self, user_id: str = "default") -> str:
         """Create a new conversation with a generated ID; return its id."""
         ...
 
-    def create_conversation_with_id(self, conversation_id: str) -> None:
-        """Create a new conversation with a specific ID (domain-generated)."""
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default") -> None:
+        """Create a new conversation with a specific ID and optional name (domain-generated)."""
         ...
 
     def record_run(
@@ -118,8 +118,8 @@ class ConversationRepo(Protocol):
         """Persist run metadata describing how an assistant message was generated."""
         ...
 
-    def list_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
-        """Return (rows, total) ordered by created_at DESC with pagination."""
+    def list_conversations(self, user_id: str, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) for user_id ordered by created_at DESC with pagination."""
         ...
 
     def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
@@ -154,8 +154,8 @@ class ConversationRepo(Protocol):
         """Set ended_at = now(UTC) for the given conversation."""
         ...
 
-    def get_active_conversation(self) -> Optional[str]:
-        """Return the id of the one conversation where ended_at IS NULL, or None."""
+    def get_active_conversation(self, user_id: str) -> Optional[str]:
+        """Return the id of the active (ended_at IS NULL) conversation for user_id, or None."""
         ...
 
 
