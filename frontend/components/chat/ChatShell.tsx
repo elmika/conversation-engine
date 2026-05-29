@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { CornerDownLeft, Loader2, LogOut, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
@@ -17,7 +17,7 @@ import { useConversation } from "@/hooks/useConversation";
 import { useSessionSummary } from "@/hooks/useSessionSummary";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { cn } from "@/lib/utils";
-import { endSession } from "@/lib/api-client";
+import { endSession, fetchUserStatus } from "@/lib/api-client";
 import type { Message } from "@/lib/types";
 
 interface ChatShellProps {
@@ -66,17 +66,27 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     prevStatusRef.current = status;
   }, [status, partialText]);
 
+  // Check whether this user has a profile (sections files exist).
+  // initSession requires {{course}} / {{user}} section files — only fire it for
+  // users who have completed setup. New users see a blank chat until setup runs.
+  const { data: userStatus } = useQuery({
+    queryKey: ["user-status", userId],
+    queryFn: () => fetchUserStatus(userId),
+    staleTime: 60_000,
+  });
+  const hasProfile = userStatus?.has_profile ?? false;
+
   // Auto-fire AI opening message when starting a new (no-URL) conversation.
   // Also re-fires when status returns to "idle" after handleNewConversation resets the ref.
   const initFiredRef = useRef(false);
   useEffect(() => {
-    if (!conversationId && !initFiredRef.current && status === "idle") {
+    if (!conversationId && !initFiredRef.current && status === "idle" && hasProfile) {
       initFiredRef.current = true;
       initSession(selectedPromptSlug, selectedModelSlug, (activeId) => {
         router.push(`/u/${userId}/chat/${activeId}`);
       });
     }
-  }, [conversationId, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conversationId, status, hasProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);
