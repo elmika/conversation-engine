@@ -735,6 +735,7 @@ async def get_conversation_messages(
     return MessagesResponse(
         conversation_id=conversation_id,
         ended_at=conv["ended_at"] if conv else None,
+        prompt_slug=conv["prompt_slug"] if conv else None,
         messages=[
             MessageSchema(
                 id=m["id"],

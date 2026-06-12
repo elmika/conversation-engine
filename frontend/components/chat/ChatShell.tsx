@@ -76,20 +76,27 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   });
   const hasProfile = userStatus?.has_profile ?? false;
 
-  // Auto-fire AI opening message when starting a new (no-URL) conversation.
-  // Also re-fires when status returns to "idle" after handleNewConversation resets the ref.
-  const initFiredRef = useRef(false);
+  // Users without a profile don't have sections files, so any prompt that uses
+  // {{course}}/{{user}}/{{progress}} tags will fail. Fall back to "default" until
+  // setup is complete.
+  const effectivePromptSlug = hasProfile ? selectedPromptSlug : "default";
+
+  // When sendMessage creates a new conversation (no initSession path — e.g. new users
+  // without a profile), update the URL so the conversation is addressable and survives
+  // a refresh.
   useEffect(() => {
-    if (!conversationId && !initFiredRef.current && status === "idle" && hasProfile) {
-      initFiredRef.current = true;
-      initSession(selectedPromptSlug, selectedModelSlug, (activeId) => {
-        router.push(`/u/${userId}/chat/${activeId}`);
-      });
+    if (!conversationId && streamedConversationId) {
+      router.replace(`/u/${userId}/chat/${streamedConversationId}`);
     }
-  }, [conversationId, status, hasProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conversationId, streamedConversationId, userId, router]);
 
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);
+  const isActive = Boolean(activeConversationId) && !isEnded;
+
+  // When inside an active conversation the prompt is locked — the course was chosen
+  // at creation and cannot change mid-session. Show it as a static label.
+  const lockedPromptSlug = isActive ? (data?.prompt_slug ?? null) : null;
 
   const { data: sessionSummary } = useSessionSummary(userId, activeConversationId, isEnded);
   const [summaryVisible, setSummaryVisible] = useState(true);
@@ -112,11 +119,19 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   });
 
   const handleNewConversation = () => {
-    initFiredRef.current = false; // allow init to re-fire after reset()
-    reset();                       // sets status → "idle", triggering the effect above
+    reset();
     setLocalMessages([]);
     setSummaryVisible(true);
-    router.push(`/u/${userId}/chat`);
+    // If the user has a profile, fire the AI-initiated opening message immediately.
+    // The course/prompt is whichever is currently selected in the selector — locked in
+    // for the life of this conversation.
+    if (hasProfile) {
+      initSession(effectivePromptSlug, selectedModelSlug, (activeId) => {
+        router.push(`/u/${userId}/chat/${activeId}`);
+      });
+    } else {
+      router.push(`/u/${userId}/chat`);
+    }
   };
 
   const handleRewind = (messageId: number, newContent: string) => {
@@ -137,7 +152,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
       ];
     });
 
-    rewindAndStream(activeConversationId, messageId, newContent, selectedPromptSlug);
+    rewindAndStream(activeConversationId, messageId, newContent, effectivePromptSlug);
   };
 
   const handleSend = (text: string) => {
@@ -153,7 +168,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     ]);
 
     sendMessage(
-      { messages: [{ role: "user", content: text }], prompt_slug: selectedPromptSlug, model_slug: selectedModelSlug },
+      { messages: [{ role: "user", content: text }], prompt_slug: effectivePromptSlug, model_slug: selectedModelSlug },
       activeConversationId
     );
   };
@@ -169,7 +184,13 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
       >
         <div className="flex items-center justify-between p-3">
           <span className="text-sm font-semibold">History</span>
-          <Button variant="ghost" size="icon" title="New conversation" onClick={handleNewConversation}>
+          <Button
+            variant="ghost"
+            size="icon"
+            title={isActive ? "End the current session before starting a new one" : "New conversation"}
+            onClick={handleNewConversation}
+            disabled={isActive}
+          >
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -186,10 +207,16 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
           <Button variant="ghost" size="icon" onClick={toggleSidebar} title="Toggle sidebar">
             <PanelLeft className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleNewConversation} title="New conversation">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleNewConversation}
+            title={isActive ? "End the current session before starting a new one" : "New conversation"}
+            disabled={isActive}
+          >
             <SquarePen className="h-4 w-4" />
           </Button>
-          <PromptSelector />
+          <PromptSelector lockedSlug={lockedPromptSlug} />
           <ModelSelector />
           <div className="ml-auto flex items-center gap-2">
             {activeConversationId && !isStreaming && !isEnded && (

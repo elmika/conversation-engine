@@ -104,6 +104,7 @@ class ConversationService:
     def _guard_no_active_conversation(self, uow) -> None:
         """Raise ValueError if there is already an active (non-ended) conversation.
 
+        Global per-user: only one active conversation at a time regardless of course.
         The active conversation ID is embedded in the message so routes can return it to callers.
         """
         active = uow.repo.get_active_conversation(self._user_id)
@@ -135,7 +136,7 @@ class ConversationService:
             base_name = self._make_conversation_name(prompt_name)
             count = uow.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id)
+            uow.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug)
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
@@ -177,12 +178,13 @@ class ConversationService:
 
         Transaction boundary: all operations commit atomically.
         Loads history, trims to limits, combines with new messages, calls LLM, persists response.
+
+        The prompt used is the one stored on the conversation at creation time — the caller's
+        prompt_slug is only a fallback for legacy rows that pre-date per-conversation storage.
+
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
-        resolved_model = self._resolve_model(model_slug, prompt_model)
-
         with self._uow_factory() as uow:
             # Load conversation history
             history = uow.repo.get_messages(conversation_id)
@@ -190,6 +192,13 @@ class ConversationService:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
             self._guard_not_ended(uow, conversation_id)
+
+            # Use the prompt baked into the conversation at creation; fall back to
+            # the caller's value for legacy rows that pre-date per-conversation storage.
+            conv_meta = uow.repo.get_conversation(conversation_id)
+            effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
+            used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
+            resolved_model = self._resolve_model(model_slug, prompt_model)
 
             created_at = uow.repo.get_conversation_created_at(conversation_id)
             instructions = self._render_instructions(instructions, created_at)
@@ -262,7 +271,7 @@ class ConversationService:
             base_name = self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.create_conversation_with_id(cid_str, name=name)
+            uow_setup.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug)
             for msg in messages:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
             uow_setup.commit()
@@ -308,7 +317,7 @@ class ConversationService:
             base_name = name or self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
             resolved_name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.create_conversation_with_id(cid_str, name=resolved_name)
+            uow_setup.repo.create_conversation_with_id(cid_str, name=resolved_name, user_id=self._user_id, prompt_slug=used_prompt_slug)
             uow_setup.commit()
 
         # Hidden trigger — not stored, causes the LLM to produce the opening message
@@ -340,9 +349,6 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
-        resolved_model = self._resolve_model(model_slug, prompt_model)
-
         # Load history and persist user messages in one transaction
         uow_setup = self._uow_factory()
         with uow_setup:
@@ -351,6 +357,13 @@ class ConversationService:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
             self._guard_not_ended(uow_setup, conversation_id)
+
+            # Use the prompt baked into the conversation at creation; fall back to
+            # the caller's value for legacy rows that pre-date per-conversation storage.
+            conv_meta = uow_setup.repo.get_conversation(conversation_id)
+            effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
+            used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
+            resolved_model = self._resolve_model(model_slug, prompt_model)
 
             created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
             instructions = self._render_instructions(instructions, created_at)
@@ -399,9 +412,6 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
-        resolved_model = self._resolve_model(model_slug, prompt_model)
-
         uow_setup = self._uow_factory()
         with uow_setup:
             history = uow_setup.repo.get_messages(conversation_id)
@@ -409,6 +419,13 @@ class ConversationService:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
             self._guard_not_ended(uow_setup, conversation_id)
+
+            # Use the prompt baked into the conversation at creation; fall back to
+            # the caller's value for legacy rows that pre-date per-conversation storage.
+            conv_meta = uow_setup.repo.get_conversation(conversation_id)
+            effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
+            used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
+            resolved_model = self._resolve_model(model_slug, prompt_model)
 
             created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
             instructions = self._render_instructions(instructions, created_at)

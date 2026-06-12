@@ -39,6 +39,7 @@ class Conversation(Base):
         DateTime(timezone=True), nullable=True
     )
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True, default="default")
+    prompt_slug: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
     messages: Mapped[list[Message]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"

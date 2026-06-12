@@ -99,8 +99,8 @@ class ConversationRepo(Protocol):
         """Create a new conversation with a generated ID; return its id."""
         ...
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default") -> None:
-        """Create a new conversation with a specific ID and optional name (domain-generated)."""
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None) -> None:
+        """Create a new conversation with a specific ID, optional name, user_id, and prompt_slug."""
         ...
 
     def record_run(
@@ -143,7 +143,7 @@ class ConversationRepo(Protocol):
         ...
 
     def get_conversation(self, conversation_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at} for the conversation, or None if not found."""
+        """Return {id, name, created_at, ended_at, prompt_slug} for the conversation, or None if not found."""
         ...
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:

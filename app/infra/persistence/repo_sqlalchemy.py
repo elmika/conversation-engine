@@ -27,9 +27,9 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self.create_conversation_with_id(conv_id, user_id=user_id)
         return conv_id
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default") -> None:
-        """Create a new conversation with a specific ID, optional name, and user_id."""
-        conv = Conversation(id=conversation_id, name=name, user_id=user_id)
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None) -> None:
+        """Create a new conversation with a specific ID, optional name, user_id, and prompt_slug."""
+        conv = Conversation(id=conversation_id, name=name, user_id=user_id, prompt_slug=prompt_slug)
         self._session.add(conv)
 
     def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
@@ -149,7 +149,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         ]
 
     def get_conversation(self, conversation_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at} for the conversation, or None if not found."""
+        """Return {id, name, created_at, ended_at, prompt_slug} for the conversation, or None if not found."""
         row = self._session.get(Conversation, conversation_id)
         if row is None:
             return None
@@ -158,6 +158,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             "name": row.name,
             "created_at": row.created_at.isoformat(),
             "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+            "prompt_slug": row.prompt_slug,
         }
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
