@@ -12,17 +12,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-
-const USER_ID_KEY = "learning-platform-user-id";
-
-function getOrCreateUserId(): string {
-  let id = localStorage.getItem(USER_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(USER_ID_KEY, id);
-  }
-  return id;
-}
+import { getOrCreateUserId } from "@/lib/user-id";
 
 export default function Home() {
   const router = useRouter();
