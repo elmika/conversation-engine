@@ -113,22 +113,24 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   // never changes mid-session.
   const isSetupConversation = isActive && data?.prompt_slug === SETUP_PROMPT_SLUG;
 
-  // Auto-start setup for new users — per the design principle "AI always opens,
-  // no blank input ever". Only fires when:
-  //   - we know for sure the user has no profile (userStatus has resolved)
-  //   - there's no URL conversationId (not resuming a setup mid-way)
+  // Auto-open the AI's first message on a fresh chat — per the design principle
+  // "AI always opens, no blank input ever". Covers both audiences:
+  //   - new users  → the setup flow (effectivePromptSlug = SETUP_PROMPT_SLUG)
+  //   - profiled users → their selected course (effectivePromptSlug = selectedPromptSlug)
+  // Only fires when:
+  //   - userStatus has resolved (so effectivePromptSlug points at the right prompt)
+  //   - there's no URL conversationId (not resuming an existing conversation)
   //   - the streaming hook is idle (no in-flight request)
   // The ref prevents re-fire if the effect re-runs while the request is in flight.
-  const setupAutoFiredRef = useRef(false);
-  const isNewUser = userStatus !== undefined && !userStatus.has_profile;
+  const autoFiredRef = useRef(false);
   useEffect(() => {
-    if (!conversationId && !setupAutoFiredRef.current && status === "idle" && isNewUser) {
-      setupAutoFiredRef.current = true;
-      initSession(SETUP_PROMPT_SLUG, selectedModelSlug, (activeId) => {
+    if (!conversationId && !autoFiredRef.current && status === "idle" && userStatus !== undefined) {
+      autoFiredRef.current = true;
+      initSession(effectivePromptSlug, selectedModelSlug, (activeId) => {
         router.push(`/u/${userId}/chat/${activeId}`);
       });
     }
-  }, [conversationId, status, isNewUser]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conversationId, status, userStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: sessionSummary } = useSessionSummary(userId, activeConversationId, isEnded);
   const [summaryVisible, setSummaryVisible] = useState(true);
