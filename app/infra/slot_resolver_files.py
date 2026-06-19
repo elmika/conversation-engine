@@ -20,3 +20,7 @@ class FileSlotResolver:
         """Return content of sections/<tag>/<user_id>.md, or None if the file doesn't exist."""
         path = self._base / tag / f"{self._user_id}.md"
         return path.read_text(encoding="utf-8") if path.exists() else None
+
+    def exists(self, tag: str) -> bool:
+        """Return whether sections/<tag>/<user_id>.md exists, without reading its content."""
+        return (self._base / tag / f"{self._user_id}.md").exists()

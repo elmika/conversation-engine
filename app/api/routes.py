@@ -167,7 +167,8 @@ async def get_user_status(
     Response: {"has_profile": bool}
     Frontend uses this to route new users to the setup flow.
     """
-    has_profile = FileSlotResolver(settings.sections_dir, user_id).resolve("user") is not None
+    resolver = FileSlotResolver(settings.sections_dir, user_id)
+    has_profile = await asyncio.to_thread(resolver.exists, "user")
     return {"has_profile": has_profile}
 
 
