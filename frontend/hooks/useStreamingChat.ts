@@ -264,6 +264,7 @@ export function useStreamingChat(userId: string) {
         let finalTimings: Timings | null = null;
         let finalModel: string | null = null;
         let accText = "";
+        let notifiedActiveConversation = false;
 
         for await (const event of parseSSEStream(stream)) {
           if (controller.signal.aborted) break;
@@ -271,6 +272,10 @@ export function useStreamingChat(userId: string) {
           if (event.event === "meta") {
             finalConversationId = event.data.conversation_id;
             finalModel = event.data.model;
+            if (finalConversationId && onActiveConversation && !notifiedActiveConversation) {
+              notifiedActiveConversation = true;
+              onActiveConversation(finalConversationId);
+            }
           } else if (event.event === "chunk") {
             accText += event.data.delta;
             setState((s) => ({ ...s, partialText: accText }));

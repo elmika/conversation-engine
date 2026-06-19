@@ -81,6 +81,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   // Once setup completes, hasProfile flips true and the user picks from the
   // regular course list.
   const SETUP_PROMPT_SLUG = "user-profile-collection";
+  const COURSE_INIT_PROMPT_SLUG = "course-session-init";
   const effectivePromptSlug = hasProfile ? selectedPromptSlug : SETUP_PROMPT_SLUG;
 
   // When sendMessage creates a new conversation (no initSession path — e.g. new users
@@ -147,13 +148,18 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     mutationFn: () => completeSetup(userId, activeConversationId!),
     onMutate: () => setCompleteSetupError(null),
     onSuccess: () => {
-      // user-status now flips to has_profile=true; conversation is ended.
-      // Navigate to a fresh chat so the learner picks their first course.
+      // The backend has written sections/user and sections/course. Update the
+      // cached status immediately so setup auto-start cannot race and reopen.
+      queryClient.setQueryData(["user-status", userId], { has_profile: true });
       queryClient.invalidateQueries({ queryKey: ["user-status", userId] });
+      queryClient.invalidateQueries({ queryKey: ["messages", userId, activeConversationId] });
       queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
       reset();
       setLocalMessages([]);
-      router.push(`/u/${userId}/chat`);
+      setSummaryVisible(true);
+      initSession(COURSE_INIT_PROMPT_SLUG, selectedModelSlug, (activeId) => {
+        router.push(`/u/${userId}/chat/${activeId}`);
+      });
     },
     onError: (err: Error) => {
       setCompleteSetupError(err.message ?? "Failed to complete setup. Please try again.");

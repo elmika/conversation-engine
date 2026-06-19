@@ -481,6 +481,21 @@ class ConversationService:
         rendered = self._render_instructions(record["system_prompt"], created_at)
         return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
 
+    def get_active_messages(self, conversation_id: str) -> list[dict]:
+        """Return the messages of an active (non-ended) conversation owned by the user.
+
+        Used by close-triggered actions (e.g. setup completion) that must run BEFORE
+        the conversation is ended, so a failure leaves the conversation resumable.
+        Raises ValueError if not found / not owned, or "conversation_ended" if ended.
+        """
+        with self._uow_factory() as uow:
+            conv = uow.repo.get_conversation(conversation_id, self._user_id)
+            if not conv:
+                raise ValueError(f"Conversation {conversation_id} not found")
+            if conv["ended_at"]:
+                raise ValueError("conversation_ended")
+            return uow.repo.get_messages(conversation_id, self._user_id)
+
     def end_conversation(self, conversation_id: str) -> list[dict]:
         """
         Mark a conversation as ended and return its messages.

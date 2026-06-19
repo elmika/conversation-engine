@@ -822,16 +822,20 @@ async def complete_setup_route(
     session can begin, and follow-up prompts require sections/user/<user_id>.md
     and sections/course/<user_id>.md to exist. Two extraction LLM calls run before
     the response returns. Returns 409 if the conversation is already ended.
+
+    Ordering matters: extraction + file writes run FIRST, and the conversation is
+    ended LAST. If extraction/writes fail, the conversation stays active and the
+    learner can retry — nothing is left half-finished.
     """
-    def _end() -> list[dict]:
+    def _load_messages() -> list[dict]:
         try:
-            return service.end_conversation(conversation_id)
+            return service.get_active_messages(conversation_id)
         except ValueError as e:
             if str(e) == "conversation_ended":
                 raise HTTPException(status_code=409, detail="Conversation has already ended")
             raise HTTPException(status_code=404, detail=str(e))
 
-    messages = await asyncio.to_thread(_end)
+    messages = await asyncio.to_thread(_load_messages)
 
     try:
         await asyncio.to_thread(
@@ -844,6 +848,17 @@ async def complete_setup_route(
         )
     except SetupCompletionError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    # Profile + course files are now durably written — safe to end the conversation.
+    def _end() -> None:
+        try:
+            service.end_conversation(conversation_id)
+        except ValueError as e:
+            if str(e) == "conversation_ended":
+                raise HTTPException(status_code=409, detail="Conversation has already ended")
+            raise HTTPException(status_code=404, detail=str(e))
+
+    await asyncio.to_thread(_end)
 
     return CompleteSetupResponse(status="completed")
 

@@ -15,6 +15,7 @@ Raises SetupCompletionError if extraction or file writes fail.
 """
 
 import logging
+import os
 from pathlib import Path
 
 from app.application.ports import LLMPort, PromptRepo
@@ -60,13 +61,24 @@ def complete_setup(
     try:
         user_path.parent.mkdir(parents=True, exist_ok=True)
         course_path.parent.mkdir(parents=True, exist_ok=True)
-        user_path.write_text(profile_result["text"], encoding="utf-8")
-        course_path.write_text(outline_result["text"], encoding="utf-8")
+        # Write the course file first; the user file is the has_profile signal, so it
+        # must land LAST. Each write is atomic (temp + os.replace) so a partial/corrupt
+        # file is never observable. If the second write fails, has_profile stays false
+        # and the learner can safely retry.
+        _atomic_write(course_path, outline_result["text"])
+        _atomic_write(user_path, profile_result["text"])
     except OSError as e:
         logger.exception("Setup file write failed")
         raise SetupCompletionError(f"Failed to write section files: {e}") from e
 
     logger.info("Setup completed for user_id=%s", user_id)
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Write content to path atomically via a temp file + os.replace."""
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _load_prompt(prompt_repo: PromptRepo, slug: str) -> dict:
