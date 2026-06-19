@@ -76,6 +76,13 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   });
   const hasProfile = userStatus?.has_profile ?? false;
 
+  // While the user-status query is unresolved, hasProfile defaults false, which
+  // would resolve effectivePromptSlug to the setup prompt. Sending in that window
+  // on a fresh chat would lock a brand-new conversation to setup — wrong for a
+  // profiled user. Inside an existing conversation the prompt is already locked
+  // server-side, so sending is always safe there; only gate new-conversation creation.
+  const awaitingUserStatus = userStatus === undefined && !activeConversationId;
+
   // Users without a profile run through the setup flow: a guided conversation
   // that collects their profile + goal and proposes a course outline.
   // Once setup completes, hasProfile flips true and the user picks from the
@@ -204,6 +211,10 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   };
 
   const handleSend = (text: string) => {
+    // Don't create a conversation before we know the user's profile status —
+    // see awaitingUserStatus. The input is disabled in this window; this is a guard.
+    if (awaitingUserStatus) return;
+
     // Optimistically show the user message immediately
     setLocalMessages((prev) => [
       ...prev,
@@ -374,7 +385,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
               </Button>
             </div>
           ) : (
-            <ChatInput onSend={handleSend} disabled={false} enterToSend={enterToSend} />
+            <ChatInput onSend={handleSend} disabled={awaitingUserStatus} enterToSend={enterToSend} />
           )}
         </div>
       </div>
