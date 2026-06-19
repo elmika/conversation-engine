@@ -95,6 +95,30 @@ class ConversationService:
         slug = request_model or prompt_model or self._default_model
         return validate_model_slug(slug)
 
+    def _resolve_effective_prompt(
+        self,
+        uow,
+        conversation_id: str,
+        prompt_slug: Optional[str],
+        model_slug: Optional[str],
+    ) -> tuple[str, str, str]:
+        """Resolve the prompt + model for a turn on an EXISTING conversation.
+
+        Uses the prompt baked into the conversation at creation; falls back to the
+        caller's prompt_slug only for legacy rows that pre-date per-conversation
+        storage. Renders the instructions anchored to the conversation's start time.
+
+        Returns: (used_prompt_slug, rendered_instructions, resolved_model)
+        """
+        conv_meta = uow.repo.get_conversation(conversation_id, self._user_id)
+        effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
+        used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
+
+        created_at = uow.repo.get_conversation_created_at(conversation_id)
+        instructions = self._render_instructions(instructions, created_at)
+        return used_prompt_slug, instructions, resolved_model
+
     def _guard_not_ended(self, uow, conversation_id: str) -> None:
         """Raise ValueError if the conversation is ended."""
         conv = uow.repo.get_conversation(conversation_id, self._user_id)
@@ -193,15 +217,9 @@ class ConversationService:
 
             self._guard_not_ended(uow, conversation_id)
 
-            # Use the prompt baked into the conversation at creation; fall back to
-            # the caller's value for legacy rows that pre-date per-conversation storage.
-            conv_meta = uow.repo.get_conversation(conversation_id, self._user_id)
-            effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
-            used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
-            resolved_model = self._resolve_model(model_slug, prompt_model)
-
-            created_at = uow.repo.get_conversation_created_at(conversation_id)
-            instructions = self._render_instructions(instructions, created_at)
+            used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
+                uow, conversation_id, prompt_slug, model_slug
+            )
 
             # Persist user messages for this turn
             for msg in messages:
@@ -358,15 +376,9 @@ class ConversationService:
 
             self._guard_not_ended(uow_setup, conversation_id)
 
-            # Use the prompt baked into the conversation at creation; fall back to
-            # the caller's value for legacy rows that pre-date per-conversation storage.
-            conv_meta = uow_setup.repo.get_conversation(conversation_id, self._user_id)
-            effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
-            used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
-            resolved_model = self._resolve_model(model_slug, prompt_model)
-
-            created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
-            instructions = self._render_instructions(instructions, created_at)
+            used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
+                uow_setup, conversation_id, prompt_slug, model_slug
+            )
 
             for msg in messages:
                 uow_setup.repo.append_message(conversation_id, msg["role"], msg["content"])
@@ -420,15 +432,9 @@ class ConversationService:
 
             self._guard_not_ended(uow_setup, conversation_id)
 
-            # Use the prompt baked into the conversation at creation; fall back to
-            # the caller's value for legacy rows that pre-date per-conversation storage.
-            conv_meta = uow_setup.repo.get_conversation(conversation_id, self._user_id)
-            effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
-            used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
-            resolved_model = self._resolve_model(model_slug, prompt_model)
-
-            created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
-            instructions = self._render_instructions(instructions, created_at)
+            used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
+                uow_setup, conversation_id, prompt_slug, model_slug
+            )
 
             uow_setup.repo.truncate_from(conversation_id, message_id, self._user_id)
             uow_setup.repo.append_message(conversation_id, "user", new_content)
