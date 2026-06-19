@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Conversation Engine",
-    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Access points\n- **`base_url`** (`http://localhost:8000`) \u2014 FastAPI directly. Use this for backend development and testing.\n- **`frontend_base_url`** (`http://localhost:3000/api`) \u2014 Next.js BFF proxy. Use this to test the full stack as the browser would. All paths and schemas are identical.\n\nRun `docker compose up` to start both services together.\n\n## Quick start\n1. Choose your `base_url` or `frontend_base_url` variable.\n2. Run **Create Conversation** \u2014 the test script automatically saves `conversation_id`.\n3. Run **Append Turn** to continue the conversation.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
+    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Access points\n- **`base_url`** (`http://localhost:8000`) \u2014 FastAPI directly. Use this for backend development and testing.\n- **`frontend_base_url`** (`http://localhost:3000/api`) \u2014 Next.js BFF proxy. Use this to test the full stack as the browser would. All paths and schemas are identical.\n\nRun `docker compose up` to start both services together.\n\n## Quick start\n1. Choose your `base_url` or `frontend_base_url` variable, and set `user_id` (any UUID).\n2. Run **Create Conversation** \u2014 the test script automatically saves `conversation_id`.\n3. Run **Append Turn** to continue the conversation.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -17,6 +17,12 @@
       "value": "http://localhost:3000/api",
       "type": "string",
       "description": "Next.js BFF base URL \u2014 same API as base_url, accessed through the frontend proxy"
+    },
+    {
+      "key": "user_id",
+      "value": "9f1c2e3a-0b4d-4c8e-9a1f-2b3c4d5e6f70",
+      "type": "string",
+      "description": "Opaque learner id (UUID). All conversation routes are scoped under /u/{user_id}."
     },
     {
       "key": "conversation_id",
@@ -63,6 +69,57 @@
       ]
     },
     {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get User Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "status"
+              ]
+            },
+            "description": "Returns whether a learner profile exists for this user_id. The frontend uses it to route new users into setup vs. a course session."
+          },
+          "response": [
+            {
+              "name": "200 OK \u2014 no profile",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"has_profile\": false\n}"
+            },
+            {
+              "name": "200 OK \u2014 has profile",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"has_profile\": true\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Conversations",
       "item": [
         {
@@ -70,11 +127,13 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/conversations?page=1&page_size=20",
+              "raw": "{{base_url}}/u/{{user_id}}/conversations?page=1&page_size=20",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
+                "u",
+                "{{user_id}}",
                 "conversations"
               ],
               "query": [
@@ -134,11 +193,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/conversations",
+              "raw": "{{base_url}}/u/{{user_id}}/conversations",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
+                "u",
+                "{{user_id}}",
                 "conversations"
               ]
             },
@@ -151,7 +212,7 @@
                 }
               }
             },
-            "description": "Creates a new conversation and processes the first user turn synchronously. The test script automatically saves `conversation_id` as a collection variable."
+            "description": "Creates a new conversation and processes the first user turn synchronously. The test script automatically saves `conversation_id` as a collection variable. Returns 409 if the user already has an active (not-ended) conversation."
           },
           "response": [
             {
@@ -179,6 +240,19 @@
               ],
               "body": "{\n  \"detail\": \"Total message content length (35000) exceeds max_input_chars (32000)\"\n}",
               "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "409 Conflict \u2014 active conversation exists",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": {\n    \"message\": \"An active conversation already exists\",\n    \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\"\n  }\n}"
             }
           ]
         },
@@ -197,11 +271,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/conversations/stream",
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/stream",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
+                "u",
+                "{{user_id}}",
                 "conversations",
                 "stream"
               ]
@@ -244,11 +320,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/conversations/{{conversation_id}}",
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
+                "u",
+                "{{user_id}}",
                 "conversations",
                 "{{conversation_id}}"
               ]
@@ -308,11 +386,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/conversations/{{conversation_id}}/stream",
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}/stream",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
+                "u",
+                "{{user_id}}",
                 "conversations",
                 "{{conversation_id}}",
                 "stream"
@@ -350,17 +430,19 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/conversations/{{conversation_id}}/messages",
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}/messages",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
+                "u",
+                "{{user_id}}",
                 "conversations",
                 "{{conversation_id}}",
                 "messages"
               ]
             },
-            "description": "Returns all messages for a conversation ordered by id ASC. Returns an empty `messages` array for unknown conversation IDs. Includes `ended_at` field (null if still active)."
+            "description": "Returns all messages for a conversation ordered by id ASC, plus `ended_at` (null if active) and the `prompt_slug` locked in at creation. Returns 404 if the conversation does not exist or is not owned by this user (non-enumerable)."
           },
           "response": [
             {
@@ -373,8 +455,21 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"ended_at\": null,\n  \"messages\": [\n    {\n      \"id\": 1,\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"role\": \"assistant\",\n      \"content\": \"Hello Mika! How can I help you today?\",\n      \"created_at\": \"2026-03-02T11:00:01\"\n    }\n  ]\n}",
-              "_postman_previewlanguage": "json"
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"ended_at\": null,\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"id\": 1,\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"role\": \"assistant\",\n      \"content\": \"Hello Mika! How can I help you today?\",\n      \"created_at\": \"2026-03-02T11:00:01\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": \"Conversation not found\"\n}"
             }
           ]
         },
@@ -383,11 +478,13 @@
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{base_url}}/conversations/{{conversation_id}}/end-session",
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}/end-session",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
+                "u",
+                "{{user_id}}",
                 "conversations",
                 "{{conversation_id}}",
                 "end-session"
@@ -406,11 +503,11 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"status\": \"ending\"\n}",
-              "_postman_previewlanguage": "json"
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"ending\",\n  \"summary\": {\n    \"course_name\": \"Intro to TypeScript\",\n    \"modules\": [\"Types\", \"Interfaces\"],\n    \"next_step\": \"Generics\"\n  }\n}"
             },
             {
-              "name": "409 Conflict — already ended",
+              "name": "409 Conflict \u2014 already ended",
               "status": "Conflict",
               "code": 409,
               "header": [
@@ -419,7 +516,313 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"detail\": \"Conversation has ended\"\n}",
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": \"Conversation has already ended\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Open AI Session (streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/init-stream",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "init-stream"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt_slug\": \"course-session-init\",\n  \"model_slug\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Creates a new conversation and streams an AI-initiated opening message (no user message stored). Used to start a course session or the setup flow.\n\nEvent order: `meta` \u2192 `chunk`* \u2192 `done`"
+          },
+          "response": [
+            {
+              "name": "200 OK \u2014 SSE stream",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "text/event-stream"
+                }
+              ],
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"course-session-init\"}\n\nevent: chunk\ndata: {\"delta\": \"Welcome back!\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Welcome back! Last time we covered...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 130, \"total_ms\": 900}}\n\n",
+              "_postman_previewlanguage": "text"
+            }
+          ]
+        },
+        {
+          "name": "Rewind & Resend (streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}/rewind/stream",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "{{conversation_id}}",
+                "rewind",
+                "stream"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": 3,\n  \"content\": \"Actually, explain it more simply.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Rewinds to a past user message: deletes `message_id` and all later messages, appends `content` as a new user message, then streams the reply as SSE.\n\nEvent order: `meta` \u2192 `chunk`* \u2192 `done`"
+          },
+          "response": [
+            {
+              "name": "200 OK \u2014 SSE stream",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "text/event-stream"
+                }
+              ],
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Sure \u2014 \"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Sure \u2014 here it is more simply...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 110, \"total_ms\": 600}}\n\n",
+              "_postman_previewlanguage": "text"
+            }
+          ]
+        },
+        {
+          "name": "Rename Conversation",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "{{conversation_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intro to TypeScript\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Renames a conversation. Returns 404 if not found or not owned by this user."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"name\": \"Intro to TypeScript\",\n  \"created_at\": \"\"\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": \"Conversation not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Session Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "{{conversation_id}}",
+                "summary"
+              ]
+            },
+            "description": "Returns the session summary for an ended conversation. Returns 404 if not found/owned, or 409 if the conversation has not ended."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"course_name\": \"Intro to TypeScript\",\n  \"modules\": [\"Types\", \"Interfaces\"],\n  \"next_step\": \"Generics\"\n}"
+            },
+            {
+              "name": "409 Conflict \u2014 not ended",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": \"Conversation has not ended\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Complete Setup",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}/complete-setup",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "{{conversation_id}}",
+                "complete-setup"
+              ]
+            },
+            "description": "Completes the setup flow: runs profile + outline extraction, writes the user and course section files, then ends the conversation. Synchronous. Returns 409 if already ended; 500 if extraction/writes fail (conversation stays active)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"completed\"\n}"
+            },
+            {
+              "name": "409 Conflict \u2014 already ended",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": \"Conversation has already ended\"\n}"
+            },
+            {
+              "name": "500 Internal Server Error",
+              "status": "Internal Server Error",
+              "code": 500,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": \"Extraction LLM call failed: ...\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete Conversation",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/conversations/{{conversation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "{{conversation_id}}"
+              ]
+            },
+            "description": "Deletes a conversation and all its messages. Idempotent and non-enumerable: returns 204 whether or not it existed, and is a no-op if not owned by this user."
+          },
+          "response": [
+            {
+              "name": "204 No Content",
+              "status": "No Content",
+              "code": 204,
               "_postman_previewlanguage": "json"
             }
           ]
@@ -504,7 +907,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/prompts/learn-typescript/render",
+              "raw": "{{base_url}}/prompts/learn-typescript/render",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -531,7 +934,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/prompts/learn-typescript/render",
+                  "raw": "{{base_url}}/prompts/learn-typescript/render",
                   "host": [
                     "{{baseUrl}}"
                   ],

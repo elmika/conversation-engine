@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Conversation Engine
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Production-ready FastAPI + OpenAI service with streaming, conversation history,
     and hexagonal architecture.
@@ -19,6 +19,15 @@ info:
       forwards requests verbatim and pipes streaming responses without buffering.
 
     Use `docker compose up` to start both services together.
+
+    ## Identity & multi-user scoping
+
+    There is no auth or sign-in. Each learner is identified by an opaque `user_id`
+    (a UUID minted client-side and kept in the URL / localStorage). All conversation
+    routes are scoped under `/u/{userId}/…`; a conversation is only visible to the
+    `user_id` that created it. Requests for a conversation under a different `user_id`
+    are treated as non-existent (404 / 204 / empty) so resources are not enumerable
+    across users.
 
     ## SSE Streaming
 
@@ -51,8 +60,10 @@ servers:
 tags:
   - name: health
     description: Service liveness
+  - name: users
+    description: Per-user profile status
   - name: conversations
-    description: Conversation CRUD and chat turns
+    description: Conversation CRUD and chat turns (scoped per user)
   - name: prompts
     description: Prompt persona registry
   - name: models
@@ -78,13 +89,35 @@ paths:
                     type: string
                     example: ok
 
-  /conversations:
+  /u/{userId}/status:
+    get:
+      operationId: getUserStatus
+      summary: Get user profile status
+      description: |
+        Returns whether a learner profile exists for this `user_id` (i.e. whether
+        `sections/user/{user_id}.md` has been written). The frontend uses this to
+        route new users into the setup flow and profiled users into a course session.
+      tags: [users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Profile existence flag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStatusResponse"
+              example:
+                has_profile: false
+
+  /u/{userId}/conversations:
     get:
       operationId: listConversations
       summary: List conversations
-      description: Returns all conversations ordered by `created_at` DESC with page-based pagination.
+      description: Returns the user's conversations ordered by `created_at` DESC with page-based pagination.
       tags: [conversations]
       parameters:
+        - $ref: "#/components/parameters/userId"
         - name: page
           in: query
           description: 1-based page number
@@ -110,7 +143,11 @@ paths:
               example:
                 conversations:
                   - id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    name: "Intro to TypeScript"
                     created_at: "2026-03-02T11:00:00"
+                    last_activity: "2026-03-02T11:30:00"
+                    first_message: "Hello! My name is Mika."
+                    ended_at: null
                 total: 1
                 page: 1
                 page_size: 20
@@ -118,8 +155,12 @@ paths:
     post:
       operationId: createConversation
       summary: Create conversation (non-streaming)
-      description: Creates a new conversation and processes the first user turn synchronously.
+      description: |
+        Creates a new conversation and processes the first user turn synchronously.
+        Returns 409 if the user already has an active (not-ended) conversation.
       tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/userId"
       requestBody:
         required: true
         content:
@@ -147,19 +188,25 @@ paths:
                   total_ms: 980
         "400":
           $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/ActiveConversationConflict"
         "502":
           $ref: "#/components/responses/UpstreamError"
         "503":
           $ref: "#/components/responses/RateLimited"
 
-  /conversations/stream:
+  /u/{userId}/conversations/stream:
     post:
       operationId: createConversationStream
       summary: Create conversation (streaming)
       description: |
         Creates a new conversation and streams the assistant reply as SSE.
         Event order: `meta` → `chunk`* → `done`.
+        Returns 409 (surfaced as a `done` error event) if the user already has an
+        active conversation.
       tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/userId"
       requestBody:
         required: true
         content:
@@ -181,13 +228,50 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
 
-  /conversations/{conversationId}:
+  /u/{userId}/conversations/init-stream:
+    post:
+      operationId: initSessionStream
+      summary: Open AI-initiated session (streaming)
+      description: |
+        Creates a new conversation and streams an AI-initiated opening message — no
+        user message is stored, only the assistant's opening turn. Used to start a
+        course session (the LLM opens with a recap + progress summary) or the setup
+        flow. The conversation name is derived from the course file's H1 when present.
+        Event order: `meta` → `chunk`* → `done`.
+        Returns 409 (surfaced as a `done` error event) if the user already has an
+        active conversation.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitSessionRequest"
+            example:
+              prompt_slug: course-session-init
+              model_slug: null
+      responses:
+        "200":
+          description: SSE stream — see SSE Streaming section in description
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEStream"
+
+  /u/{userId}/conversations/{conversationId}:
     post:
       operationId: appendConversationTurn
       summary: Append turn (non-streaming)
-      description: Appends a new user turn to an existing conversation and returns the assistant reply synchronously. History is automatically trimmed before the LLM call.
+      description: |
+        Appends a new user turn to an existing conversation and returns the assistant
+        reply synchronously. History is automatically trimmed before the LLM call.
+        The prompt/course is locked at creation; `prompt_slug` in the body is ignored
+        for existing conversations.
       tags: [conversations]
       parameters:
+        - $ref: "#/components/parameters/userId"
         - $ref: "#/components/parameters/conversationId"
       requestBody:
         required: true
@@ -210,12 +294,67 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Conversation has ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: "Conversation has ended"
         "502":
           $ref: "#/components/responses/UpstreamError"
         "503":
           $ref: "#/components/responses/RateLimited"
 
-  /conversations/{conversationId}/stream:
+    patch:
+      operationId: renameConversation
+      summary: Rename conversation
+      description: |
+        Renames a conversation. Returns 404 if the conversation does not exist or is
+        not owned by this `user_id`.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/conversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationRenameRequest"
+            example:
+              name: "Intro to TypeScript"
+      responses:
+        "200":
+          description: Renamed conversation summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+              example:
+                id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                name: "Intro to TypeScript"
+                created_at: ""
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      operationId: deleteConversation
+      summary: Delete conversation
+      description: |
+        Deletes a conversation and all of its messages. Idempotent and non-enumerable:
+        returns 204 whether or not the conversation existed, and is a no-op if the
+        conversation is not owned by this `user_id`.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/conversationId"
+      responses:
+        "204":
+          description: Deleted (or no-op for unknown/unowned id)
+
+  /u/{userId}/conversations/{conversationId}/stream:
     post:
       operationId: appendConversationTurnStream
       summary: Append turn (streaming)
@@ -224,6 +363,7 @@ paths:
         Event order: `meta` → `chunk`* → `done`.
       tags: [conversations]
       parameters:
+        - $ref: "#/components/parameters/userId"
         - $ref: "#/components/parameters/conversationId"
       requestBody:
         required: true
@@ -247,7 +387,40 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /conversations/{conversationId}/end-session:
+  /u/{userId}/conversations/{conversationId}/rewind/stream:
+    post:
+      operationId: rewindConversationStream
+      summary: Rewind and resend (streaming)
+      description: |
+        Rewinds a conversation to a past user message: deletes `message_id` and all
+        subsequent messages, appends `content` as a new user message, then streams the
+        assistant reply as SSE. Event order: `meta` → `chunk`* → `done`.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/conversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationRewindRequest"
+            example:
+              message_id: 3
+              content: "Actually, explain it more simply."
+      responses:
+        "200":
+          description: SSE stream — see SSE Streaming section in description
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEStream"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /u/{userId}/conversations/{conversationId}/end-session:
     post:
       operationId: endSession
       summary: End conversation session
@@ -261,6 +434,7 @@ paths:
         A new active conversation can only be started after the current one is ended.
       tags: [conversations]
       parameters:
+        - $ref: "#/components/parameters/userId"
         - $ref: "#/components/parameters/conversationId"
       responses:
         "200":
@@ -271,6 +445,10 @@ paths:
                 $ref: "#/components/schemas/EndSessionResponse"
               example:
                 status: "ending"
+                summary:
+                  course_name: "Intro to TypeScript"
+                  modules: ["Types", "Interfaces"]
+                  next_step: "Generics"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -280,15 +458,67 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
               example:
-                detail: "Conversation has ended"
+                detail: "Conversation has already ended"
 
-  /conversations/{conversationId}/messages:
+  /u/{userId}/conversations/{conversationId}/complete-setup:
+    post:
+      operationId: completeSetup
+      summary: Complete setup flow
+      description: |
+        Completes the setup flow for a new learner. Runs two extraction LLM calls
+        against the setup conversation (profile + course outline), writes
+        `sections/user/{user_id}.md` and `sections/course/{user_id}.md`, then marks
+        the conversation ended.
+
+        SYNCHRONOUS by design — the learner is blocked on this before the first course
+        session can begin. Ordering is recoverable: extraction + file writes run FIRST
+        and the conversation is ended LAST, so if extraction/writes fail (500) the
+        conversation stays active and the learner can retry. Returns 409 if the
+        conversation is already ended.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/conversationId"
+      responses:
+        "200":
+          description: Setup completed; section files written and conversation ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompleteSetupResponse"
+              example:
+                status: "completed"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Conversation has already ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: "Conversation has already ended"
+        "500":
+          description: Extraction LLM call or section-file write failed (conversation stays active)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: "Extraction LLM call failed: ..."
+
+  /u/{userId}/conversations/{conversationId}/messages:
     get:
       operationId: getConversationMessages
       summary: Get conversation messages
-      description: Returns all messages for a conversation ordered by id ASC. Returns an empty `messages` array for unknown conversation IDs.
+      description: |
+        Returns all messages for a conversation ordered by id ASC, plus the
+        conversation's `ended_at` and the `prompt_slug` locked in at creation.
+        Returns 404 if the conversation does not exist or is not owned by this
+        `user_id` (unknown/unowned ids are non-enumerable).
       tags: [conversations]
       parameters:
+        - $ref: "#/components/parameters/userId"
         - $ref: "#/components/parameters/conversationId"
       responses:
         "200":
@@ -299,6 +529,8 @@ paths:
                 $ref: "#/components/schemas/MessagesResponse"
               example:
                 conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                ended_at: null
+                prompt_slug: default
                 messages:
                   - id: 1
                     role: user
@@ -308,6 +540,42 @@ paths:
                     role: assistant
                     content: "Hello Mika! How can I help you today?"
                     created_at: "2026-03-02T11:00:01"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /u/{userId}/conversations/{conversationId}/summary:
+    get:
+      operationId: getSessionSummary
+      summary: Get session summary
+      description: |
+        Returns the session summary (course name, modules, next step) for an ended
+        conversation. Returns 404 if not found / not owned, or 409 if the conversation
+        has not ended yet.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/conversationId"
+      responses:
+        "200":
+          description: Session summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionSummary"
+              example:
+                course_name: "Intro to TypeScript"
+                modules: ["Types", "Interfaces"]
+                next_step: "Generics"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Conversation has not ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: "Conversation has not ended"
 
   /models:
     get:
@@ -534,6 +802,15 @@ paths:
 components:
 
   parameters:
+    userId:
+      name: userId
+      in: path
+      required: true
+      description: Opaque learner identifier (UUID minted client-side)
+      schema:
+        type: string
+      example: "9f1c2e3a-0b4d-4c8e-9a1f-2b3c4d5e6f70"
+
     conversationId:
       name: conversationId
       in: path
@@ -575,7 +852,8 @@ components:
           nullable: true
           description: |
             Slug of the prompt persona to use. Falls back to the `default_prompt_slug`
-            setting if omitted, null, or unknown.
+            setting if omitted, null, or unknown. Only honoured when CREATING a
+            conversation — the prompt is locked thereafter and ignored on append.
           example: default
         model_slug:
           type: string
@@ -590,6 +868,50 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/ConversationMessage"
+
+    InitSessionRequest:
+      type: object
+      description: Request body for an AI-initiated session opening (no user message).
+      properties:
+        prompt_slug:
+          type: string
+          nullable: true
+          description: Prompt persona to open with. Defaults to `course-session-init` when omitted.
+          example: course-session-init
+        model_slug:
+          type: string
+          nullable: true
+          description: Optional model override (same resolution rules as ConversationRequest).
+
+    ConversationRewindRequest:
+      type: object
+      required: [message_id, content]
+      properties:
+        message_id:
+          type: integer
+          description: ID of the user message to rewind to. It and all later messages are deleted.
+          example: 3
+        content:
+          type: string
+          minLength: 1
+          description: New user message content to send in place of the rewound message.
+        prompt_slug:
+          type: string
+          nullable: true
+        model_slug:
+          type: string
+          nullable: true
+
+    ConversationRenameRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: New display name for the conversation.
+          example: "Intro to TypeScript"
 
     Timings:
       type: object
@@ -627,10 +949,23 @@ components:
         id:
           type: string
           format: uuid
+        name:
+          type: string
+          nullable: true
+          description: Display name; null until set (derived from course H1 or via rename)
         created_at:
           type: string
           format: date-time
           description: ISO 8601 timestamp
+        last_activity:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO 8601 timestamp of the most recent message
+        first_message:
+          type: string
+          nullable: true
+          description: Content of the first message, used as a list preview
         ended_at:
           type: string
           format: date-time
@@ -682,10 +1017,39 @@ components:
           format: date-time
           nullable: true
           description: ISO 8601 timestamp when the session was ended; null means still active
+        prompt_slug:
+          type: string
+          nullable: true
+          description: The prompt/course slug locked in at conversation creation
         messages:
           type: array
           items:
             $ref: "#/components/schemas/Message"
+
+    UserStatusResponse:
+      type: object
+      required: [has_profile]
+      properties:
+        has_profile:
+          type: boolean
+          description: True when sections/user/{user_id}.md exists (learner has completed setup)
+
+    SessionSummary:
+      type: object
+      properties:
+        course_name:
+          type: string
+          nullable: true
+          description: Name of the course this session belongs to
+        modules:
+          type: array
+          items:
+            type: string
+          description: Module/topic names covered or planned
+        next_step:
+          type: string
+          nullable: true
+          description: Suggested next step for the learner
 
     EndSessionResponse:
       type: object
@@ -694,6 +1058,19 @@ components:
         status:
           type: string
           description: Always "ending" — confirms the conversation was marked ended; progress synthesis runs in the background
+        summary:
+          allOf:
+            - $ref: "#/components/schemas/SessionSummary"
+          nullable: true
+          description: Best-effort session summary available at end time
+
+    CompleteSetupResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: Always "completed" — section files written and conversation ended
 
     Prompt:
       type: object
@@ -867,6 +1244,10 @@ components:
             status_code:
               type: integer
               description: HTTP status code (http_error only)
+            conversation_id:
+              type: string
+              format: uuid
+              description: ID of the existing active conversation (409 conflicts only)
             message:
               type: string
 
@@ -905,6 +1286,26 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorDetail"
 
+    ActiveConversationConflict:
+      description: The user already has an active (not-ended) conversation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  conversation_id:
+                    type: string
+                    format: uuid
+          example:
+            detail:
+              message: "An active conversation already exists"
+              conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
     BadRequest:
       description: Input validation error
       content:
@@ -915,13 +1316,13 @@ components:
             detail: "Total message content length (35000) exceeds max_input_chars (32000)"
 
     NotFound:
-      description: Conversation not found
+      description: Conversation not found (or not owned by this user)
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorDetail"
           example:
-            detail: "Conversation abc123 not found"
+            detail: "Conversation not found"
 
     UpstreamError:
       description: Upstream OpenAI API returned an error
