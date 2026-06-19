@@ -14,6 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Prompt system:** Prompts are stored in SQLite, seeded from `prompts/*.md` on every startup (upsert — edits via admin UI are overwritten on restart if a matching file exists). See `docs/prompts.md` for full architecture, current DB state, and safe editing workflow.
 
+**Section-file invariant:** Prompts may embed `{{course}}`, `{{user}}`, `{{progress}}` tags, which the resolver expands from `sections/<tag>/<user_id>.md`. A **missing** section file raises (surfaced as HTTP 400 / a `done` error event) — this strictness is deliberate, to catch misconfigured prompts. Therefore: any prompt that adds a section tag must guarantee that file exists for **all** learner states, especially the first session (a new learner has no `progress` file until a session ends). Setup completion seeds all three files for exactly this reason — see `app/learning/setup_completion.py`.
+
 ## Commands
 
 > **No local Python or Node.js required** — everything runs in Docker.
@@ -63,6 +65,14 @@ make build
 ```
 
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
+
+## End-to-End Verification Gate
+
+A change to a user-facing flow is **not "done" and never "ready to merge" until the actual flow has been exercised against the running stack** (`make up` + the real path end-to-end), not just unit tests. Passing tests and a clean code review are necessary but **not sufficient** — green tests ≠ working flow.
+
+- After finishing a feature or a review pass on a branch, smoke-test the real path (e.g. for the learning flow: new user → setup → outline → complete-setup → first course session → end-session → next session).
+- In your summary, state explicitly **what was exercised and what was not** (e.g. "API + BFF verified via curl; browser UI not clicked through").
+- Do not describe a branch as "ready to merge." Report status and leave the merge decision to the user.
 
 ## Feature List Gate
 
