@@ -41,6 +41,19 @@ def test_complete_setup_writes_both_files(tmp_path) -> None:
     assert (tmp_path / "user" / "u1.md").read_text() == "extracted-1"
 
 
+def test_complete_setup_seeds_initial_progress(tmp_path) -> None:
+    """An initial progress file is seeded so the first course session can render {{progress}}."""
+    complete_setup(
+        [{"role": "user", "content": "hi"}], _FakePromptRepo(), _FakeLLM(), str(tmp_path), "u1"
+    )
+    progress = (tmp_path / "progress" / "u1.md").read_text()
+    # Matches the four-section shape progress-synthesis produces, in a first-session state.
+    assert progress.startswith("## What the student knows")
+    assert "## Progress - Current state" in progress
+    # Not LLM-generated — the fake LLM is only called twice (profile + outline).
+    assert "extracted-" not in progress
+
+
 def test_complete_setup_user_file_written_last(tmp_path, monkeypatch) -> None:
     """If the user-file write fails, the course file exists but the has_profile signal does not."""
     real = sc._atomic_write
@@ -58,6 +71,7 @@ def test_complete_setup_user_file_written_last(tmp_path, monkeypatch) -> None:
         )
 
     assert (tmp_path / "course" / "u1.md").exists()
+    assert (tmp_path / "progress" / "u1.md").exists()
     assert not (tmp_path / "user" / "u1.md").exists()  # has_profile stays false → retryable
 
 
