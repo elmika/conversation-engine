@@ -95,6 +95,10 @@ class EndSessionResponse(BaseModel):
     summary: Optional[SessionSummarySchema] = None
 
 
+class CompleteSetupResponse(BaseModel):
+    status: str = "completed"
+
+
 class PromptSchema(BaseModel):
     slug: str
     name: str

@@ -32,10 +32,12 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         conv = Conversation(id=conversation_id, name=name, user_id=user_id, prompt_slug=prompt_slug)
         self._session.add(conv)
 
-    def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
+    def get_messages(self, conversation_id: str, user_id: str) -> list[dict[str, str]]:
         stmt = (
             select(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
             .where(Message.conversation_id == conversation_id)
+            .where(Conversation.user_id == user_id)
             .order_by(Message.id.asc())
         )
         rows = self._session.execute(stmt).scalars().all()
@@ -93,9 +95,9 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             for r in rows
         ], total
 
-    def rename_conversation(self, conversation_id: str, name: str) -> None:
+    def rename_conversation(self, conversation_id: str, name: str, user_id: str) -> None:
         conv = self._session.get(Conversation, conversation_id)
-        if conv:
+        if conv and conv.user_id == user_id:
             conv.name = name
 
     def count_conversations_named(self, base_name: str) -> int:
@@ -109,13 +111,17 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             )
         ) or 0
 
-    def delete_conversation(self, conversation_id: str) -> None:
+    def delete_conversation(self, conversation_id: str, user_id: str) -> None:
         conv = self._session.get(Conversation, conversation_id)
-        if conv:
+        if conv and conv.user_id == user_id:
             self._session.delete(conv)
 
-    def truncate_from(self, conversation_id: str, message_id: int) -> None:
+    def truncate_from(self, conversation_id: str, message_id: int, user_id: str) -> None:
         """Delete messages with id >= message_id and their associated runs."""
+        # Scope to the owning user — silently no-op for a conversation the user does not own.
+        conv = self._session.get(Conversation, conversation_id)
+        if conv is None or conv.user_id != user_id:
+            return
         # Delete runs referencing messages that will be deleted
         msg_ids_sq = (
             select(Message.id)
@@ -130,11 +136,13 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             )
         )
 
-    def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
+    def get_messages_with_metadata(self, conversation_id: str, user_id: str) -> list[dict]:
         """Return [{id, role, content, created_at}] ordered by id ASC."""
         stmt = (
             select(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
             .where(Message.conversation_id == conversation_id)
+            .where(Conversation.user_id == user_id)
             .order_by(Message.id.asc())
         )
         rows = self._session.execute(stmt).scalars().all()
@@ -148,10 +156,10 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             for m in rows
         ]
 
-    def get_conversation(self, conversation_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at, prompt_slug} for the conversation, or None if not found."""
+    def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
+        """Return {id, name, created_at, ended_at, prompt_slug} for the conversation, or None if not found or not owned by user_id."""
         row = self._session.get(Conversation, conversation_id)
-        if row is None:
+        if row is None or row.user_id != user_id:
             return None
         return {
             "id": row.id,
@@ -166,10 +174,10 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         row = self._session.get(Conversation, conversation_id)
         return row.created_at if row else None
 
-    def end_conversation(self, conversation_id: str) -> None:
-        """Set ended_at to the current UTC time for the given conversation."""
+    def end_conversation(self, conversation_id: str, user_id: str) -> None:
+        """Set ended_at to the current UTC time for the given conversation (owned by user_id)."""
         row = self._session.get(Conversation, conversation_id)
-        if row:
+        if row and row.user_id == user_id:
             row.ended_at = datetime.now(timezone.utc)
 
     def get_active_conversation(self, user_id: str) -> Optional[str]:

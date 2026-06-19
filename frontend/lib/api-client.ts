@@ -282,6 +282,16 @@ export async function endSession(
   return handleResponse<EndSessionResponse>(res);
 }
 
+export async function completeSetup(
+  userId: string,
+  conversationId: string
+): Promise<{ status: string }> {
+  const res = await fetch(`/api/u/${userId}/conversations/${conversationId}/complete-setup`, {
+    method: "POST",
+  });
+  return handleResponse<{ status: string }>(res);
+}
+
 export async function rewindConversationStream(
   userId: string,
   conversationId: string,

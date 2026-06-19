@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CornerDownLeft, Loader2, LogOut, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
+import { CornerDownLeft, Loader2, LogOut, PanelLeft, Plus, Sparkles, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
@@ -17,7 +17,7 @@ import { useConversation } from "@/hooks/useConversation";
 import { useSessionSummary } from "@/hooks/useSessionSummary";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { cn } from "@/lib/utils";
-import { endSession, fetchUserStatus } from "@/lib/api-client";
+import { completeSetup, endSession, fetchUserStatus } from "@/lib/api-client";
 import type { Message } from "@/lib/types";
 
 interface ChatShellProps {
@@ -76,10 +76,12 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   });
   const hasProfile = userStatus?.has_profile ?? false;
 
-  // Users without a profile don't have sections files, so any prompt that uses
-  // {{course}}/{{user}}/{{progress}} tags will fail. Fall back to "default" until
-  // setup is complete.
-  const effectivePromptSlug = hasProfile ? selectedPromptSlug : "default";
+  // Users without a profile run through the setup flow: a guided conversation
+  // that collects their profile + goal and proposes a course outline.
+  // Once setup completes, hasProfile flips true and the user picks from the
+  // regular course list.
+  const SETUP_PROMPT_SLUG = "user-profile-collection";
+  const effectivePromptSlug = hasProfile ? selectedPromptSlug : SETUP_PROMPT_SLUG;
 
   // When sendMessage creates a new conversation (no initSession path — e.g. new users
   // without a profile), update the URL so the conversation is addressable and survives
@@ -98,10 +100,33 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   // at creation and cannot change mid-session. Show it as a static label.
   const lockedPromptSlug = isActive ? (data?.prompt_slug ?? null) : null;
 
+  // True when the active conversation is the setup flow (profile + goal collection).
+  // The conversation's prompt_slug is the authoritative signal — set at creation,
+  // never changes mid-session.
+  const isSetupConversation = isActive && data?.prompt_slug === SETUP_PROMPT_SLUG;
+
+  // Auto-start setup for new users — per the design principle "AI always opens,
+  // no blank input ever". Only fires when:
+  //   - we know for sure the user has no profile (userStatus has resolved)
+  //   - there's no URL conversationId (not resuming a setup mid-way)
+  //   - the streaming hook is idle (no in-flight request)
+  // The ref prevents re-fire if the effect re-runs while the request is in flight.
+  const setupAutoFiredRef = useRef(false);
+  const isNewUser = userStatus !== undefined && !userStatus.has_profile;
+  useEffect(() => {
+    if (!conversationId && !setupAutoFiredRef.current && status === "idle" && isNewUser) {
+      setupAutoFiredRef.current = true;
+      initSession(SETUP_PROMPT_SLUG, selectedModelSlug, (activeId) => {
+        router.push(`/u/${userId}/chat/${activeId}`);
+      });
+    }
+  }, [conversationId, status, isNewUser]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { data: sessionSummary } = useSessionSummary(userId, activeConversationId, isEnded);
   const [summaryVisible, setSummaryVisible] = useState(true);
 
   const [endSessionError, setEndSessionError] = useState<string | null>(null);
+  const [completeSetupError, setCompleteSetupError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { mutate: endSessionMutate, isPending: isEndingSession } = useMutation({
@@ -115,6 +140,23 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     },
     onError: (err: Error) => {
       setEndSessionError(err.message ?? "Failed to end session. Please try again.");
+    },
+  });
+
+  const { mutate: completeSetupMutate, isPending: isCompletingSetup } = useMutation({
+    mutationFn: () => completeSetup(userId, activeConversationId!),
+    onMutate: () => setCompleteSetupError(null),
+    onSuccess: () => {
+      // user-status now flips to has_profile=true; conversation is ended.
+      // Navigate to a fresh chat so the learner picks their first course.
+      queryClient.invalidateQueries({ queryKey: ["user-status", userId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
+      reset();
+      setLocalMessages([]);
+      router.push(`/u/${userId}/chat`);
+    },
+    onError: (err: Error) => {
+      setCompleteSetupError(err.message ?? "Failed to complete setup. Please try again.");
     },
   });
 
@@ -219,7 +261,24 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
           <PromptSelector lockedSlug={lockedPromptSlug} />
           <ModelSelector />
           <div className="ml-auto flex items-center gap-2">
-            {activeConversationId && !isStreaming && !isEnded && (
+            {activeConversationId && !isStreaming && !isEnded && isSetupConversation && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => completeSetupMutate()}
+                disabled={isCompletingSetup}
+                className="gap-1.5 text-xs"
+                title="Confirm your course and start learning"
+              >
+                {isCompletingSetup ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {isCompletingSetup ? "Setting up…" : "Let's start"}
+              </Button>
+            )}
+            {activeConversationId && !isStreaming && !isEnded && !isSetupConversation && (
               <Button
                 variant="outline"
                 size="sm"
@@ -269,6 +328,11 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
         {endSessionError && (
           <div className="mx-4 mb-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             End session failed: {endSessionError}
+          </div>
+        )}
+        {completeSetupError && (
+          <div className="mx-4 mb-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Setup completion failed: {completeSetupError}
           </div>
         )}
 

@@ -97,7 +97,7 @@ class ConversationService:
 
     def _guard_not_ended(self, uow, conversation_id: str) -> None:
         """Raise ValueError if the conversation is ended."""
-        conv = uow.repo.get_conversation(conversation_id)
+        conv = uow.repo.get_conversation(conversation_id, self._user_id)
         if conv and conv["ended_at"]:
             raise ValueError("conversation_ended")
 
@@ -187,7 +187,7 @@ class ConversationService:
         """
         with self._uow_factory() as uow:
             # Load conversation history
-            history = uow.repo.get_messages(conversation_id)
+            history = uow.repo.get_messages(conversation_id, self._user_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
@@ -195,7 +195,7 @@ class ConversationService:
 
             # Use the prompt baked into the conversation at creation; fall back to
             # the caller's value for legacy rows that pre-date per-conversation storage.
-            conv_meta = uow.repo.get_conversation(conversation_id)
+            conv_meta = uow.repo.get_conversation(conversation_id, self._user_id)
             effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
             used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
             resolved_model = self._resolve_model(model_slug, prompt_model)
@@ -352,7 +352,7 @@ class ConversationService:
         # Load history and persist user messages in one transaction
         uow_setup = self._uow_factory()
         with uow_setup:
-            history = uow_setup.repo.get_messages(conversation_id)
+            history = uow_setup.repo.get_messages(conversation_id, self._user_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
@@ -360,7 +360,7 @@ class ConversationService:
 
             # Use the prompt baked into the conversation at creation; fall back to
             # the caller's value for legacy rows that pre-date per-conversation storage.
-            conv_meta = uow_setup.repo.get_conversation(conversation_id)
+            conv_meta = uow_setup.repo.get_conversation(conversation_id, self._user_id)
             effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
             used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
             resolved_model = self._resolve_model(model_slug, prompt_model)
@@ -414,7 +414,7 @@ class ConversationService:
         """
         uow_setup = self._uow_factory()
         with uow_setup:
-            history = uow_setup.repo.get_messages(conversation_id)
+            history = uow_setup.repo.get_messages(conversation_id, self._user_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
@@ -422,7 +422,7 @@ class ConversationService:
 
             # Use the prompt baked into the conversation at creation; fall back to
             # the caller's value for legacy rows that pre-date per-conversation storage.
-            conv_meta = uow_setup.repo.get_conversation(conversation_id)
+            conv_meta = uow_setup.repo.get_conversation(conversation_id, self._user_id)
             effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
             used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
             resolved_model = self._resolve_model(model_slug, prompt_model)
@@ -430,14 +430,14 @@ class ConversationService:
             created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
             instructions = self._render_instructions(instructions, created_at)
 
-            uow_setup.repo.truncate_from(conversation_id, message_id)
+            uow_setup.repo.truncate_from(conversation_id, message_id, self._user_id)
             uow_setup.repo.append_message(conversation_id, "user", new_content)
             uow_setup.commit()
 
         # Reload full history (truncated + new user message)
         uow_load = self._uow_factory()
         with uow_load:
-            full_history = uow_load.repo.get_messages(conversation_id)
+            full_history = uow_load.repo.get_messages(conversation_id, self._user_id)
 
         trim_result = trim_history(
             full_history,
@@ -489,13 +489,13 @@ class ConversationService:
         Returns the message list so the caller can pass it to synthesise_progress.
         """
         with self._uow_factory() as uow:
-            conv = uow.repo.get_conversation(conversation_id)
+            conv = uow.repo.get_conversation(conversation_id, self._user_id)
             if not conv:
                 raise ValueError(f"Conversation {conversation_id} not found")
             if conv["ended_at"]:
                 raise ValueError("conversation_ended")
-            messages = uow.repo.get_messages(conversation_id)
-            uow.repo.end_conversation(conversation_id)
+            messages = uow.repo.get_messages(conversation_id, self._user_id)
+            uow.repo.end_conversation(conversation_id, self._user_id)
             uow.commit()
         return messages
 

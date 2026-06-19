@@ -28,7 +28,7 @@ def test_repo_get_messages_ordered_by_id() -> None:
         repo.append_message(cid, "user", "first")
         repo.append_message(cid, "assistant", "second")
         repo.append_message(cid, "user", "third")
-        msgs = repo.get_messages(cid)
+        msgs = repo.get_messages(cid, TEST_USER)
         assert [m["content"] for m in msgs] == ["first", "second", "third"]
         assert [m["role"] for m in msgs] == ["user", "assistant", "user"]
     finally:
@@ -91,7 +91,7 @@ def test_get_active_conversation_returns_none_after_ended() -> None:
         repo = SQLAlchemyConversationRepo(session)
         cid = repo.create_conversation(user_id=TEST_USER)
         session.commit()
-        repo.end_conversation(cid)
+        repo.end_conversation(cid, TEST_USER)
         session.commit()
         result = repo.get_active_conversation(TEST_USER)
         assert result is None

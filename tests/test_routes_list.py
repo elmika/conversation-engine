@@ -129,11 +129,51 @@ def test_get_conversation_messages(client) -> None:
 
 
 def test_get_conversation_messages_unknown_id(client) -> None:
+    # Unknown (or unowned) conversation ids are not enumerable — both return 404.
     r = client.get(f"/u/{TEST_USER}/conversations/nonexistent-id/messages")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["conversation_id"] == "nonexistent-id"
-    assert data["messages"] == []
+    assert r.status_code == 404
+
+
+# --- Cross-user ownership isolation ---
+
+OTHER_USER = "other-user"
+
+
+def test_other_user_cannot_read_messages(client) -> None:
+    """A conversation owned by TEST_USER is not readable under another user_id."""
+    cid = _create_conversation(client)
+    r = client.get(f"/u/{OTHER_USER}/conversations/{cid}/messages")
+    assert r.status_code == 404
+
+
+def test_other_user_cannot_rename(client) -> None:
+    """Renaming another user's conversation returns 404 and does not change the name."""
+    cid = _create_conversation(client)
+    r = client.patch(
+        f"/u/{OTHER_USER}/conversations/{cid}", json={"name": "hijacked"}
+    )
+    assert r.status_code == 404
+    # Owner still sees the conversation (rename did not apply).
+    owner = client.get(f"/u/{TEST_USER}/conversations?page_size=100").json()
+    name = next(c["name"] for c in owner["conversations"] if c["id"] == cid)
+    assert name != "hijacked"
+
+
+def test_other_user_cannot_delete(client) -> None:
+    """Deleting another user's conversation is a no-op; the owner's conversation survives."""
+    cid = _create_conversation(client)
+    r = client.delete(f"/u/{OTHER_USER}/conversations/{cid}")
+    assert r.status_code == 204  # idempotent delete — no information leak
+    # Owner's conversation still exists.
+    owner = client.get(f"/u/{TEST_USER}/conversations/{cid}/messages")
+    assert owner.status_code == 200
+
+
+def test_other_user_cannot_end_session(client) -> None:
+    """Ending another user's conversation returns 404."""
+    cid = _create_conversation(client)
+    r = client.post(f"/u/{OTHER_USER}/conversations/{cid}/end-session")
+    assert r.status_code == 404
 
 
 # --- GET /prompts (root — no user prefix) ---

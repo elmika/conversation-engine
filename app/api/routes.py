@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from app.api.schemas import (
     ConversationListResponse,
     ConversationRenameRequest,
+    CompleteSetupResponse,
     ConversationRequest,
     ConversationResponse,
     ConversationRewindRequest,
@@ -33,6 +34,7 @@ from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.infra.slot_resolver_files import FileSlotResolver
 from app.learning.session_summary import build_session_summary
 from app.learning.progress_synthesis import synthesise_progress
+from app.learning.setup_completion import SetupCompletionError, complete_setup
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
 from app.domain.prompt_template import PromptTemplateError, validate_template
@@ -290,6 +292,8 @@ async def init_session_stream(
       - done: final assistant message + timings
     """
     # Resolve conversation name from course content (L2 concern, lives here until L2 layer exists).
+    # Skip for setup conversations — the user has no course file yet.
+    requested_slug = body.prompt_slug or "course-session-init"
     course_content = FileSlotResolver(settings.sections_dir, user_id).resolve("course")
     conv_name = _parse_md_h1(course_content) if course_content else None
 
@@ -298,7 +302,7 @@ async def init_session_stream(
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.create_and_stream_init(
-                        "course-session-init", body.model_slug, name=conv_name
+                        requested_slug, body.model_slug, name=conv_name
                     )
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
@@ -691,13 +695,14 @@ async def list_conversations(
 
 @user_router.delete("/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
+    user_id: str,
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
 ) -> None:
-    """Delete a conversation and all its messages."""
+    """Delete a conversation and all its messages. No-op if not owned by user_id."""
     def _run() -> None:
         with uow_factory() as uow:
-            uow.repo.delete_conversation(conversation_id)
+            uow.repo.delete_conversation(conversation_id, user_id)
             uow.commit()
 
     await asyncio.to_thread(_run)
@@ -705,14 +710,17 @@ async def delete_conversation(
 
 @user_router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)
 async def rename_conversation(
+    user_id: str,
     conversation_id: str,
     body: ConversationRenameRequest,
     uow_factory=Depends(get_uow_factory),
 ) -> ConversationSummary:
-    """Rename a conversation."""
+    """Rename a conversation. Returns 404 if not found or not owned by user_id."""
     def _run() -> None:
         with uow_factory() as uow:
-            uow.repo.rename_conversation(conversation_id, body.name)
+            if uow.repo.get_conversation(conversation_id, user_id) is None:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            uow.repo.rename_conversation(conversation_id, body.name, user_id)
             uow.commit()
 
     await asyncio.to_thread(_run)
@@ -721,14 +729,17 @@ async def rename_conversation(
 
 @user_router.get("/conversations/{conversation_id}/messages", response_model=MessagesResponse)
 async def get_conversation_messages(
+    user_id: str,
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
 ) -> MessagesResponse:
-    """Get all messages for a conversation, ordered by id ASC."""
+    """Get all messages for a conversation, ordered by id ASC. Returns 404 if not owned by user_id."""
     def _run() -> tuple[list[dict], Optional[dict]]:
         with uow_factory() as uow:
-            msgs = uow.repo.get_messages_with_metadata(conversation_id)
-            conv = uow.repo.get_conversation(conversation_id)
+            conv = uow.repo.get_conversation(conversation_id, user_id)
+            if conv is None:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            msgs = uow.repo.get_messages_with_metadata(conversation_id, user_id)
             return msgs, conv
 
     msgs, conv = await asyncio.to_thread(_run)
@@ -791,6 +802,52 @@ async def end_session(
     return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
 
 
+@user_router.post(
+    "/conversations/{conversation_id}/complete-setup",
+    response_model=CompleteSetupResponse,
+)
+async def complete_setup_route(
+    user_id: str,
+    conversation_id: str,
+    service: ConversationService = Depends(get_conversation_service),
+    settings: Settings = Depends(get_settings),
+    llm: LLMPort = Depends(get_llm),
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+) -> CompleteSetupResponse:
+    """
+    Complete the setup flow: run profile + outline extraction, write section files,
+    and mark the conversation ended.
+
+    SYNCHRONOUS by design — the learner is blocked on this before the first course
+    session can begin, and follow-up prompts require sections/user/<user_id>.md
+    and sections/course/<user_id>.md to exist. Two extraction LLM calls run before
+    the response returns. Returns 409 if the conversation is already ended.
+    """
+    def _end() -> list[dict]:
+        try:
+            return service.end_conversation(conversation_id)
+        except ValueError as e:
+            if str(e) == "conversation_ended":
+                raise HTTPException(status_code=409, detail="Conversation has already ended")
+            raise HTTPException(status_code=404, detail=str(e))
+
+    messages = await asyncio.to_thread(_end)
+
+    try:
+        await asyncio.to_thread(
+            complete_setup,
+            messages,
+            prompt_repo,
+            llm,
+            settings.sections_dir,
+            user_id,
+        )
+    except SetupCompletionError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return CompleteSetupResponse(status="completed")
+
+
 @user_router.get(
     "/conversations/{conversation_id}/summary",
     response_model=SessionSummarySchema,
@@ -804,7 +861,7 @@ async def get_session_summary(
     """Return the session summary for an ended conversation."""
     def _check() -> None:
         with uow_factory() as uow:
-            conv = uow.repo.get_conversation(conversation_id)
+            conv = uow.repo.get_conversation(conversation_id, user_id)
             if not conv:
                 raise HTTPException(status_code=404, detail="Conversation not found")
             if not conv["ended_at"]:

@@ -130,7 +130,7 @@ def test_get_messages_with_metadata() -> None:
         repo.append_message(cid, "assistant", "Hi there")
         session.commit()
 
-        msgs = repo.get_messages_with_metadata(cid)
+        msgs = repo.get_messages_with_metadata(cid, TEST_USER)
         assert len(msgs) == 2
         assert msgs[0]["role"] == "user"
         assert msgs[0]["content"] == "Hello"
@@ -151,7 +151,7 @@ def test_get_messages_with_metadata_empty() -> None:
         repo = SQLAlchemyConversationRepo(session)
         cid = repo.create_conversation(user_id=TEST_USER)
         session.commit()
-        msgs = repo.get_messages_with_metadata(cid)
+        msgs = repo.get_messages_with_metadata(cid, TEST_USER)
         assert msgs == []
     finally:
         session.close()
