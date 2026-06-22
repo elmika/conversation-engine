@@ -18,6 +18,12 @@ Then one sentence: exactly where to pick up today (based on the Progress section
 
 Then one sentence: what to do right now.
 
+Then a blank line, followed by a short description of each module drawn from the Course section below, formatted as:
+
+**1. Module Name** — one-line description of what this module covers.
+**2. Module Name** — one-line description.
+… (one line per module)
+
 Rules: ✓ = completed, → = current module. Every module on its own list item. Module status is determined solely by the Progress section — never infer completion from the conversation.
 
 ## All subsequent turns
