@@ -89,7 +89,11 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   // regular course list.
   const SETUP_PROMPT_SLUG = "user-profile-collection";
   const COURSE_INIT_PROMPT_SLUG = "course-session-init";
-  const effectivePromptSlug = hasProfile ? selectedPromptSlug : SETUP_PROMPT_SLUG;
+  const effectivePromptSlug = !hasProfile
+    ? SETUP_PROMPT_SLUG
+    : selectedPromptSlug === "default"
+      ? COURSE_INIT_PROMPT_SLUG
+      : selectedPromptSlug;
 
   // When sendMessage creates a new conversation (no initSession path — e.g. new users
   // without a profile), update the URL so the conversation is addressable and survives
