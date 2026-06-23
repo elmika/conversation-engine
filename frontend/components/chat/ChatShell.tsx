@@ -360,7 +360,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
         )}
 
         {/* Input */}
-        <div className="border-t p-4">
+        <div className={cn("border-t p-4", isEnded && summaryVisible && "overflow-y-auto max-h-[60vh]")}>
           {isEnded ? (
             sessionSummary && summaryVisible ? (
               <SessionSummaryCard
