@@ -5,7 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
@@ -277,7 +277,7 @@ async def create_conversation_stream(
 )
 async def init_session_stream(
     user_id: str,
-    body: InitSessionRequest,
+    body: InitSessionRequest = Body(default_factory=InitSessionRequest),
     service: ConversationService = Depends(get_conversation_service),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
