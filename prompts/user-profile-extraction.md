@@ -22,6 +22,9 @@ The profile must contain these H2 sections, in this order:
 ## Goal
 {1–3 lines on what made them want to learn about AI and what they want to be able to do.}
 
+## Session length
+{How long the learner said they have per session. Write it as a plain number + unit, e.g. "20 minutes", "45 minutes", "1 hour". If they were vague (e.g. "half an hour"), convert to the nearest concrete value. If not mentioned, write `Not specified`.}
+
 ## Other context
 {Optional. Include only if the learner shared something meaningful — learning preferences, time constraints, prior exposure to the topic, etc. Omit this section entirely if there is nothing to record.}
 

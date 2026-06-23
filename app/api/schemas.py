@@ -91,7 +91,7 @@ class SessionSummarySchema(BaseModel):
 
 
 class EndSessionResponse(BaseModel):
-    status: str = "ending"
+    status: str = "ended"
     summary: Optional[SessionSummarySchema] = None
 
 

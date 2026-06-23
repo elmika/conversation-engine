@@ -5,7 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
@@ -767,7 +767,6 @@ async def get_conversation_messages(
 async def end_session(
     user_id: str,
     conversation_id: str,
-    background_tasks: BackgroundTasks,
     service: ConversationService = Depends(get_conversation_service),
     settings: Settings = Depends(get_settings),
     llm: LLMPort = Depends(get_llm),
@@ -775,9 +774,10 @@ async def end_session(
     """
     End a conversation session.
 
-    Marks the conversation as ended immediately and returns. Progress synthesis
-    (LLM wrap-up + file write) runs as a background task so the learner is never
-    blocked by the LLM call. Returns 409 if the conversation is already ended.
+    Marks the conversation as ended, runs progress synthesis synchronously, then
+    returns the updated session summary. Synthesis is synchronous so the summary
+    always reflects the completed session — the learner sees the correct next step
+    immediately. Returns 409 if the conversation is already ended.
     """
     def _end() -> list[dict]:
         try:
@@ -788,7 +788,7 @@ async def end_session(
             raise HTTPException(status_code=404, detail=str(e))
 
     messages = await asyncio.to_thread(_end)
-    background_tasks.add_task(
+    await asyncio.to_thread(
         synthesise_progress,
         messages,
         FileSlotResolver(settings.sections_dir, user_id),
@@ -800,7 +800,7 @@ async def end_session(
     summary_data = await asyncio.to_thread(
         build_session_summary, FileSlotResolver(settings.sections_dir, user_id)
     )
-    return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
+    return EndSessionResponse(status="ended", summary=SessionSummarySchema(**summary_data))
 
 
 @user_router.post(
