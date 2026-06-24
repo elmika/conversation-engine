@@ -202,3 +202,5 @@ app/
 | `max_history_turns` | 20 | History trim by turn count |
 | `max_history_tokens` | 100,000 | History trim by token estimate |
 | `database_url` | `sqlite:///./data/chat.db` | Persistence (override with env var) |
+
+**FastAPI optional request body:** If an endpoint accepts a Pydantic body where all fields have defaults (callers may omit the body entirely), declare it as `body: MyModel = Body(default_factory=MyModel)`. Without this, FastAPI treats the body as required and returns a 422 when the client sends no body.
