@@ -80,6 +80,7 @@ class MessageSchema(BaseModel):
 class MessagesResponse(BaseModel):
     conversation_id: str
     ended_at: Optional[str] = None  # ISO 8601; None means still active
+    prompt_slug: Optional[str] = None  # course/prompt locked in at conversation creation
     messages: list[MessageSchema]
 
 
@@ -90,8 +91,12 @@ class SessionSummarySchema(BaseModel):
 
 
 class EndSessionResponse(BaseModel):
-    status: str = "ending"
+    status: str = "ended"
     summary: Optional[SessionSummarySchema] = None
+
+
+class CompleteSetupResponse(BaseModel):
+    status: str = "completed"
 
 
 class PromptSchema(BaseModel):

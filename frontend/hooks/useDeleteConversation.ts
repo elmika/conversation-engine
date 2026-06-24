@@ -1,12 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteConversation } from "@/lib/api-client";
 
-export function useDeleteConversation() {
+export function useDeleteConversation(userId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => deleteConversation(id),
+    mutationFn: (id: string) => deleteConversation(userId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
     },
   });
 }

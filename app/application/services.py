@@ -34,6 +34,7 @@ class ConversationService:
         slot_resolver: SlotResolver,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
+        user_id: str = "default",
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
@@ -43,6 +44,7 @@ class ConversationService:
         self._slot_resolver = slot_resolver
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
+        self._user_id = user_id
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str], str]:
         """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name). Falls back to default."""
@@ -93,18 +95,43 @@ class ConversationService:
         slug = request_model or prompt_model or self._default_model
         return validate_model_slug(slug)
 
+    def _resolve_effective_prompt(
+        self,
+        uow,
+        conversation_id: str,
+        prompt_slug: Optional[str],
+        model_slug: Optional[str],
+    ) -> tuple[str, str, str]:
+        """Resolve the prompt + model for a turn on an EXISTING conversation.
+
+        Uses the prompt baked into the conversation at creation; falls back to the
+        caller's prompt_slug only for legacy rows that pre-date per-conversation
+        storage. Renders the instructions anchored to the conversation's start time.
+
+        Returns: (used_prompt_slug, rendered_instructions, resolved_model)
+        """
+        conv_meta = uow.repo.get_conversation(conversation_id, self._user_id)
+        effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
+        used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
+        resolved_model = self._resolve_model(model_slug, prompt_model)
+
+        created_at = uow.repo.get_conversation_created_at(conversation_id)
+        instructions = self._render_instructions(instructions, created_at)
+        return used_prompt_slug, instructions, resolved_model
+
     def _guard_not_ended(self, uow, conversation_id: str) -> None:
         """Raise ValueError if the conversation is ended."""
-        conv = uow.repo.get_conversation(conversation_id)
+        conv = uow.repo.get_conversation(conversation_id, self._user_id)
         if conv and conv["ended_at"]:
             raise ValueError("conversation_ended")
 
     def _guard_no_active_conversation(self, uow) -> None:
         """Raise ValueError if there is already an active (non-ended) conversation.
 
+        Global per-user: only one active conversation at a time regardless of course.
         The active conversation ID is embedded in the message so routes can return it to callers.
         """
-        active = uow.repo.get_active_conversation()
+        active = uow.repo.get_active_conversation(self._user_id)
         if active:
             raise ValueError(f"active_conversation_exists:{active}")
 
@@ -133,7 +160,7 @@ class ConversationService:
             base_name = self._make_conversation_name(prompt_name)
             count = uow.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow.repo.create_conversation_with_id(cid_str, name=name)
+            uow.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug)
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
@@ -175,22 +202,24 @@ class ConversationService:
 
         Transaction boundary: all operations commit atomically.
         Loads history, trims to limits, combines with new messages, calls LLM, persists response.
+
+        The prompt used is the one stored on the conversation at creation time — the caller's
+        prompt_slug is only a fallback for legacy rows that pre-date per-conversation storage.
+
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
-        resolved_model = self._resolve_model(model_slug, prompt_model)
-
         with self._uow_factory() as uow:
             # Load conversation history
-            history = uow.repo.get_messages(conversation_id)
+            history = uow.repo.get_messages(conversation_id, self._user_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
             self._guard_not_ended(uow, conversation_id)
 
-            created_at = uow.repo.get_conversation_created_at(conversation_id)
-            instructions = self._render_instructions(instructions, created_at)
+            used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
+                uow, conversation_id, prompt_slug, model_slug
+            )
 
             # Persist user messages for this turn
             for msg in messages:
@@ -260,7 +289,7 @@ class ConversationService:
             base_name = self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.create_conversation_with_id(cid_str, name=name)
+            uow_setup.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug)
             for msg in messages:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
             uow_setup.commit()
@@ -306,7 +335,7 @@ class ConversationService:
             base_name = name or self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
             resolved_name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.create_conversation_with_id(cid_str, name=resolved_name)
+            uow_setup.repo.create_conversation_with_id(cid_str, name=resolved_name, user_id=self._user_id, prompt_slug=used_prompt_slug)
             uow_setup.commit()
 
         # Hidden trigger — not stored, causes the LLM to produce the opening message
@@ -338,20 +367,18 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
-        resolved_model = self._resolve_model(model_slug, prompt_model)
-
         # Load history and persist user messages in one transaction
         uow_setup = self._uow_factory()
         with uow_setup:
-            history = uow_setup.repo.get_messages(conversation_id)
+            history = uow_setup.repo.get_messages(conversation_id, self._user_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
             self._guard_not_ended(uow_setup, conversation_id)
 
-            created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
-            instructions = self._render_instructions(instructions, created_at)
+            used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
+                uow_setup, conversation_id, prompt_slug, model_slug
+            )
 
             for msg in messages:
                 uow_setup.repo.append_message(conversation_id, msg["role"], msg["content"])
@@ -397,28 +424,26 @@ class ConversationService:
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         Raises: ValueError if conversation not found.
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
-        resolved_model = self._resolve_model(model_slug, prompt_model)
-
         uow_setup = self._uow_factory()
         with uow_setup:
-            history = uow_setup.repo.get_messages(conversation_id)
+            history = uow_setup.repo.get_messages(conversation_id, self._user_id)
             if not history:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
             self._guard_not_ended(uow_setup, conversation_id)
 
-            created_at = uow_setup.repo.get_conversation_created_at(conversation_id)
-            instructions = self._render_instructions(instructions, created_at)
+            used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
+                uow_setup, conversation_id, prompt_slug, model_slug
+            )
 
-            uow_setup.repo.truncate_from(conversation_id, message_id)
+            uow_setup.repo.truncate_from(conversation_id, message_id, self._user_id)
             uow_setup.repo.append_message(conversation_id, "user", new_content)
             uow_setup.commit()
 
         # Reload full history (truncated + new user message)
         uow_load = self._uow_factory()
         with uow_load:
-            full_history = uow_load.repo.get_messages(conversation_id)
+            full_history = uow_load.repo.get_messages(conversation_id, self._user_id)
 
         trim_result = trim_history(
             full_history,
@@ -462,6 +487,21 @@ class ConversationService:
         rendered = self._render_instructions(record["system_prompt"], created_at)
         return {"slug": record["slug"], "name": record["name"], "rendered_prompt": rendered}
 
+    def get_active_messages(self, conversation_id: str) -> list[dict]:
+        """Return the messages of an active (non-ended) conversation owned by the user.
+
+        Used by close-triggered actions (e.g. setup completion) that must run BEFORE
+        the conversation is ended, so a failure leaves the conversation resumable.
+        Raises ValueError if not found / not owned, or "conversation_ended" if ended.
+        """
+        with self._uow_factory() as uow:
+            conv = uow.repo.get_conversation(conversation_id, self._user_id)
+            if not conv:
+                raise ValueError(f"Conversation {conversation_id} not found")
+            if conv["ended_at"]:
+                raise ValueError("conversation_ended")
+            return uow.repo.get_messages(conversation_id, self._user_id)
+
     def end_conversation(self, conversation_id: str) -> list[dict]:
         """
         Mark a conversation as ended and return its messages.
@@ -470,13 +510,13 @@ class ConversationService:
         Returns the message list so the caller can pass it to synthesise_progress.
         """
         with self._uow_factory() as uow:
-            conv = uow.repo.get_conversation(conversation_id)
+            conv = uow.repo.get_conversation(conversation_id, self._user_id)
             if not conv:
                 raise ValueError(f"Conversation {conversation_id} not found")
             if conv["ended_at"]:
                 raise ValueError("conversation_ended")
-            messages = uow.repo.get_messages(conversation_id)
-            uow.repo.end_conversation(conversation_id)
+            messages = uow.repo.get_messages(conversation_id, self._user_id)
+            uow.repo.end_conversation(conversation_id, self._user_id)
             uow.commit()
         return messages
 

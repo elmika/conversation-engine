@@ -1,5 +1,7 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, X } from "lucide-react";
 import type { SessionSummary } from "@/lib/types";
@@ -48,7 +50,9 @@ export function SessionSummaryCard({ summary, onStartNextSession, onClose }: Ses
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
             Where to pick up next time
           </p>
-          <p className="text-sm whitespace-pre-line">{summary.next_step}</p>
+          <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary.next_step}</ReactMarkdown>
+          </div>
         </div>
       )}
 

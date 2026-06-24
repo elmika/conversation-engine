@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.application.ports import LLMResult
 from app.main import app
 from app.settings import Settings
+from tests.conftest import TEST_USER
 
 
 def _make_llm_result(
@@ -38,9 +39,9 @@ def client_with_mock_llm(mock_llm):
 
 
 def test_conversations_create_returns_envelope(client_with_mock_llm, mock_llm) -> None:
-    """POST /conversations returns conversation_id, assistant_message, model, timings."""
+    """POST /u/{user_id}/conversations returns conversation_id, assistant_message, model, timings."""
     response = client_with_mock_llm.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={
             "messages": [{"role": "user", "content": "Hello"}],
         },
@@ -59,9 +60,9 @@ def test_conversations_create_returns_envelope(client_with_mock_llm, mock_llm) -
 
 
 def test_conversations_create_uses_prompt_slug(client_with_mock_llm, mock_llm) -> None:
-    """POST /conversations with prompt_slug uses that prompt's system_prompt."""
+    """POST /u/{user_id}/conversations with prompt_slug uses that prompt's system_prompt."""
     response = client_with_mock_llm.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={
             "prompt_slug": "conflict-coach-v1",
             "messages": [{"role": "user", "content": "A colleague disagrees."}],
@@ -73,10 +74,10 @@ def test_conversations_create_uses_prompt_slug(client_with_mock_llm, mock_llm) -
 
 
 def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mock_llm) -> None:
-    """POST /conversations/{conversation_id} returns the same id and includes history."""
+    """POST /u/{user_id}/conversations/{conversation_id} returns the same id and includes history."""
     # First create a conversation to obtain a valid id.
     create_resp = client_with_mock_llm.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={
             "messages": [{"role": "user", "content": "First"}],
         },
@@ -86,7 +87,7 @@ def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mo
 
     # Append a new turn to the same conversation.
     append_resp = client_with_mock_llm.post(
-        f"/conversations/{cid}",
+        f"/u/{TEST_USER}/conversations/{cid}",
         json={
             "messages": [{"role": "user", "content": "Hi again"}],
         },
@@ -100,20 +101,20 @@ def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mo
     second_call_messages = mock_llm.complete.call_args_list[1][0][1]
     assert [m["role"] for m in first_call_messages] == ["user"]
     assert [m["content"] for m in first_call_messages] == ["First"]
-    # History for second call: user \"First\", assistant \"Hi there\", plus new user \"Hi again\".
+    # History for second call: user "First", assistant "Hi there", plus new user "Hi again".
     assert [m["role"] for m in second_call_messages] == ["user", "assistant", "user"]
     assert [m["content"] for m in second_call_messages] == ["First", "Hi there", "Hi again"]
 
 
 def test_conversations_reject_input_over_max_chars(client_with_mock_llm) -> None:
-    """POST /conversations returns 400 when total message content exceeds max_input_chars."""
+    """POST /u/{user_id}/conversations returns 400 when total message content exceeds max_input_chars."""
     from app.api import routes
 
     # Override settings so a short message is over the limit.
     app.dependency_overrides[routes.get_settings] = lambda: Settings(max_input_chars=10)
     try:
         response = client_with_mock_llm.post(
-            "/conversations",
+            f"/u/{TEST_USER}/conversations",
             json={
                 "messages": [{"role": "user", "content": "this is way over ten chars"}],
             },

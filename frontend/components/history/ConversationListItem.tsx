@@ -20,12 +20,14 @@ import { useDeleteConversation } from "@/hooks/useDeleteConversation";
 import type { ConversationSummary } from "@/lib/types";
 
 interface ConversationListItemProps {
+  userId: string;
   conversation: ConversationSummary;
   isActive?: boolean;
   showDelete?: boolean;
 }
 
 export function ConversationListItem({
+  userId,
   conversation,
   isActive,
   showDelete = false,
@@ -34,8 +36,8 @@ export function ConversationListItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const { mutateAsync: rename, isPending: isRenaming } = useRenameConversation();
-  const { mutateAsync: remove, isPending: isRemoving } = useDeleteConversation();
+  const { mutateAsync: rename, isPending: isRenaming } = useRenameConversation(userId);
+  const { mutateAsync: remove, isPending: isRemoving } = useDeleteConversation(userId);
 
   function startEditing(e: React.MouseEvent) {
     e.preventDefault();
@@ -152,7 +154,7 @@ export function ConversationListItem({
   }
 
   return (
-    <Link href={`/chat/${conversation.id}`} className={sharedClassName}>
+    <Link href={`/u/${userId}/chat/${conversation.id}`} className={sharedClassName}>
       {nameSlot}
       {actions}
     </Link>

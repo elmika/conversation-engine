@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CornerDownLeft, Loader2, LogOut, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
+import { CornerDownLeft, Loader2, LogOut, PanelLeft, Plus, Sparkles, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
@@ -17,18 +17,19 @@ import { useConversation } from "@/hooks/useConversation";
 import { useSessionSummary } from "@/hooks/useSessionSummary";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { cn } from "@/lib/utils";
-import { endSession } from "@/lib/api-client";
+import { completeSetup, endSession, fetchUserStatus } from "@/lib/api-client";
 import type { Message } from "@/lib/types";
 
 interface ChatShellProps {
+  userId: string;
   conversationId?: string;
 }
 
-export function ChatShell({ conversationId }: ChatShellProps) {
+export function ChatShell({ userId, conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug, selectedModelSlug, enterToSend, toggleEnterToSend } = useChatStore();
   const { status, partialText, timings, model, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
-    useStreamingChat();
+    useStreamingChat(userId);
 
   // After the first turn the hook captures the server-assigned ID; use it for
   // follow-up turns when there is no URL-based conversationId.
@@ -36,7 +37,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
 
   // Use activeConversationId so that new conversations (no URL param yet) also
   // get a query refetch once the server assigns an ID after the first turn.
-  const { data, isLoading, isFetching } = useConversation(activeConversationId ?? null);
+  const { data, isLoading, isFetching } = useConversation(userId, activeConversationId ?? null);
 
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const prevStatusRef = useRef(status);
@@ -65,47 +66,133 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     prevStatusRef.current = status;
   }, [status, partialText]);
 
-  // Auto-fire AI opening message when starting a new (no-URL) conversation.
-  // Also re-fires when status returns to "idle" after handleNewConversation resets the ref.
-  const initFiredRef = useRef(false);
+  // Check whether this user has a profile (sections files exist).
+  // initSession requires {{course}} / {{user}} section files — only fire it for
+  // users who have completed setup. New users see a blank chat until setup runs.
+  const { data: userStatus } = useQuery({
+    queryKey: ["user-status", userId],
+    queryFn: () => fetchUserStatus(userId),
+    staleTime: 60_000,
+  });
+  const hasProfile = userStatus?.has_profile ?? false;
+
+  // While the user-status query is unresolved, hasProfile defaults false, which
+  // would resolve effectivePromptSlug to the setup prompt. Sending in that window
+  // on a fresh chat would lock a brand-new conversation to setup — wrong for a
+  // profiled user. Inside an existing conversation the prompt is already locked
+  // server-side, so sending is always safe there; only gate new-conversation creation.
+  const awaitingUserStatus = userStatus === undefined && !activeConversationId;
+
+  // Users without a profile run through the setup flow: a guided conversation
+  // that collects their profile + goal and proposes a course outline.
+  // Once setup completes, hasProfile flips true and the user picks from the
+  // regular course list.
+  const SETUP_PROMPT_SLUG = "user-profile-collection";
+  const COURSE_INIT_PROMPT_SLUG = "course-session-init";
+  const effectivePromptSlug = !hasProfile
+    ? SETUP_PROMPT_SLUG
+    : selectedPromptSlug === "default"
+      ? COURSE_INIT_PROMPT_SLUG
+      : selectedPromptSlug;
+
+  // When sendMessage creates a new conversation (no initSession path — e.g. new users
+  // without a profile), update the URL so the conversation is addressable and survives
+  // a refresh.
   useEffect(() => {
-    if (!conversationId && !initFiredRef.current && status === "idle") {
-      initFiredRef.current = true;
-      initSession(selectedPromptSlug, selectedModelSlug, (activeId) => {
-        router.push(`/chat/${activeId}`);
-      });
+    if (!conversationId && streamedConversationId) {
+      router.replace(`/u/${userId}/chat/${streamedConversationId}`);
     }
-  }, [conversationId, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conversationId, streamedConversationId, userId, router]);
 
   const isStreaming = status === "connecting" || status === "streaming";
   const isEnded = Boolean(data?.ended_at);
+  const isActive = Boolean(activeConversationId) && !isEnded;
 
-  const { data: sessionSummary } = useSessionSummary(activeConversationId, isEnded);
+  // When inside an active conversation the prompt is locked — the course was chosen
+  // at creation and cannot change mid-session. Show it as a static label.
+  const lockedPromptSlug = isActive ? (data?.prompt_slug ?? null) : null;
+
+  // True when the active conversation is the setup flow (profile + goal collection).
+  // The conversation's prompt_slug is the authoritative signal — set at creation,
+  // never changes mid-session.
+  const isSetupConversation = isActive && data?.prompt_slug === SETUP_PROMPT_SLUG;
+
+  // Auto-open the AI's first message on a fresh chat — per the design principle
+  // "AI always opens, no blank input ever". Covers both audiences:
+  //   - new users  → the setup flow (effectivePromptSlug = SETUP_PROMPT_SLUG)
+  //   - profiled users → their selected course (effectivePromptSlug = selectedPromptSlug)
+  // Only fires when:
+  //   - userStatus has resolved (so effectivePromptSlug points at the right prompt)
+  //   - there's no URL conversationId (not resuming an existing conversation)
+  //   - the streaming hook is idle (no in-flight request)
+  // The ref prevents re-fire if the effect re-runs while the request is in flight.
+  const autoFiredRef = useRef(false);
+  useEffect(() => {
+    if (!conversationId && !autoFiredRef.current && status === "idle" && userStatus !== undefined) {
+      autoFiredRef.current = true;
+      initSession(effectivePromptSlug, selectedModelSlug, (activeId) => {
+        router.push(`/u/${userId}/chat/${activeId}`);
+      });
+    }
+  }, [conversationId, status, userStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { data: sessionSummary } = useSessionSummary(userId, activeConversationId, isEnded);
   const [summaryVisible, setSummaryVisible] = useState(true);
 
   const [endSessionError, setEndSessionError] = useState<string | null>(null);
+  const [completeSetupError, setCompleteSetupError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { mutate: endSessionMutate, isPending: isEndingSession } = useMutation({
-    mutationFn: () => endSession(activeConversationId!),
+    mutationFn: () => endSession(userId, activeConversationId!),
     onMutate: () => setEndSessionError(null),
     onSuccess: () => {
       setSummaryVisible(true);
-      queryClient.invalidateQueries({ queryKey: ["session-summary", activeConversationId] });
-      queryClient.invalidateQueries({ queryKey: ["messages", activeConversationId] });
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["session-summary", userId, activeConversationId] });
+      queryClient.invalidateQueries({ queryKey: ["messages", userId, activeConversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
     },
     onError: (err: Error) => {
       setEndSessionError(err.message ?? "Failed to end session. Please try again.");
     },
   });
 
+  const { mutate: completeSetupMutate, isPending: isCompletingSetup } = useMutation({
+    mutationFn: () => completeSetup(userId, activeConversationId!),
+    onMutate: () => setCompleteSetupError(null),
+    onSuccess: () => {
+      // The backend has written sections/user and sections/course. Update the
+      // cached status immediately so setup auto-start cannot race and reopen.
+      queryClient.setQueryData(["user-status", userId], { has_profile: true });
+      queryClient.invalidateQueries({ queryKey: ["user-status", userId] });
+      queryClient.invalidateQueries({ queryKey: ["messages", userId, activeConversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
+      reset();
+      setLocalMessages([]);
+      setSummaryVisible(true);
+      initSession(COURSE_INIT_PROMPT_SLUG, selectedModelSlug, (activeId) => {
+        router.push(`/u/${userId}/chat/${activeId}`);
+      });
+    },
+    onError: (err: Error) => {
+      setCompleteSetupError(err.message ?? "Failed to complete setup. Please try again.");
+    },
+  });
+
   const handleNewConversation = () => {
-    initFiredRef.current = false; // allow init to re-fire after reset()
-    reset();                       // sets status → "idle", triggering the effect above
+    reset();
     setLocalMessages([]);
     setSummaryVisible(true);
-    router.push("/chat");
+    // If the user has a profile, fire the AI-initiated opening message immediately.
+    // The course/prompt is whichever is currently selected in the selector — locked in
+    // for the life of this conversation.
+    if (hasProfile) {
+      initSession(effectivePromptSlug, selectedModelSlug, (activeId) => {
+        router.push(`/u/${userId}/chat/${activeId}`);
+      });
+    } else {
+      router.push(`/u/${userId}/chat`);
+    }
   };
 
   const handleRewind = (messageId: number, newContent: string) => {
@@ -126,10 +213,14 @@ export function ChatShell({ conversationId }: ChatShellProps) {
       ];
     });
 
-    rewindAndStream(activeConversationId, messageId, newContent, selectedPromptSlug);
+    rewindAndStream(activeConversationId, messageId, newContent, effectivePromptSlug);
   };
 
   const handleSend = (text: string) => {
+    // Don't create a conversation before we know the user's profile status —
+    // see awaitingUserStatus. The input is disabled in this window; this is a guard.
+    if (awaitingUserStatus) return;
+
     // Optimistically show the user message immediately
     setLocalMessages((prev) => [
       ...prev,
@@ -142,7 +233,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
     ]);
 
     sendMessage(
-      { messages: [{ role: "user", content: text }], prompt_slug: selectedPromptSlug, model_slug: selectedModelSlug },
+      { messages: [{ role: "user", content: text }], prompt_slug: effectivePromptSlug, model_slug: selectedModelSlug },
       activeConversationId
     );
   };
@@ -158,13 +249,19 @@ export function ChatShell({ conversationId }: ChatShellProps) {
       >
         <div className="flex items-center justify-between p-3">
           <span className="text-sm font-semibold">History</span>
-          <Button variant="ghost" size="icon" title="New conversation" onClick={handleNewConversation}>
+          <Button
+            variant="ghost"
+            size="icon"
+            title={isActive ? "End the current session before starting a new one" : "New conversation"}
+            onClick={handleNewConversation}
+            disabled={isActive}
+          >
             <Plus className="h-4 w-4" />
           </Button>
         </div>
         <Separator />
         <div className="flex-1 overflow-y-auto">
-          <ConversationList activeConversationId={conversationId} />
+          <ConversationList userId={userId} activeConversationId={conversationId} />
         </div>
       </aside>
 
@@ -175,13 +272,36 @@ export function ChatShell({ conversationId }: ChatShellProps) {
           <Button variant="ghost" size="icon" onClick={toggleSidebar} title="Toggle sidebar">
             <PanelLeft className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleNewConversation} title="New conversation">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleNewConversation}
+            title={isActive ? "End the current session before starting a new one" : "New conversation"}
+            disabled={isActive}
+          >
             <SquarePen className="h-4 w-4" />
           </Button>
-          <PromptSelector />
+          <PromptSelector lockedSlug={lockedPromptSlug} />
           <ModelSelector />
           <div className="ml-auto flex items-center gap-2">
-            {activeConversationId && !isStreaming && !isEnded && (
+            {activeConversationId && !isStreaming && !isEnded && isSetupConversation && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => completeSetupMutate()}
+                disabled={isCompletingSetup}
+                className="gap-1.5 text-xs"
+                title="Confirm your course and start learning"
+              >
+                {isCompletingSetup ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {isCompletingSetup ? "Setting up…" : "Let's start"}
+              </Button>
+            )}
+            {activeConversationId && !isStreaming && !isEnded && !isSetupConversation && (
               <Button
                 variant="outline"
                 size="sm"
@@ -233,9 +353,14 @@ export function ChatShell({ conversationId }: ChatShellProps) {
             End session failed: {endSessionError}
           </div>
         )}
+        {completeSetupError && (
+          <div className="mx-4 mb-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Setup completion failed: {completeSetupError}
+          </div>
+        )}
 
         {/* Input */}
-        <div className="border-t p-4">
+        <div className={cn("border-t p-4", isEnded && summaryVisible && "overflow-y-auto max-h-[60vh]")}>
           {isEnded ? (
             sessionSummary && summaryVisible ? (
               <SessionSummaryCard
@@ -266,7 +391,7 @@ export function ChatShell({ conversationId }: ChatShellProps) {
               </Button>
             </div>
           ) : (
-            <ChatInput onSend={handleSend} disabled={false} enterToSend={enterToSend} />
+            <ChatInput onSend={handleSend} disabled={awaitingUserStatus} enterToSend={enterToSend} />
           )}
         </div>
       </div>

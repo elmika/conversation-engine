@@ -21,21 +21,23 @@ class SQLAlchemyConversationRepo(ConversationRepo):
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create_conversation(self) -> str:
+    def create_conversation(self, user_id: str = "default") -> str:
         """Create a new conversation with a generated ID; return its id."""
         conv_id = str(uuid.uuid4())
-        self.create_conversation_with_id(conv_id)
+        self.create_conversation_with_id(conv_id, user_id=user_id)
         return conv_id
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None) -> None:
-        """Create a new conversation with a specific ID and optional name (domain-generated)."""
-        conv = Conversation(id=conversation_id, name=name)
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None) -> None:
+        """Create a new conversation with a specific ID, optional name, user_id, and prompt_slug."""
+        conv = Conversation(id=conversation_id, name=name, user_id=user_id, prompt_slug=prompt_slug)
         self._session.add(conv)
 
-    def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
+    def get_messages(self, conversation_id: str, user_id: str) -> list[dict[str, str]]:
         stmt = (
             select(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
             .where(Message.conversation_id == conversation_id)
+            .where(Conversation.user_id == user_id)
             .order_by(Message.id.asc())
         )
         rows = self._session.execute(stmt).scalars().all()
@@ -47,9 +49,11 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self._session.flush()  # Flush to get the auto-generated ID
         return msg.id
 
-    def list_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
-        """Return (rows, total) ordered by created_at DESC with pagination."""
-        total = self._session.execute(select(func.count()).select_from(Conversation)).scalar_one()
+    def list_conversations(self, user_id: str, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) for user_id ordered by created_at DESC with pagination."""
+        total = self._session.execute(
+            select(func.count()).select_from(Conversation).where(Conversation.user_id == user_id)
+        ).scalar_one()
 
         first_msg_sq = (
             select(Message.content)
@@ -73,6 +77,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
                 first_msg_sq.label("first_message"),
                 last_activity_sq.label("last_activity"),
             )
+            .where(Conversation.user_id == user_id)
             .order_by(Conversation.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -90,9 +95,9 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             for r in rows
         ], total
 
-    def rename_conversation(self, conversation_id: str, name: str) -> None:
+    def rename_conversation(self, conversation_id: str, name: str, user_id: str) -> None:
         conv = self._session.get(Conversation, conversation_id)
-        if conv:
+        if conv and conv.user_id == user_id:
             conv.name = name
 
     def count_conversations_named(self, base_name: str) -> int:
@@ -106,13 +111,17 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             )
         ) or 0
 
-    def delete_conversation(self, conversation_id: str) -> None:
+    def delete_conversation(self, conversation_id: str, user_id: str) -> None:
         conv = self._session.get(Conversation, conversation_id)
-        if conv:
+        if conv and conv.user_id == user_id:
             self._session.delete(conv)
 
-    def truncate_from(self, conversation_id: str, message_id: int) -> None:
+    def truncate_from(self, conversation_id: str, message_id: int, user_id: str) -> None:
         """Delete messages with id >= message_id and their associated runs."""
+        # Scope to the owning user — silently no-op for a conversation the user does not own.
+        conv = self._session.get(Conversation, conversation_id)
+        if conv is None or conv.user_id != user_id:
+            return
         # Delete runs referencing messages that will be deleted
         msg_ids_sq = (
             select(Message.id)
@@ -127,11 +136,13 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             )
         )
 
-    def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
+    def get_messages_with_metadata(self, conversation_id: str, user_id: str) -> list[dict]:
         """Return [{id, role, content, created_at}] ordered by id ASC."""
         stmt = (
             select(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
             .where(Message.conversation_id == conversation_id)
+            .where(Conversation.user_id == user_id)
             .order_by(Message.id.asc())
         )
         rows = self._session.execute(stmt).scalars().all()
@@ -145,16 +156,17 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             for m in rows
         ]
 
-    def get_conversation(self, conversation_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at} for the conversation, or None if not found."""
+    def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
+        """Return {id, name, created_at, ended_at, prompt_slug} for the conversation, or None if not found or not owned by user_id."""
         row = self._session.get(Conversation, conversation_id)
-        if row is None:
+        if row is None or row.user_id != user_id:
             return None
         return {
             "id": row.id,
             "name": row.name,
             "created_at": row.created_at.isoformat(),
             "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+            "prompt_slug": row.prompt_slug,
         }
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
@@ -162,15 +174,20 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         row = self._session.get(Conversation, conversation_id)
         return row.created_at if row else None
 
-    def end_conversation(self, conversation_id: str) -> None:
-        """Set ended_at to the current UTC time for the given conversation."""
+    def end_conversation(self, conversation_id: str, user_id: str) -> None:
+        """Set ended_at to the current UTC time for the given conversation (owned by user_id)."""
         row = self._session.get(Conversation, conversation_id)
-        if row:
+        if row and row.user_id == user_id:
             row.ended_at = datetime.now(timezone.utc)
 
-    def get_active_conversation(self) -> Optional[str]:
-        """Return the id of the conversation where ended_at IS NULL, or None."""
-        stmt = select(Conversation.id).where(Conversation.ended_at.is_(None)).limit(1)
+    def get_active_conversation(self, user_id: str) -> Optional[str]:
+        """Return the id of the active (ended_at IS NULL) conversation for user_id, or None."""
+        stmt = (
+            select(Conversation.id)
+            .where(Conversation.ended_at.is_(None))
+            .where(Conversation.user_id == user_id)
+            .limit(1)
+        )
         return self._session.execute(stmt).scalar_one_or_none()
 
     def record_run(

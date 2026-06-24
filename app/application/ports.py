@@ -87,20 +87,20 @@ class LLMPort(Protocol):
 class ConversationRepo(Protocol):
     """Port for conversation and run persistence."""
 
-    def get_messages(self, conversation_id: str) -> list[dict[str, str]]:
-        """Return messages ordered by id (role, content)."""
+    def get_messages(self, conversation_id: str, user_id: str) -> list[dict[str, str]]:
+        """Return messages ordered by id (role, content). Empty if not owned by user_id."""
         ...
 
     def append_message(self, conversation_id: str, role: str, content: str) -> int:
         """Append a message to the conversation and return its id."""
         ...
 
-    def create_conversation(self) -> str:
+    def create_conversation(self, user_id: str = "default") -> str:
         """Create a new conversation with a generated ID; return its id."""
         ...
 
-    def create_conversation_with_id(self, conversation_id: str) -> None:
-        """Create a new conversation with a specific ID (domain-generated)."""
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None) -> None:
+        """Create a new conversation with a specific ID, optional name, user_id, and prompt_slug."""
         ...
 
     def record_run(
@@ -118,44 +118,44 @@ class ConversationRepo(Protocol):
         """Persist run metadata describing how an assistant message was generated."""
         ...
 
-    def list_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
-        """Return (rows, total) ordered by created_at DESC with pagination."""
+    def list_conversations(self, user_id: str, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) for user_id ordered by created_at DESC with pagination."""
         ...
 
-    def get_messages_with_metadata(self, conversation_id: str) -> list[dict]:
-        """Return [{id, role, content, created_at}] ordered by id ASC."""
+    def get_messages_with_metadata(self, conversation_id: str, user_id: str) -> list[dict]:
+        """Return [{id, role, content, created_at}] ordered by id ASC. Empty if not owned by user_id."""
         ...
 
-    def rename_conversation(self, conversation_id: str, name: str) -> None:
-        """Set the display name for a conversation."""
+    def rename_conversation(self, conversation_id: str, name: str, user_id: str) -> None:
+        """Set the display name for a conversation owned by user_id (no-op otherwise)."""
         ...
 
     def count_conversations_named(self, base_name: str) -> int:
         """Count conversations whose name equals base_name or matches 'base_name (N)'."""
         ...
 
-    def delete_conversation(self, conversation_id: str) -> None:
-        """Delete a conversation and all its messages and runs."""
+    def delete_conversation(self, conversation_id: str, user_id: str) -> None:
+        """Delete a conversation (owned by user_id) and all its messages and runs (no-op otherwise)."""
         ...
 
-    def truncate_from(self, conversation_id: str, message_id: int) -> None:
-        """Delete messages with id >= message_id and their associated runs."""
+    def truncate_from(self, conversation_id: str, message_id: int, user_id: str) -> None:
+        """Delete messages with id >= message_id and their associated runs (no-op if not owned by user_id)."""
         ...
 
-    def get_conversation(self, conversation_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at} for the conversation, or None if not found."""
+    def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
+        """Return {id, name, created_at, ended_at, prompt_slug}, or None if not found or not owned by user_id."""
         ...
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""
         ...
 
-    def end_conversation(self, conversation_id: str) -> None:
-        """Set ended_at = now(UTC) for the given conversation."""
+    def end_conversation(self, conversation_id: str, user_id: str) -> None:
+        """Set ended_at = now(UTC) for the given conversation (owned by user_id; no-op otherwise)."""
         ...
 
-    def get_active_conversation(self) -> Optional[str]:
-        """Return the id of the one conversation where ended_at IS NULL, or None."""
+    def get_active_conversation(self, user_id: str) -> Optional[str]:
+        """Return the id of the active (ended_at IS NULL) conversation for user_id, or None."""
         ...
 
 

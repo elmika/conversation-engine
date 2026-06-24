@@ -6,6 +6,7 @@ import { useStreamingChat } from "@/hooks/useStreamingChat";
 import {
   createConversationStream,
   appendConversationTurnStream,
+  initSessionStream,
 } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
@@ -14,6 +15,8 @@ import {
 // ---------------------------------------------------------------------------
 
 vi.mock("@/lib/api-client");
+
+const TEST_USER = "test-user-id";
 
 function makeSseStream(
   events: Array<{ event: string; data: object }>
@@ -56,6 +59,9 @@ beforeEach(() => {
   vi.mocked(appendConversationTurnStream).mockResolvedValue(
     makeSseStream(STREAM_EVENTS)
   );
+  vi.mocked(initSessionStream).mockResolvedValue(
+    makeSseStream(STREAM_EVENTS)
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -78,8 +84,15 @@ function makeWrapper() {
 // ---------------------------------------------------------------------------
 
 describe("useStreamingChat", () => {
+  function expectDone(result: { current: ReturnType<typeof useStreamingChat> }) {
+    if (result.current.status === "error") {
+      throw new Error(result.current.errorMessage ?? "Hook entered error state");
+    }
+    expect(result.current.status).toBe("done");
+  }
+
   it("starts idle", () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
     expect(result.current.status).toBe("idle");
@@ -87,7 +100,7 @@ describe("useStreamingChat", () => {
   });
 
   it("transitions through connecting → streaming → done", async () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
 
@@ -98,9 +111,7 @@ describe("useStreamingChat", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(result.current.status).toBe("done");
-    });
+    await waitFor(() => expectDone(result));
 
     expect(result.current.partialText).toBe("Hello world");
     expect(result.current.conversationId).toBe("test-conv-id-1");
@@ -108,7 +119,7 @@ describe("useStreamingChat", () => {
   });
 
   it("accumulates partial text during streaming", async () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
 
@@ -118,7 +129,7 @@ describe("useStreamingChat", () => {
       });
     });
 
-    await waitFor(() => expect(result.current.status).toBe("done"));
+    await waitFor(() => expectDone(result));
     expect(result.current.partialText).toBe("Hello world");
   });
 
@@ -132,7 +143,7 @@ describe("useStreamingChat", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
 
-    const { result } = renderHook(() => useStreamingChat(), { wrapper });
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), { wrapper });
 
     act(() => {
       result.current.sendMessage({
@@ -140,19 +151,19 @@ describe("useStreamingChat", () => {
       });
     });
 
-    await waitFor(() => expect(result.current.status).toBe("done"));
+    await waitFor(() => expectDone(result));
 
     const calls = invalidate.mock.calls.map((c) => c[0]);
     expect(calls).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ queryKey: ["messages", "test-conv-id-1"] }),
-        expect.objectContaining({ queryKey: ["conversations"] }),
+        expect.objectContaining({ queryKey: ["messages", TEST_USER, "test-conv-id-1"] }),
+        expect.objectContaining({ queryKey: ["conversations", TEST_USER] }),
       ])
     );
   });
 
   it("cancel() aborts and sets status to idle", async () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
 
@@ -174,7 +185,7 @@ describe("useStreamingChat", () => {
   });
 
   it("reset() returns to initial state", async () => {
-    const { result } = renderHook(() => useStreamingChat(), {
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
       wrapper: makeWrapper(),
     });
 
@@ -183,12 +194,28 @@ describe("useStreamingChat", () => {
         messages: [{ role: "user", content: "Hi" }],
       });
     });
-    await waitFor(() => expect(result.current.status).toBe("done"));
+    await waitFor(() => expectDone(result));
 
     act(() => result.current.reset());
 
     expect(result.current.status).toBe("idle");
     expect(result.current.partialText).toBe("");
     expect(result.current.conversationId).toBeNull();
+  });
+
+  it("notifies initSession caller when the new conversation id is assigned", async () => {
+    const onActiveConversation = vi.fn();
+    const { result } = renderHook(() => useStreamingChat(TEST_USER), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.initSession("course-session-init", null, onActiveConversation);
+    });
+
+    await waitFor(() => {
+      expect(onActiveConversation).toHaveBeenCalledWith("test-conv-id-1");
+    });
+    await waitFor(() => expectDone(result));
   });
 });

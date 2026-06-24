@@ -1,12 +1,9 @@
-import { HistoryTable } from "@/components/history/HistoryTable";
+import { redirect } from "next/navigation";
 
+/**
+ * Legacy route — the canonical URL is now /u/{userId}/history.
+ * Redirect to root so the entry point can assign a userId and redirect properly.
+ */
 export default function HistoryPage() {
-  return (
-    <div className="h-full overflow-y-auto">
-      <main className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-semibold">Conversation History</h1>
-        <HistoryTable />
-      </main>
-    </div>
-  );
+  redirect("/");
 }

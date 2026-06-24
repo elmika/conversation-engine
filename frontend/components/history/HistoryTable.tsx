@@ -83,9 +83,11 @@ function Pagination({ page, totalPages, onChange }: PaginationProps) {
 // ---------------------------------------------------------------------------
 
 function HistoryRow({
+  userId,
   conversation,
   striped,
 }: {
+  userId: string;
   conversation: ConversationSummary;
   striped: boolean;
 }) {
@@ -93,8 +95,8 @@ function HistoryRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const { mutateAsync: rename, isPending: isRenaming } = useRenameConversation();
-  const { mutateAsync: remove, isPending: isRemoving } = useDeleteConversation();
+  const { mutateAsync: rename, isPending: isRenaming } = useRenameConversation(userId);
+  const { mutateAsync: remove, isPending: isRemoving } = useDeleteConversation(userId);
 
   function startEditing(e: React.MouseEvent) {
     e.preventDefault();
@@ -138,7 +140,7 @@ function HistoryRow({
           />
         ) : (
           <Link
-            href={`/chat/${conversation.id}`}
+            href={`/u/${userId}/chat/${conversation.id}`}
             className="block truncate hover:underline"
             title={conversation.name || undefined}
           >
@@ -217,9 +219,13 @@ function HistoryRow({
 
 const PAGE_SIZE = 20;
 
-export function HistoryTable() {
+interface HistoryTableProps {
+  userId: string;
+}
+
+export function HistoryTable({ userId }: HistoryTableProps) {
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useConversationList(page, PAGE_SIZE);
+  const { data, isLoading } = useConversationList(userId, page, PAGE_SIZE);
 
   const conversations = data?.conversations ?? [];
   const total = data?.total ?? 0;
@@ -256,7 +262,7 @@ export function HistoryTable() {
           </thead>
           <tbody>
             {conversations.map((c, i) => (
-              <HistoryRow key={c.id} conversation={c} striped={i % 2 === 1} />
+              <HistoryRow key={c.id} userId={userId} conversation={c} striped={i % 2 === 1} />
             ))}
           </tbody>
         </table>

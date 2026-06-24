@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__fetch__fetch",
+      "mcp__linkedin__search_jobs",
+      "mcp__linkedin__get_job_details",
+      "mcp__claude_ai_Gmail__get_thread",
+      "mcp__beeper__search_messages",
+      "mcp__beeper__list_messages",
+      "mcp__claude_ai_Gmail__search_threads",
+      "mcp__beeper__search_chats",
+      "mcp__linkedin__get_person_profile",
+      "mcp__nation-brain__search_newsletters",
+      "mcp__youtube-transcript__get-transcript",
+      "mcp__claude_ai_Google_Drive__search_files",
+      "mcp__markitdown__convert_to_markdown"
+    ]
+  }
+}

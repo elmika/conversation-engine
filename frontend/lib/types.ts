@@ -62,6 +62,7 @@ export interface Message {
 export interface MessagesResponse {
   conversation_id: string;
   ended_at?: string | null; // ISO 8601; null/undefined means still active
+  prompt_slug?: string | null; // course/prompt locked in at conversation creation
   messages: Message[];
 }
 

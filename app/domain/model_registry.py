@@ -24,6 +24,11 @@ MODELS: dict[str, dict] = {
         "description": "Our cheapest GPT-5.4-class model for simple high-volume tasks",
     },
 
+    "gpt-5.4-pro": {
+        "name": "GPT-5.4 pro",
+        "description": "Most capable GPT-5.4 model",
+    },
+
     # --- Expensive models: commented out to prevent accidental use during development ---
     # "gpt-5": {"name": "GPT-5", "description": "Reasoning model"},
     # "gpt-5-codex": {"name": "GPT-5 Codex", ...},
@@ -33,7 +38,6 @@ MODELS: dict[str, dict] = {
     # "gpt-5.2-codex": {"name": "GPT-5.2 Codex", ...},
     # "gpt-5.3-codex": {"name": "GPT-5.3 Codex", ...},
     # "gpt-5.4": {"name": "GPT-5.4", ...},
-    # "gpt-5.4-pro": {"name": "GPT-5.4 pro", ...},
 }
 
 # Display order

@@ -9,6 +9,9 @@ from sqlalchemy import text
 # In-memory SQLite for tests (db.init_engine uses StaticPool so one connection is shared).
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
+# Stable user_id used across all HTTP-level tests.
+TEST_USER = "test-user"
+
 from app.main import app
 
 

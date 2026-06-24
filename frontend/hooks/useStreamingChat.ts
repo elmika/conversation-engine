@@ -44,7 +44,7 @@ const INITIAL_STATE: StreamingChatState = {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useStreamingChat() {
+export function useStreamingChat(userId: string) {
   const queryClient = useQueryClient();
   const abortRef = useRef<AbortController | null>(null);
   const [state, setState] = useState<StreamingChatState>(INITIAL_STATE);
@@ -68,11 +68,12 @@ export function useStreamingChat() {
       try {
         const stream = existingConversationId
           ? await appendConversationTurnStream(
+              userId,
               existingConversationId,
               body,
               controller.signal
             )
-          : await createConversationStream(body, controller.signal);
+          : await createConversationStream(userId, body, controller.signal);
 
         setState((s) => ({ ...s, status: "streaming" }));
 
@@ -123,12 +124,12 @@ export function useStreamingChat() {
         // Invalidate so history sidebar + message list reflect the new turn
         if (finalConversationId) {
           queryClient.invalidateQueries({
-            queryKey: ["messages", finalConversationId],
+            queryKey: ["messages", userId, finalConversationId],
           });
         }
         if (!existingConversationId) {
           // New conversation created — refresh the list
-          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
         }
       } catch (err) {
         if (controller.signal.aborted) {
@@ -140,7 +141,7 @@ export function useStreamingChat() {
         setState((s) => ({ ...s, status: "error", errorMessage: message }));
       }
     },
-    [queryClient]
+    [queryClient, userId]
   );
 
   const rewindAndStream = useCallback(
@@ -165,6 +166,7 @@ export function useStreamingChat() {
 
       try {
         const stream = await rewindConversationStream(
+          userId,
           conversationId,
           messageId,
           newContent,
@@ -216,7 +218,7 @@ export function useStreamingChat() {
           errorMessage: null,
         });
 
-        queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+        queryClient.invalidateQueries({ queryKey: ["messages", userId, conversationId] });
       } catch (err) {
         if (controller.signal.aborted) {
           setState((s) => ({ ...s, status: "idle" }));
@@ -227,7 +229,7 @@ export function useStreamingChat() {
         setState((s) => ({ ...s, status: "error", errorMessage: message }));
       }
     },
-    [queryClient]
+    [queryClient, userId]
   );
 
   const initSession = useCallback(
@@ -251,6 +253,7 @@ export function useStreamingChat() {
 
       try {
         const stream = await initSessionStream(
+          userId,
           { prompt_slug: promptSlug, model_slug: modelSlug },
           controller.signal
         );
@@ -261,6 +264,7 @@ export function useStreamingChat() {
         let finalTimings: Timings | null = null;
         let finalModel: string | null = null;
         let accText = "";
+        let notifiedActiveConversation = false;
 
         for await (const event of parseSSEStream(stream)) {
           if (controller.signal.aborted) break;
@@ -268,6 +272,10 @@ export function useStreamingChat() {
           if (event.event === "meta") {
             finalConversationId = event.data.conversation_id;
             finalModel = event.data.model;
+            if (finalConversationId && onActiveConversation && !notifiedActiveConversation) {
+              notifiedActiveConversation = true;
+              onActiveConversation(finalConversationId);
+            }
           } else if (event.event === "chunk") {
             accText += event.data.delta;
             setState((s) => ({ ...s, partialText: accText }));
@@ -310,8 +318,8 @@ export function useStreamingChat() {
         });
 
         if (finalConversationId) {
-          queryClient.invalidateQueries({ queryKey: ["messages", finalConversationId] });
-          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          queryClient.invalidateQueries({ queryKey: ["messages", userId, finalConversationId] });
+          queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
         }
       } catch (err) {
         if (controller.signal.aborted) {
@@ -331,7 +339,7 @@ export function useStreamingChat() {
         setState((s) => ({ ...s, status: "error", errorMessage: message }));
       }
     },
-    [queryClient]
+    [queryClient, userId]
   );
 
   const cancel = useCallback(() => {

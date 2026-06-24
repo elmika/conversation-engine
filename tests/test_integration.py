@@ -8,6 +8,7 @@ from openai import BadRequestError
 
 from app.application.ports import LLMResult
 from app.main import app as main_app
+from tests.conftest import TEST_USER
 
 
 def _make_llm_result(
@@ -45,7 +46,7 @@ def test_integration_create_then_append_turn(client_with_mock_llm, mock_llm) -> 
     """Full flow: create conversation, append turn; assert response shape and second call."""
     # Create conversation (first turn)
     r1 = client_with_mock_llm.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={"messages": [{"role": "user", "content": "Hi"}]},
     )
     assert r1.status_code == 200
@@ -56,7 +57,7 @@ def test_integration_create_then_append_turn(client_with_mock_llm, mock_llm) -> 
 
     # Append second turn
     r2 = client_with_mock_llm.post(
-        f"/conversations/{cid}",
+        f"/u/{TEST_USER}/conversations/{cid}",
         json={"messages": [{"role": "user", "content": "Second"}]},
     )
     assert r2.status_code == 200
@@ -86,9 +87,6 @@ def client_with_openai_adapter_stub():
     """
     Test client that uses the real OpenAILLMAdapter wired through FastAPI deps,
     but with the underlying OpenAI client stubbed so no real network calls occur.
-
-    This exercises the same path as your curl example hitting /conversations
-    and then /conversations/{conversation_id}.
     """
     from unittest.mock import patch
 
@@ -96,14 +94,10 @@ def client_with_openai_adapter_stub():
     from app.infra.llm_openai import OpenAILLMAdapter
     from app.settings import Settings
 
-    # Use a fresh Settings instance for the adapter instead of relying on
-    # app.state, which is only initialised inside the FastAPI lifespan.
     settings = Settings()
 
     with patch("app.infra.llm_openai.OpenAI") as mock_openai_class:
         mock_client = MagicMock()
-        # First call: create_conversation
-        # Second call: append_conversation_turn
         mock_client.responses.create.side_effect = [
             _make_fake_openai_response("Hello Mika! How can I assist you today?"),
             _make_fake_openai_response("Your name is Mika."),
@@ -125,17 +119,14 @@ def test_create_then_append_turn_reproduces_mika_flow(
     """
     Reproduce the curl sequence from the bug report:
 
-    1. POST /conversations with prompt_slug="default" and "Hi my name is Mika"
-    2. POST /conversations/{conversation_id} asking "What is my name?"
-
-    The expected behaviour is 200 OK for both calls and a valid assistant_message
-    on the second response (no internal server error).
+    1. POST /u/{user_id}/conversations with prompt_slug="default" and "Hi my name is Mika"
+    2. POST /u/{user_id}/conversations/{conversation_id} asking "What is my name?"
     """
     client, mock_client = client_with_openai_adapter_stub
 
-    # First turn – matches your first curl.
+    # First turn
     r1 = client.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={
             "prompt_slug": "default",
             "messages": [{"role": "user", "content": "Hi my name is Mika"}],
@@ -146,35 +137,27 @@ def test_create_then_append_turn_reproduces_mika_flow(
     cid = data1["conversation_id"]
     assert data1["assistant_message"] == "Hello Mika! How can I assist you today?"
 
-    # Second turn – matches your second curl.
+    # Second turn
     r2 = client.post(
-        f"/conversations/{cid}",
+        f"/u/{TEST_USER}/conversations/{cid}",
         json={
             "prompt_slug": "default",
             "messages": [{"role": "user", "content": "What is my name?"}],
         },
     )
-    # This is where your running app currently returns 500.
-    # The test encodes the *expected* correct behaviour (no internal error).
     assert r2.status_code == 200
     data2 = r2.json()
     assert data2["conversation_id"] == cid
     assert data2["assistant_message"] == "Your name is Mika."
     assert "timings" in data2
 
-    # Sanity-check that the OpenAI client was invoked twice.
     assert mock_client.responses.create.call_count == 2
 
 
 @pytest.fixture
 def client_with_bad_request_error_on_append():
     """
-    Test client where the first OpenAI call succeeds and the second (append turn)
-    raises BadRequestError, simulating an invalid Responses API payload.
-
-    This documents the expected HTTP-level behaviour: the service should map the
-    OpenAI error to a 5xx HTTPException (via _map_openai_error) instead of
-    returning a generic 500 "Internal server error".
+    Test client where the first OpenAI call succeeds and the second raises BadRequestError.
     """
     from unittest.mock import patch
 
@@ -187,10 +170,8 @@ def client_with_bad_request_error_on_append():
     with patch("app.infra.llm_openai.OpenAI") as mock_openai_class:
         mock_client = MagicMock()
 
-        # First call: OK response used for conversation creation.
         ok_response = _make_fake_openai_response("Hello Mika! How can I assist you today?")
 
-        # Second call: simulate the BadRequestError we see in production logs.
         bad_request = BadRequestError(
             "bad request",
             response=MagicMock(),
@@ -221,14 +202,12 @@ def test_append_turn_maps_openai_bad_request_to_http_error(
 ) -> None:
     """
     When OpenAI returns BadRequestError (400) for an append turn, the service
-    should surface a mapped HTTP error (e.g. 502 "Upstream OpenAI API error.")
-    rather than an unhandled 500 Internal Server Error.
+    should surface a mapped HTTP error (502) rather than 500 Internal Server Error.
     """
     client = client_with_bad_request_error_on_append
 
-    # First call creates the conversation successfully.
     r1 = client.post(
-        "/conversations",
+        f"/u/{TEST_USER}/conversations",
         json={
             "prompt_slug": "default",
             "messages": [{"role": "user", "content": "Hi my name is Mika"}],
@@ -237,16 +216,14 @@ def test_append_turn_maps_openai_bad_request_to_http_error(
     assert r1.status_code == 200
     cid = r1.json()["conversation_id"]
 
-    # Second call triggers BadRequestError inside the adapter.
     r2 = client.post(
-        f"/conversations/{cid}",
+        f"/u/{TEST_USER}/conversations/{cid}",
         json={
             "prompt_slug": "default",
             "messages": [{"role": "user", "content": "What is my name?"}],
         },
     )
 
-    # Desired behaviour (will currently FAIL): a mapped upstream error, not 500.
     assert r2.status_code == 502
     body = r2.json()
     assert body["detail"] == "Upstream OpenAI API error."

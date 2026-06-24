@@ -26,12 +26,14 @@ def synthesise_progress(
     llm: LLMPort,
     sections_dir: str,
     wrap_up_model: str,
+    user_id: str = "default",
 ) -> None:
     """Call the LLM to produce an updated progress snapshot and write it to disk.
 
     Reads the wrap-up prompt from sections/progress/progress-wrap-up.md, renders
     slot tags via the SlotResolver, calls the LLM, and atomically replaces
-    sections/progress/default.md (archiving the previous version).
+    sections/progress/<user_id>.md (archiving the previous version as
+    <user_id>-<timestamp>.md in the same directory).
 
     Errors are logged but not re-raised — a failing synthesis never blocks the learner.
     """
@@ -44,10 +46,10 @@ def synthesise_progress(
         new_progress = result["text"]
 
         progress_dir = Path(sections_dir) / "progress"
-        default_path = progress_dir / "default.md"
-        if default_path.exists():
-            archive_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".md"
-            shutil.copy2(str(default_path), str(progress_dir / archive_name))
-        default_path.write_text(new_progress, encoding="utf-8")
+        user_path = progress_dir / f"{user_id}.md"
+        if user_path.exists():
+            archive_name = f"{user_id}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.md"
+            shutil.copy2(str(user_path), str(progress_dir / archive_name))
+        user_path.write_text(new_progress, encoding="utf-8")
     except Exception:
         logger.exception("Progress synthesis failed — progress file not updated")

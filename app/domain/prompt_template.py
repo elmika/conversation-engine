@@ -58,7 +58,7 @@ def resolve_file_sections(
         content = loader(raw)
         if content is None:
             raise PromptTemplateError(
-                f"Section file not found: sections/{raw}/default.md"
+                f"Section file not found: sections/{raw}/<user>.md"
             )
         return content
 

@@ -1,10 +1,29 @@
-import { ChatShell } from "@/components/chat/ChatShell";
+"use client";
 
-interface Props {
+/**
+ * Legacy route — the canonical URL is now /u/{userId}/chat/{conversationId}.
+ *
+ * The userId lives in localStorage (client-side only), so we resolve it here and
+ * redirect while PRESERVING the conversationId, rather than dropping it by
+ * bouncing through the root entry point.
+ */
+
+import { use, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getOrCreateUserId } from "@/lib/user-id";
+
+export default function ConversationPage({
+  params,
+}: {
   params: Promise<{ conversationId: string }>;
-}
+}) {
+  const router = useRouter();
+  const { conversationId } = use(params);
 
-export default async function ConversationPage({ params }: Props) {
-  const { conversationId } = await params;
-  return <ChatShell conversationId={conversationId} />;
+  useEffect(() => {
+    const userId = getOrCreateUserId();
+    router.replace(`/u/${userId}/chat/${conversationId}`);
+  }, [router, conversationId]);
+
+  return null;
 }

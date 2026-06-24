@@ -5,12 +5,13 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
     ConversationListResponse,
     ConversationRenameRequest,
+    CompleteSetupResponse,
     ConversationRequest,
     ConversationResponse,
     ConversationRewindRequest,
@@ -33,6 +34,7 @@ from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.infra.slot_resolver_files import FileSlotResolver
 from app.learning.session_summary import build_session_summary
 from app.learning.progress_synthesis import synthesise_progress
+from app.learning.setup_completion import SetupCompletionError, complete_setup
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
 from app.domain.prompt_template import PromptTemplateError, validate_template
@@ -41,7 +43,11 @@ from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from app.settings import Settings
 
+# Root router — healthz, models, prompts (no user prefix).
 router = APIRouter()
+
+# User-scoped router — all conversation routes live under /u/{user_id}.
+user_router = APIRouter(prefix="/u/{user_id}")
 
 
 def get_settings(request: Request) -> Settings:
@@ -66,13 +72,17 @@ def get_prompt_repo(db=Depends(get_session)) -> PromptRepo:
     return SQLAlchemyPromptRepo(db)
 
 
-def get_conversation_service(
+def get_preview_service(
     uow_factory=Depends(get_uow_factory),
     llm: LLMPort = Depends(get_llm),
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     settings: Settings = Depends(get_settings),
 ) -> ConversationService:
-    """Provide conversation service with injected dependencies."""
+    """ConversationService for the prompt preview admin route.
+
+    No user_id needed — slot resolver uses 'default' so this route works
+    standalone without any user context.
+    """
     return ConversationService(
         uow_factory=uow_factory,
         llm=llm,
@@ -85,12 +95,33 @@ def get_conversation_service(
     )
 
 
-def _parse_md_h1(content: str) -> Optional[str]:
-    """Extract the first H1 heading from markdown content, stripping a 'Course: ' prefix if present.
+def get_conversation_service(
+    user_id: str = "default",
+    uow_factory=Depends(get_uow_factory),
+    llm: LLMPort = Depends(get_llm),
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+    settings: Settings = Depends(get_settings),
+) -> ConversationService:
+    """Provide conversation service with injected dependencies.
 
-    Temporary home: this is L2 knowledge about course file structure. Move to the L2
-    layer once it exists.
+    user_id is injected from the path param /u/{user_id} when used under
+    user_router; defaults to 'default' for root-level routes (e.g. prompt preview).
     """
+    return ConversationService(
+        uow_factory=uow_factory,
+        llm=llm,
+        prompt_repo=prompt_repo,
+        default_prompt_slug=settings.default_prompt_slug,
+        default_model=settings.default_model,
+        slot_resolver=FileSlotResolver(settings.sections_dir, user_id),
+        max_history_turns=settings.max_history_turns,
+        max_history_tokens=settings.max_history_tokens,
+        user_id=user_id,
+    )
+
+
+def _parse_md_h1(content: str) -> Optional[str]:
+    """Extract the first H1 heading from markdown content, stripping a 'Course: ' prefix if present."""
     first_line = content.splitlines()[0] if content else ""
     if not first_line.startswith("# "):
         return None
@@ -110,6 +141,8 @@ def _check_input_length(messages: list[dict[str, str]], max_chars: int) -> None:
         )
 
 
+# ── Root routes (no user prefix) ─────────────────────────────────────────────
+
 @router.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Health check."""
@@ -122,7 +155,24 @@ async def list_models_endpoint() -> ModelsResponse:
     return ModelsResponse(models=[ModelSchema(**m) for m in list_models()])
 
 
-@router.post(
+# ── User-scoped routes (/u/{user_id}/...) ────────────────────────────────────
+
+@user_router.get("/status")
+async def get_user_status(
+    user_id: str,
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Return whether a learner profile exists for this user_id.
+
+    Response: {"has_profile": bool}
+    Frontend uses this to route new users to the setup flow.
+    """
+    resolver = FileSlotResolver(settings.sections_dir, user_id)
+    has_profile = await asyncio.to_thread(resolver.exists, "user")
+    return {"has_profile": has_profile}
+
+
+@user_router.post(
     "/conversations/stream",
     name="create_conversation_stream",
 )
@@ -221,12 +271,13 @@ async def create_conversation_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.post(
+@user_router.post(
     "/conversations/init-stream",
     name="init_session_stream",
 )
 async def init_session_stream(
-    body: InitSessionRequest,
+    user_id: str,
+    body: InitSessionRequest = Body(default_factory=InitSessionRequest),
     service: ConversationService = Depends(get_conversation_service),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
@@ -242,7 +293,9 @@ async def init_session_stream(
       - done: final assistant message + timings
     """
     # Resolve conversation name from course content (L2 concern, lives here until L2 layer exists).
-    course_content = FileSlotResolver(settings.sections_dir).resolve("course")
+    # Skip for setup conversations — the user has no course file yet.
+    requested_slug = body.prompt_slug or "course-session-init"
+    course_content = FileSlotResolver(settings.sections_dir, user_id).resolve("course")
     conv_name = _parse_md_h1(course_content) if course_content else None
 
     async def event_generator() -> AsyncIterator[str]:
@@ -250,7 +303,7 @@ async def init_session_stream(
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.create_and_stream_init(
-                        "course-session-init", body.model_slug, name=conv_name
+                        requested_slug, body.model_slug, name=conv_name
                     )
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
@@ -322,7 +375,7 @@ async def init_session_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.post("/conversations", name="create_conversation", response_model=ConversationResponse)
+@user_router.post("/conversations", name="create_conversation", response_model=ConversationResponse)
 async def create_conversation(
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
@@ -368,7 +421,7 @@ def _sse_http_error(exc: HTTPException) -> str:
     return _sse_event("done", {"error": error})
 
 
-@router.post(
+@user_router.post(
     "/conversations/{conversation_id}",
     name="append_conversation_turn",
     response_model=ConversationResponse,
@@ -404,7 +457,7 @@ async def append_conversation_turn(
     )
 
 
-@router.post(
+@user_router.post(
     "/conversations/{conversation_id}/stream",
     name="append_conversation_turn_stream",
 )
@@ -505,7 +558,7 @@ async def append_conversation_turn_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.post(
+@user_router.post(
     "/conversations/{conversation_id}/rewind/stream",
     name="rewind_conversation_stream",
 )
@@ -610,16 +663,17 @@ async def rewind_conversation_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get("/conversations", response_model=ConversationListResponse)
+@user_router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
+    user_id: str,
     page: int = 1,
     page_size: int = 20,
     uow_factory=Depends(get_uow_factory),
 ) -> ConversationListResponse:
-    """List conversations with pagination, ordered by created_at DESC."""
+    """List conversations for user_id with pagination, ordered by created_at DESC."""
     def _run() -> tuple[list[dict], int]:
         with uow_factory() as uow:
-            return uow.repo.list_conversations(page, page_size)
+            return uow.repo.list_conversations(user_id, page, page_size)
 
     rows, total = await asyncio.to_thread(_run)
     return ConversationListResponse(
@@ -640,52 +694,60 @@ async def list_conversations(
     )
 
 
-@router.delete("/conversations/{conversation_id}", status_code=204)
+@user_router.delete("/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
+    user_id: str,
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
 ) -> None:
-    """Delete a conversation and all its messages."""
+    """Delete a conversation and all its messages. No-op if not owned by user_id."""
     def _run() -> None:
         with uow_factory() as uow:
-            uow.repo.delete_conversation(conversation_id)
+            uow.repo.delete_conversation(conversation_id, user_id)
             uow.commit()
 
     await asyncio.to_thread(_run)
 
 
-@router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)
+@user_router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)
 async def rename_conversation(
+    user_id: str,
     conversation_id: str,
     body: ConversationRenameRequest,
     uow_factory=Depends(get_uow_factory),
 ) -> ConversationSummary:
-    """Rename a conversation."""
+    """Rename a conversation. Returns 404 if not found or not owned by user_id."""
     def _run() -> None:
         with uow_factory() as uow:
-            uow.repo.rename_conversation(conversation_id, body.name)
+            if uow.repo.get_conversation(conversation_id, user_id) is None:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            uow.repo.rename_conversation(conversation_id, body.name, user_id)
             uow.commit()
 
     await asyncio.to_thread(_run)
     return ConversationSummary(id=conversation_id, name=body.name, created_at="")
 
 
-@router.get("/conversations/{conversation_id}/messages", response_model=MessagesResponse)
+@user_router.get("/conversations/{conversation_id}/messages", response_model=MessagesResponse)
 async def get_conversation_messages(
+    user_id: str,
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
 ) -> MessagesResponse:
-    """Get all messages for a conversation, ordered by id ASC."""
+    """Get all messages for a conversation, ordered by id ASC. Returns 404 if not owned by user_id."""
     def _run() -> tuple[list[dict], Optional[dict]]:
         with uow_factory() as uow:
-            msgs = uow.repo.get_messages_with_metadata(conversation_id)
-            conv = uow.repo.get_conversation(conversation_id)
+            conv = uow.repo.get_conversation(conversation_id, user_id)
+            if conv is None:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            msgs = uow.repo.get_messages_with_metadata(conversation_id, user_id)
             return msgs, conv
 
     msgs, conv = await asyncio.to_thread(_run)
     return MessagesResponse(
         conversation_id=conversation_id,
         ended_at=conv["ended_at"] if conv else None,
+        prompt_slug=conv["prompt_slug"] if conv else None,
         messages=[
             MessageSchema(
                 id=m["id"],
@@ -698,13 +760,13 @@ async def get_conversation_messages(
     )
 
 
-@router.post(
+@user_router.post(
     "/conversations/{conversation_id}/end-session",
     response_model=EndSessionResponse,
 )
 async def end_session(
+    user_id: str,
     conversation_id: str,
-    background_tasks: BackgroundTasks,
     service: ConversationService = Depends(get_conversation_service),
     settings: Settings = Depends(get_settings),
     llm: LLMPort = Depends(get_llm),
@@ -712,9 +774,10 @@ async def end_session(
     """
     End a conversation session.
 
-    Marks the conversation as ended immediately and returns. Progress synthesis
-    (LLM wrap-up + file write) runs as a background task so the learner is never
-    blocked by the LLM call. Returns 409 if the conversation is already ended.
+    Marks the conversation as ended, runs progress synthesis synchronously, then
+    returns the updated session summary. Synthesis is synchronous so the summary
+    always reflects the completed session — the learner sees the correct next step
+    immediately. Returns 409 if the conversation is already ended.
     """
     def _end() -> list[dict]:
         try:
@@ -725,25 +788,88 @@ async def end_session(
             raise HTTPException(status_code=404, detail=str(e))
 
     messages = await asyncio.to_thread(_end)
-    background_tasks.add_task(
+    await asyncio.to_thread(
         synthesise_progress,
         messages,
-        FileSlotResolver(settings.sections_dir),
+        FileSlotResolver(settings.sections_dir, user_id),
         llm,
         settings.sections_dir,
         settings.wrap_up_model,
+        user_id,
     )
     summary_data = await asyncio.to_thread(
-        build_session_summary, FileSlotResolver(settings.sections_dir)
+        build_session_summary, FileSlotResolver(settings.sections_dir, user_id)
     )
-    return EndSessionResponse(status="ending", summary=SessionSummarySchema(**summary_data))
+    return EndSessionResponse(status="ended", summary=SessionSummarySchema(**summary_data))
 
 
-@router.get(
+@user_router.post(
+    "/conversations/{conversation_id}/complete-setup",
+    response_model=CompleteSetupResponse,
+)
+async def complete_setup_route(
+    user_id: str,
+    conversation_id: str,
+    service: ConversationService = Depends(get_conversation_service),
+    settings: Settings = Depends(get_settings),
+    llm: LLMPort = Depends(get_llm),
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
+) -> CompleteSetupResponse:
+    """
+    Complete the setup flow: run profile + outline extraction, write section files,
+    and mark the conversation ended.
+
+    SYNCHRONOUS by design — the learner is blocked on this before the first course
+    session can begin, and follow-up prompts require sections/user/<user_id>.md
+    and sections/course/<user_id>.md to exist. Two extraction LLM calls run before
+    the response returns. Returns 409 if the conversation is already ended.
+
+    Ordering matters: extraction + file writes run FIRST, and the conversation is
+    ended LAST. If extraction/writes fail, the conversation stays active and the
+    learner can retry — nothing is left half-finished.
+    """
+    def _load_messages() -> list[dict]:
+        try:
+            return service.get_active_messages(conversation_id)
+        except ValueError as e:
+            if str(e) == "conversation_ended":
+                raise HTTPException(status_code=409, detail="Conversation has already ended")
+            raise HTTPException(status_code=404, detail=str(e))
+
+    messages = await asyncio.to_thread(_load_messages)
+
+    try:
+        await asyncio.to_thread(
+            complete_setup,
+            messages,
+            prompt_repo,
+            llm,
+            settings.sections_dir,
+            user_id,
+        )
+    except SetupCompletionError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Profile + course files are now durably written — safe to end the conversation.
+    def _end() -> None:
+        try:
+            service.end_conversation(conversation_id)
+        except ValueError as e:
+            if str(e) == "conversation_ended":
+                raise HTTPException(status_code=409, detail="Conversation has already ended")
+            raise HTTPException(status_code=404, detail=str(e))
+
+    await asyncio.to_thread(_end)
+
+    return CompleteSetupResponse(status="completed")
+
+
+@user_router.get(
     "/conversations/{conversation_id}/summary",
     response_model=SessionSummarySchema,
 )
 async def get_session_summary(
+    user_id: str,
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
     settings: Settings = Depends(get_settings),
@@ -751,7 +877,7 @@ async def get_session_summary(
     """Return the session summary for an ended conversation."""
     def _check() -> None:
         with uow_factory() as uow:
-            conv = uow.repo.get_conversation(conversation_id)
+            conv = uow.repo.get_conversation(conversation_id, user_id)
             if not conv:
                 raise HTTPException(status_code=404, detail="Conversation not found")
             if not conv["ended_at"]:
@@ -759,10 +885,12 @@ async def get_session_summary(
 
     await asyncio.to_thread(_check)
     summary_data = await asyncio.to_thread(
-        build_session_summary, FileSlotResolver(settings.sections_dir)
+        build_session_summary, FileSlotResolver(settings.sections_dir, user_id)
     )
     return SessionSummarySchema(**summary_data)
 
+
+# ── Prompt admin routes (root, no user prefix) ────────────────────────────────
 
 @router.get("/prompts", response_model=PromptsResponse)
 async def list_prompts(
@@ -815,7 +943,7 @@ async def create_prompt(
 async def render_prompt_preview(
     slug: str,
     conversation_id: Optional[str] = None,
-    service: ConversationService = Depends(get_conversation_service),
+    service: ConversationService = Depends(get_preview_service),
 ) -> PromptRenderResponse:
     """Return the prompt's system_prompt with all template variables resolved.
 

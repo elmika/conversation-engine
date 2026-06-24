@@ -8,14 +8,15 @@ import { useConversationList } from "@/hooks/useConversationList";
 import { ConversationListItem } from "./ConversationListItem";
 
 interface ConversationListProps {
+  userId: string;
   activeConversationId?: string;
   showDelete?: boolean;
 }
 
-export function ConversationList({ activeConversationId, showDelete = false }: ConversationListProps) {
+export function ConversationList({ userId, activeConversationId, showDelete = false }: ConversationListProps) {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
-  const { data, isLoading } = useConversationList(page, PAGE_SIZE);
+  const { data, isLoading } = useConversationList(userId, page, PAGE_SIZE);
 
   if (isLoading) {
     return (
@@ -42,6 +43,7 @@ export function ConversationList({ activeConversationId, showDelete = false }: C
         conversations.map((c) => (
           <ConversationListItem
             key={c.id}
+            userId={userId}
             conversation={c}
             isActive={c.id === activeConversationId}
             showDelete={showDelete}
