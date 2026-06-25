@@ -143,7 +143,11 @@ class ConversationRepo(Protocol):
         ...
 
     def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at, prompt_slug}, or None if not found or not owned by user_id."""
+        """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes}, or None if not found or not owned by user_id."""
+        ...
+
+    def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
+        """Set the per-session length (minutes) for a conversation owned by user_id."""
         ...
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:

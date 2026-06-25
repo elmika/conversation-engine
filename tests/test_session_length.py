@@ -8,6 +8,8 @@ import pytest
 from app.domain.session_length import (
     DEFAULT_SESSION_MINUTES,
     is_time_over,
+    mentions_duration,
+    parse_extracted_minutes,
     parse_session_length_minutes,
 )
 
@@ -57,6 +59,50 @@ class TestParseSessionLength:
 
     def test_custom_default(self):
         assert parse_session_length_minutes(None, default=10) == 10
+
+
+class TestMentionsDuration:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "let's do 30 today",
+            "can we go 45 minutes",
+            "a bit longer please",
+            "make it shorter",
+            "I only have 15 min",
+            "let's wrap up soon",
+            "half an hour works",
+            "more time today",
+            "30",  # bare number must still trip the broad filter
+        ],
+    )
+    def test_true_for_duration_hints(self, text):
+        assert mentions_duration(text) is True
+
+    @pytest.mark.parametrize(
+        "text",
+        ["yes please explain that", "I love Python", "that makes sense", ""],
+    )
+    def test_false_when_no_duration_hint(self, text):
+        assert mentions_duration(text) is False
+
+    def test_false_for_none(self):
+        assert mentions_duration(None) is False
+
+
+class TestParseExtractedMinutes:
+    @pytest.mark.parametrize("raw,expected", [("30", 30), ("60", 60), (" 45 ", 45), ("5", 5), ("180", 180)])
+    def test_valid_integer_in_range(self, raw, expected):
+        assert parse_extracted_minutes(raw) == expected
+
+    @pytest.mark.parametrize("raw", ["NONE", "none", "None", "", "  ", "soon", "thirty"])
+    def test_none_and_unparseable_yield_no_change(self, raw):
+        assert parse_extracted_minutes(raw) is None
+
+    @pytest.mark.parametrize("raw", ["4", "0", "181", "240", "660", "-30"])
+    def test_out_of_range_yields_no_change(self, raw):
+        # e.g. "11 years" worth of minutes is nonsense → keep current value.
+        assert parse_extracted_minutes(raw) is None
 
 
 class TestIsTimeOver:

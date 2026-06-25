@@ -549,6 +549,10 @@ async def append_conversation_turn_stream(
                         "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     }
                     yield _sse_event("done", done_payload)
+
+            # After the reply has streamed (no added latency for the learner),
+            # capture any in-chat session-length change. Best-effort: never raises.
+            await asyncio.to_thread(service.maybe_update_session_length, conv_id)
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:

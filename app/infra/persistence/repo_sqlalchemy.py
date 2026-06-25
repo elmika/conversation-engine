@@ -176,6 +176,12 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             "session_length_minutes": row.session_length_minutes,
         }
 
+    def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
+        """Set the per-session length (minutes) for a conversation owned by user_id."""
+        row = self._session.get(Conversation, conversation_id)
+        if row and row.user_id == user_id:
+            row.session_length_minutes = minutes
+
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""
         row = self._session.get(Conversation, conversation_id)

@@ -11,7 +11,11 @@ from app.application.ports import LLMPort, LLMResult, PromptRepo, SlotResolver, 
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
 from app.domain.lesson_flow import is_lesson_flow, phase_for_turn, resolve_phase_prompt
-from app.domain.session_length import parse_session_length_minutes
+from app.domain.session_length import (
+    mentions_duration,
+    parse_extracted_minutes,
+    parse_session_length_minutes,
+)
 from app.domain.model_registry import validate_model_slug
 from app.domain.prompt_template import render_prompt, resolve_file_sections
 from app.domain.value_objects import ConversationId
@@ -541,6 +545,73 @@ class ConversationService:
             uow.repo.end_conversation(conversation_id, self._user_id)
             uow.commit()
         return messages
+
+    def maybe_update_session_length(self, conversation_id: str) -> None:
+        """Capture an in-chat "adjust session length" request and persist it.
+
+        Runs after a subsequent (core) turn. Best-effort and advisory:
+          1. skip non-lesson conversations (session_length_minutes is None);
+          2. cheap regex pre-filter on the learner's reply — skip if no duration hint;
+          3. cheap-model extraction over only the last tutor message + learner reply;
+          4. validate/clamp — persist only a sane, explicit, changed value.
+        Any failure or ambiguity leaves the stored length unchanged; this never
+        raises, so it can't break the turn it follows.
+        """
+        try:
+            with self._uow_factory() as uow:
+                conv = uow.repo.get_conversation(conversation_id, self._user_id)
+                if not conv or conv.get("session_length_minutes") is None:
+                    return  # not a lesson session — nothing to track
+                current = conv["session_length_minutes"]
+                question, answer = self._last_exchange(
+                    uow.repo.get_messages(conversation_id, self._user_id)
+                )
+            if not mentions_duration(answer):
+                return
+
+            record = self._prompt_repo.get_prompt("session-length-extraction")
+            if record is None:
+                return
+            exchange = [
+                {"role": "assistant", "content": question},
+                {"role": "user", "content": answer},
+            ]
+            result = self._llm.complete(
+                record["system_prompt"], exchange, model=record.get("model")
+            )
+            new_minutes = parse_extracted_minutes(result["text"])
+            if new_minutes is None or new_minutes == current:
+                return
+
+            with self._uow_factory() as uow:
+                uow.repo.update_session_length(conversation_id, self._user_id, new_minutes)
+                uow.commit()
+            logger.info(
+                "Session length for %s adjusted %s → %s min",
+                conversation_id, current, new_minutes,
+            )
+        except Exception:
+            logger.exception("Session-length extraction failed; keeping current value")
+
+    @staticmethod
+    def _last_exchange(messages: list[dict]) -> tuple[str, str]:
+        """Return (last tutor message, last learner reply) from a message list.
+
+        Used to give the session-length extractor just enough context without the
+        whole conversation. Returns empty strings if there is no learner message.
+        """
+        last_user = next(
+            (i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"),
+            None,
+        )
+        if last_user is None:
+            return "", ""
+        answer = messages[last_user]["content"]
+        question = next(
+            (messages[j]["content"] for j in range(last_user - 1, -1, -1) if messages[j]["role"] == "assistant"),
+            "",
+        )
+        return question, answer
 
     def persist_stream_result(
         self,
