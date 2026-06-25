@@ -21,9 +21,8 @@ class TestResolvePhasePrompt:
     def test_core_resolves_to_core_prompt(self):
         assert resolve_phase_prompt("course-session-init", LessonPhase.CORE) == "course-session-core"
 
-    def test_closure_falls_back_to_core_until_built(self):
-        # Closure has no dedicated prompt yet; must reuse CORE, never crash.
-        assert resolve_phase_prompt("course-session-init", LessonPhase.CLOSURE) == "course-session-core"
+    def test_closure_resolves_to_closure_prompt(self):
+        assert resolve_phase_prompt("course-session-init", LessonPhase.CLOSURE) == "course-session-closure"
 
     @pytest.mark.parametrize("phase", list(LessonPhase))
     def test_flat_prompt_resolves_every_phase_to_itself(self, phase):

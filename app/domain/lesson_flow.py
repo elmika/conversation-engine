@@ -36,8 +36,7 @@ _LESSON_FLOWS: dict[str, dict[LessonPhase, str]] = {
     "course-session-init": {
         LessonPhase.INTRO: "course-session-init",
         LessonPhase.CORE: "course-session-core",
-        # CLOSURE: dedicated prompt not built yet — falls back to CORE until the
-        # time-over / objective-guard work lands.
+        LessonPhase.CLOSURE: "course-session-closure",
     },
 }
 

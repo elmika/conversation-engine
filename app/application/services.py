@@ -10,8 +10,14 @@ logger = logging.getLogger(__name__)
 from app.application.ports import LLMPort, LLMResult, PromptRepo, SlotResolver, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
-from app.domain.lesson_flow import is_lesson_flow, phase_for_turn, resolve_phase_prompt
+from app.domain.lesson_flow import (
+    LessonPhase,
+    is_lesson_flow,
+    phase_for_turn,
+    resolve_phase_prompt,
+)
 from app.domain.session_length import (
+    is_time_over,
     mentions_duration,
     parse_extracted_minutes,
     parse_session_length_minutes,
@@ -117,19 +123,32 @@ class ConversationService:
         Returns: (used_prompt_slug, rendered_instructions, resolved_model)
         """
         conv_meta = uow.repo.get_conversation(conversation_id, self._user_id)
-        effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
-        # Subsequent turn on an existing conversation → the CORE phase of the
-        # lesson flow. For flat prompts this is the identity, so setup/admin
-        # conversations are unaffected.
-        if effective_slug:
-            phase = phase_for_turn(is_opening_turn=False)
-            effective_slug = resolve_phase_prompt(effective_slug, phase)
+        flow_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
+        created_at = uow.repo.get_conversation_created_at(conversation_id)
+
+        # Subsequent turn on an existing conversation. For a lesson flow, pick the
+        # phase from code-owned state: CLOSURE once the session's time is up (see
+        # session_length.is_time_over), otherwise CORE. For flat prompts the phase
+        # resolves to the identity, so setup/admin conversations are unaffected.
+        phase = phase_for_turn(is_opening_turn=False)
+        if flow_slug and is_lesson_flow(flow_slug):
+            session_len = (conv_meta or {}).get("session_length_minutes")
+            if session_len and created_at and is_time_over(
+                self._elapsed_minutes(created_at), session_len
+            ):
+                phase = LessonPhase.CLOSURE
+        effective_slug = resolve_phase_prompt(flow_slug, phase) if flow_slug else flow_slug
+
         used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
-
-        created_at = uow.repo.get_conversation_created_at(conversation_id)
         instructions = self._render_instructions(instructions, created_at)
         return used_prompt_slug, instructions, resolved_model
+
+    @staticmethod
+    def _elapsed_minutes(created_at: datetime) -> float:
+        """Minutes elapsed since the conversation (session) started."""
+        start = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - start).total_seconds() / 60.0)
 
     def _guard_not_ended(self, uow, conversation_id: str) -> None:
         """Raise ValueError if the conversation is ended."""
