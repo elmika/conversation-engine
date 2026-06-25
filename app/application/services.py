@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 from app.application.ports import LLMPort, LLMResult, PromptRepo, SlotResolver, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
+from app.domain.lesson_flow import phase_for_turn, resolve_phase_prompt
 from app.domain.model_registry import validate_model_slug
 from app.domain.prompt_template import render_prompt, resolve_file_sections
 from app.domain.value_objects import ConversationId
@@ -112,6 +113,12 @@ class ConversationService:
         """
         conv_meta = uow.repo.get_conversation(conversation_id, self._user_id)
         effective_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
+        # Subsequent turn on an existing conversation → the CORE phase of the
+        # lesson flow. For flat prompts this is the identity, so setup/admin
+        # conversations are unaffected.
+        if effective_slug:
+            phase = phase_for_turn(is_opening_turn=False)
+            effective_slug = resolve_phase_prompt(effective_slug, phase)
         used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
