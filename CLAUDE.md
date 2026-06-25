@@ -71,6 +71,7 @@ make build
 A change to a user-facing flow is **not "done" and never "ready to merge" until the actual flow has been exercised against the running stack** (`make up` + the real path end-to-end), not just unit tests. Passing tests and a clean code review are necessary but **not sufficient** — green tests ≠ working flow.
 
 - After finishing a feature or a review pass on a branch, smoke-test the real path (e.g. for the learning flow: new user → setup → outline → complete-setup → first course session → end-session → next session).
+- For the **course-session lifecycle** (intro → core → closure, session-length capture/time-over), `make smoke` runs a scripted, self-checking live test against the running stack (`scripts/smoke_lesson_lifecycle.py`). It needs `make up` + a real `OPENAI_API_KEY` and makes real LLM calls. Use/extend it as the standing closing gate for that flow.
 - In your summary, state explicitly **what was exercised and what was not** (e.g. "API + BFF verified via curl; browser UI not clicked through").
 - Do not describe a branch as "ready to merge." Report status and leave the merge decision to the user.
 
