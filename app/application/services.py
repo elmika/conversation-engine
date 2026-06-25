@@ -16,6 +16,7 @@ from app.domain.lesson_flow import (
     phase_for_turn,
     resolve_phase_prompt,
 )
+from app.domain.objective_guard import OBJECTIVE_GUARD_MIN_TURNS, parse_objective_result
 from app.domain.session_length import (
     is_time_over,
     mentions_duration,
@@ -133,9 +134,13 @@ class ConversationService:
         phase = phase_for_turn(is_opening_turn=False)
         if flow_slug and is_lesson_flow(flow_slug):
             session_len = (conv_meta or {}).get("session_length_minutes")
-            if session_len and created_at and is_time_over(
-                self._elapsed_minutes(created_at), session_len
-            ):
+            time_over = bool(
+                session_len and created_at
+                and is_time_over(self._elapsed_minutes(created_at), session_len)
+            )
+            # Closure fires on either trigger: the session's time is up, or the
+            # objective guard latched the current module as complete.
+            if time_over or (conv_meta or {}).get("objective_met"):
                 phase = LessonPhase.CLOSURE
         effective_slug = resolve_phase_prompt(flow_slug, phase) if flow_slug else flow_slug
 
@@ -611,6 +616,48 @@ class ConversationService:
             )
         except Exception:
             logger.exception("Session-length extraction failed; keeping current value")
+
+    def maybe_flag_objective_complete(self, conversation_id: str) -> None:
+        """Run the objective guard after a core turn; latch closure if the module is met.
+
+        Best-effort and advisory, mirroring maybe_update_session_length:
+          1. skip non-lesson conversations and ones already latched;
+          2. skip while still early (< OBJECTIVE_GUARD_MIN_TURNS) — no premature close;
+          3. skip if the session's time is already up (closure fires on time anyway);
+          4. cheap-model guard over course + progress + recent transcript → YES/NO;
+          5. on YES, latch objective_met so the next turn resolves to CLOSURE.
+        Never raises — a failure leaves the objective treated as not yet met.
+        """
+        try:
+            with self._uow_factory() as uow:
+                conv = uow.repo.get_conversation(conversation_id, self._user_id)
+                if not conv or conv.get("session_length_minutes") is None or conv.get("objective_met"):
+                    return
+                created_at = uow.repo.get_conversation_created_at(conversation_id)
+                messages = uow.repo.get_messages(conversation_id, self._user_id)
+
+            session_len = conv.get("session_length_minutes")
+            if created_at and session_len and is_time_over(
+                self._elapsed_minutes(created_at), session_len
+            ):
+                return  # already closing on time — don't spend the guard call
+            if sum(1 for m in messages if m["role"] == "user") < OBJECTIVE_GUARD_MIN_TURNS:
+                return
+
+            record = self._prompt_repo.get_prompt("lesson-objective-complete")
+            if record is None:
+                return
+            instructions = self._render_instructions(record["system_prompt"], created_at)
+            result = self._llm.complete(instructions, messages[-12:], model=record.get("model"))
+            if not parse_objective_result(result["text"]):
+                return
+
+            with self._uow_factory() as uow:
+                uow.repo.set_objective_met(conversation_id, self._user_id)
+                uow.commit()
+            logger.info("Objective met for %s — next turn will close", conversation_id)
+        except Exception:
+            logger.exception("Objective guard failed; treating objective as not met")
 
     @staticmethod
     def _last_exchange(messages: list[dict]) -> tuple[str, str]:

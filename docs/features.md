@@ -73,7 +73,7 @@ After each complete response, a small badge shows the time-to-first-byte (TTFB) 
 A course session moves through three moments automatically, driven by the platform (not the model guessing):
 - **Opening** — the AI's first message presents the module list and where to pick up, and confirms the learner's usual session length, offering to adjust it for today.
 - **Teaching** — subsequent turns are a focused coaching exchange.
-- **Wind-down** — once the session's time is up, the AI shifts to wrapping up: it summarises what was covered, names what's next, and invites the learner to **End Session** (it won't start new material).
+- **Wind-down** — the AI shifts to wrapping up once **either** the session's time is up **or** the current module's objective has been met: it summarises what was covered, names what's next, and invites the learner to **End Session** (it won't start new material).
 
 ### 2.11 Adjustable session length
 Each learner has a default session length (from their profile). In the opening message the AI offers to adapt it for the current session; if the learner asks for more or less time in chat ("let's do 30 today"), that length is captured and used to time the wind-down for this session. Unclear or implausible values are ignored, leaving the default in place.

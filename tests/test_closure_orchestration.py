@@ -70,13 +70,15 @@ def _service(uow_factory) -> ConversationService:
     )
 
 
-def _seed_course_session(uow_factory, session_length_minutes) -> None:
+def _seed_course_session(uow_factory, session_length_minutes, objective_met=False) -> None:
     with uow_factory() as uow:
         uow.repo.create_conversation_with_id(
             CID, user_id=TEST_USER, prompt_slug="course-session-init",
             session_length_minutes=session_length_minutes,
         )
         uow.repo.append_message(CID, "assistant", "opening message")
+        if objective_met:
+            uow.repo.set_objective_met(CID, TEST_USER)
         uow.commit()
 
 
@@ -101,3 +103,9 @@ def test_no_session_length_never_closes(uow_factory):
     # session_length None (e.g. legacy/flat) → time-over check skipped → stays CORE.
     _seed_course_session(uow_factory, session_length_minutes=None)
     assert _used_slug_for_next_turn(uow_factory) == "course-session-core"
+
+
+def test_objective_met_closes_even_within_time(uow_factory):
+    # Plenty of time left, but the objective guard has latched completion → CLOSURE.
+    _seed_course_session(uow_factory, session_length_minutes=120, objective_met=True)
+    assert _used_slug_for_next_turn(uow_factory) == "course-session-closure"

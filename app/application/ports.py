@@ -150,6 +150,10 @@ class ConversationRepo(Protocol):
         """Set the per-session length (minutes) for a conversation owned by user_id."""
         ...
 
+    def set_objective_met(self, conversation_id: str, user_id: str) -> None:
+        """Latch the objective-met flag for a conversation owned by user_id."""
+        ...
+
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""
         ...

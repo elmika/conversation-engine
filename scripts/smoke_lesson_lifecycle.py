@@ -18,6 +18,7 @@ What it verifies (each step inspects the SSE `meta.prompt_slug` and the DB):
   3. "do 30 today"        -> length captured == 30                    (3b extraction)
   4. time over (poked)    -> course-session-closure                  (3c orchestration)
   5. "make it 60" + next  -> length == 60, then resumes course-session-core
+  6. objective_met (poked)-> course-session-closure even within time (3d orchestration)
 
 It provisions an isolated smoke user (profile/course/progress section files) and
 deletes the user + conversation on exit, so it never touches real learner data.
@@ -111,6 +112,16 @@ class Smoke:
         finally:
             con.close()
 
+    def set_objective_met_db(self, value: int) -> None:
+        con = self._db()
+        try:
+            con.execute(
+                "UPDATE conversations SET objective_met = ? WHERE id = ?", (value, self.cid)
+            )
+            con.commit()
+        finally:
+            con.close()
+
     # --- lifecycle ---------------------------------------------------------
     def setup_user(self) -> None:
         (self.sections / "user").mkdir(parents=True, exist_ok=True)
@@ -162,12 +173,20 @@ class Smoke:
         slug, _ = self._turn("ok, what next?")
         self.check(slug == "course-session-closure", f"time-over turn uses course-session-closure (got {slug})")
 
-        # 5. extend during wind-down, then resume core
+        # 5. extend during wind-down, then resume core (isolate the TIME dimension)
         self._turn("Actually I have more time — let's make it 60 minutes today.")
         time.sleep(1)
         self.check(self.session_length() == 60, f"extension captured == 60 (got {self.session_length()})")
+        # Clear any objective latch the real guard may have set, so this checks the
+        # time dimension alone (60 min length vs ~40 min elapsed → back to core).
+        self.set_objective_met_db(0)
         slug, _ = self._turn("great, let's keep going then")
         self.check(slug == "course-session-core", f"next turn resumes course-session-core (got {slug})")
+
+        # 6. objective met (poked) -> closure even with time remaining (3d)
+        self.set_objective_met_db(1)
+        slug, _ = self._turn("makes sense — anything else?")
+        self.check(slug == "course-session-closure", f"objective-met turn uses course-session-closure (got {slug})")
 
         return all(ok for ok, _ in self.results)
 

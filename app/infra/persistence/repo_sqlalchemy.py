@@ -174,6 +174,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             "ended_at": row.ended_at.isoformat() if row.ended_at else None,
             "prompt_slug": row.prompt_slug,
             "session_length_minutes": row.session_length_minutes,
+            "objective_met": bool(row.objective_met),
         }
 
     def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
@@ -181,6 +182,12 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         row = self._session.get(Conversation, conversation_id)
         if row and row.user_id == user_id:
             row.session_length_minutes = minutes
+
+    def set_objective_met(self, conversation_id: str, user_id: str) -> None:
+        """Latch the objective-met flag for a conversation owned by user_id."""
+        row = self._session.get(Conversation, conversation_id)
+        if row and row.user_id == user_id:
+            row.objective_met = True
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""

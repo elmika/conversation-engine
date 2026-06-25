@@ -550,9 +550,12 @@ async def append_conversation_turn_stream(
                     }
                     yield _sse_event("done", done_payload)
 
-            # After the reply has streamed (no added latency for the learner),
-            # capture any in-chat session-length change. Best-effort: never raises.
+            # After the reply has streamed (no added latency for the learner), run the
+            # post-turn lesson guards. Both are best-effort and never raise: capture an
+            # in-chat session-length change, and judge whether the module's objective is
+            # met (latching closure for the next turn).
             await asyncio.to_thread(service.maybe_update_session_length, conv_id)
+            await asyncio.to_thread(service.maybe_flag_objective_complete, conv_id)
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
