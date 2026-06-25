@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 from app.application.ports import LLMPort, LLMResult, PromptRepo, SlotResolver, StreamEvent, UnitOfWork
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
-from app.domain.lesson_flow import phase_for_turn, resolve_phase_prompt
+from app.domain.lesson_flow import is_lesson_flow, phase_for_turn, resolve_phase_prompt
+from app.domain.session_length import parse_session_length_minutes
 from app.domain.model_registry import validate_model_slug
 from app.domain.prompt_template import render_prompt, resolve_file_sections
 from app.domain.value_objects import ConversationId
@@ -336,13 +337,27 @@ class ConversationService:
         conv_id = ConversationId.generate()
         cid_str = str(conv_id)
 
+        # Code-owned timing: seed the session length from the learner's profile for
+        # lesson flows. Flat prompts (setup/admin) have no session and store None.
+        session_length = (
+            parse_session_length_minutes(self._slot_resolver.resolve("user"))
+            if is_lesson_flow(used_prompt_slug)
+            else None
+        )
+
         uow_setup = self._uow_factory()
         with uow_setup:
             self._guard_no_active_conversation(uow_setup)
             base_name = name or self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
             resolved_name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.create_conversation_with_id(cid_str, name=resolved_name, user_id=self._user_id, prompt_slug=used_prompt_slug)
+            uow_setup.repo.create_conversation_with_id(
+                cid_str,
+                name=resolved_name,
+                user_id=self._user_id,
+                prompt_slug=used_prompt_slug,
+                session_length_minutes=session_length,
+            )
             uow_setup.commit()
 
         # Hidden trigger — not stored, causes the LLM to produce the opening message

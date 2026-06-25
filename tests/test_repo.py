@@ -35,6 +35,36 @@ def test_repo_get_messages_ordered_by_id() -> None:
         session.close()
 
 
+def test_session_length_minutes_round_trips() -> None:
+    """create_conversation_with_id persists session_length_minutes; get_conversation returns it."""
+    session = _make_session()
+    try:
+        repo = SQLAlchemyConversationRepo(session)
+        repo.create_conversation_with_id(
+            "conv-1", user_id=TEST_USER, prompt_slug="course-session-init", session_length_minutes=30
+        )
+        session.commit()
+        conv = repo.get_conversation("conv-1", TEST_USER)
+        assert conv is not None
+        assert conv["session_length_minutes"] == 30
+    finally:
+        session.close()
+
+
+def test_session_length_minutes_defaults_to_none() -> None:
+    """A conversation created without a session length stores None (e.g. setup/flat prompts)."""
+    session = _make_session()
+    try:
+        repo = SQLAlchemyConversationRepo(session)
+        repo.create_conversation_with_id("conv-2", user_id=TEST_USER, prompt_slug="user-profile-collection")
+        session.commit()
+        conv = repo.get_conversation("conv-2", TEST_USER)
+        assert conv is not None
+        assert conv["session_length_minutes"] is None
+    finally:
+        session.close()
+
+
 def test_get_conversation_created_at_returns_datetime() -> None:
     """get_conversation_created_at returns a datetime for an existing conversation."""
     session = _make_session()

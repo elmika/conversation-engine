@@ -99,8 +99,8 @@ class ConversationRepo(Protocol):
         """Create a new conversation with a generated ID; return its id."""
         ...
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None) -> None:
-        """Create a new conversation with a specific ID, optional name, user_id, and prompt_slug."""
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None, session_length_minutes: Optional[int] = None) -> None:
+        """Create a new conversation with a specific ID, optional name, user_id, prompt_slug, and session length."""
         ...
 
     def record_run(
