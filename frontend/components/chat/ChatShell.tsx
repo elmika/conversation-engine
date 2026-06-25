@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CornerDownLeft, Loader2, LogOut, PanelLeft, Plus, Sparkles, SquarePen, StopCircle } from "lucide-react";
+import { CornerDownLeft, Download, Loader2, LogOut, PanelLeft, Plus, Sparkles, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
@@ -18,6 +18,11 @@ import { useSessionSummary } from "@/hooks/useSessionSummary";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { cn } from "@/lib/utils";
 import { completeSetup, endSession, fetchUserStatus } from "@/lib/api-client";
+import {
+  conversationToMarkdown,
+  conversationFilename,
+  downloadTextFile,
+} from "@/lib/export-conversation";
 import type { Message } from "@/lib/types";
 
 interface ChatShellProps {
@@ -238,6 +243,26 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     );
   };
 
+  // Download the full conversation as a single human- and machine-readable
+  // Markdown file. Includes the session summary when the session has been wrapped.
+  const handleDownload = () => {
+    if (!activeConversationId || localMessages.length === 0) return;
+    const promptSlug = data?.prompt_slug ?? lockedPromptSlug;
+    const markdown = conversationToMarkdown({
+      conversationId: activeConversationId,
+      name: promptSlug,
+      promptSlug,
+      createdAt: localMessages[0]?.created_at ?? null,
+      endedAt: data?.ended_at ?? null,
+      messages: localMessages,
+      summary: isEnded ? sessionSummary ?? null : null,
+    });
+    downloadTextFile(
+      conversationFilename({ conversationId: activeConversationId, name: promptSlug }),
+      markdown,
+    );
+  };
+
   return (
     <div className="flex h-full overflow-hidden bg-background">
       {/* Sidebar */}
@@ -316,6 +341,18 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
                   <LogOut className="h-3.5 w-3.5" />
                 )}
                 {isEndingSession ? "Ending…" : "End Session"}
+              </Button>
+            )}
+            {activeConversationId && localMessages.length > 0 && !isStreaming && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDownload}
+                title="Download this conversation as Markdown"
+                className="gap-1.5 text-xs text-muted-foreground"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download
               </Button>
             )}
             <Button

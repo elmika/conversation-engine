@@ -106,7 +106,10 @@ An **End Session** button (exit icon) in the chat header bar is shown when an ac
 
 Attempting to start a new conversation while one is active returns 409.
 
-### 3.7 Active / ended conversation state
+### 3.7 Download conversation
+A **Download** button (download icon) in the chat header is shown whenever the open conversation has at least one message and the stream is not running. It saves the full conversation client-side as a single Markdown file (`conversation-<course>-<id>-<date>.md`) — no server round-trip. The file is designed to be read by both a human and a machine: a YAML frontmatter block carries metadata (conversation id, course prompt, created/ended/exported timestamps, message count), followed by the transcript with one heading per turn (**Tutor** / **Learner**, with timestamps). If the session has been wrapped, the **session summary** (course, modules covered, where to pick up next time) is appended at the end.
+
+### 3.8 Active / ended conversation state
 Conversations have an `ended_at` timestamp (null when active). In the sidebar and history table:
 - **Active conversations** show a green **Active** badge.
 - Ended conversations show no badge (most conversations are ended).
