@@ -31,7 +31,9 @@ export function MessageList({
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const userScrolledUp = useRef(false);
+  // When false, the user has taken control of the scroll and we stop
+  // auto-following the streamed text until they return to the bottom.
+  const stickToBottom = useRef(true);
   const isStreaming = streamStatus === "connecting" || streamStatus === "streaming";
 
   const isNearBottom = () => {
@@ -40,30 +42,65 @@ export function MessageList({
     return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_THRESHOLD;
   };
 
-  // Detect manual scroll up
+  // Any upward user gesture (wheel, trackpad, touch, keyboard) immediately
+  // hands control to the reader; returning to the bottom re-engages following.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const onScroll = () => {
-      userScrolledUp.current = !isNearBottom();
+
+    const releaseOnUpwardIntent = (deltaY: number) => {
+      if (deltaY < 0) stickToBottom.current = false;
     };
+    const onWheel = (e: WheelEvent) => releaseOnUpwardIntent(e.deltaY);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (["ArrowUp", "PageUp", "Home"].includes(e.key)) {
+        stickToBottom.current = false;
+      }
+    };
+    // Touch: compare successive positions to detect an upward drag.
+    let lastTouchY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      lastTouchY = e.touches[0]?.clientY ?? 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY ?? 0;
+      // Finger moving down drags content down → reveals earlier text (scroll up).
+      if (y > lastTouchY) stickToBottom.current = false;
+      lastTouchY = y;
+    };
+    // Re-engage following the moment the user is back at the bottom.
+    const onScroll = () => {
+      if (isNearBottom()) stickToBottom.current = true;
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("keydown", onKeyDown);
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: true });
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("keydown", onKeyDown);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("scroll", onScroll);
+    };
   }, []);
 
-  // New user message: always scroll to bottom and reset the lock
+  // New user message: always scroll to bottom and re-engage following.
   useEffect(() => {
     const last = messages[messages.length - 1];
     if (last?.role === "user") {
-      userScrolledUp.current = false;
+      stickToBottom.current = true;
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // Streaming chunks: scroll only if the user hasn't scrolled up
+  // Streaming chunks: follow only while sticking to the bottom. Use an instant
+  // jump (not smooth) so the animation never competes with the reader's scroll.
   useEffect(() => {
-    if (!userScrolledUp.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (stickToBottom.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
     }
   }, [partialText]);
 

@@ -42,7 +42,7 @@ Conversation listing, messages, rename, delete, end-session, summary, and setup 
 The core interaction. The user types a message and receives a streaming response from the AI assistant. Responses render as formatted markdown (headings, lists, tables, code blocks).
 
 ### 2.2 Streaming responses
-The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading.
+The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading. The view auto-follows the streamed text, but the reader stays in control: scrolling up at any point (wheel, trackpad, touch, or keyboard) immediately stops the auto-follow so you can read earlier text while the response keeps streaming. Scrolling back to the bottom re-engages auto-follow.
 
 ### 2.3 Stop / cancel streaming
 A **Stop** button replaces the input field while the assistant is responding. Clicking it immediately halts the stream.
