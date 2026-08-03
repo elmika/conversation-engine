@@ -72,6 +72,7 @@ A change to a user-facing flow is **not "done" and never "ready to merge" until 
 
 - After finishing a feature or a review pass on a branch, smoke-test the real path (e.g. for the learning flow: new user → setup → outline → complete-setup → first course session → end-session → next session).
 - For the **course-session lifecycle** (intro → core → closure, session-length capture/time-over), `make smoke` runs a scripted, self-checking live test against the running stack (`scripts/smoke_lesson_lifecycle.py`). It needs `make up` + a real `OPENAI_API_KEY` and makes real LLM calls. Use/extend it as the standing closing gate for that flow.
+- `docs/qa-test-suite.md` is the browser-level counterpart to `make smoke` — numbered UI scripts (exact action → exact expected result) for course setup and the first learning session, runnable identically by a human or an AI agent driving Chrome. Use it as the concrete checklist when this gate calls for exercising the actual UI, and extend it whenever a new user-facing flow needs the same treatment.
 - In your summary, state explicitly **what was exercised and what was not** (e.g. "API + BFF verified via curl; browser UI not clicked through").
 - Do not describe a branch as "ready to merge." Report status and leave the merge decision to the user.
 
@@ -142,6 +143,8 @@ frontend/
 - **shadcn/ui**: Components live in `components/ui/` as source — edit freely, not managed by CLI
 
 **Mutation UX rule:** All user-triggered mutations (create, update, delete, enable, disable, rename…) must wait for the HTTP round-trip before updating the UI. Do **not** use optimistic updates. Instead, disable the triggering control and show a visible loading indicator (spinner or `isPending` prop) for the duration of the request. The UI updates only after the server confirms success. This prevents the confusion of controls that appear to do nothing, or records that disappear after a delay.
+
+**Streaming scroll rule:** When auto-scrolling during token streaming, always use `behavior: "auto"` (instant jump), never `behavior: "smooth"`. Smooth animations restart on every chunk and actively fight user scroll gestures — the animation outruns the `scroll` event, so intent-detection fires too late. Use proactive intent detection (`wheel`/`touchmove`/`keydown`) rather than position-threshold detection, and re-engage following only when the user returns to the bottom.
 
 ## Backend Architecture
 
