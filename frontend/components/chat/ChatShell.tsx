@@ -33,7 +33,7 @@ interface ChatShellProps {
 export function ChatShell({ userId, conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, selectedPromptSlug, selectedModelSlug, enterToSend, toggleEnterToSend } = useChatStore();
-  const { status, partialText, timings, model, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
+  const { status, partialText, timings, model, promptSlug: streamedPromptSlug, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat(userId);
 
   // After the first turn the hook captures the server-assigned ID; use it for
@@ -376,6 +376,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
           partialText={partialText}
           timings={timings}
           model={model}
+          promptSlug={streamedPromptSlug}
           onRewind={activeConversationId && !isStreaming && !isFetching ? handleRewind : undefined}
         />
 
