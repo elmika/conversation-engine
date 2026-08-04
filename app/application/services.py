@@ -17,6 +17,11 @@ from app.domain.lesson_flow import (
     resolve_phase_prompt,
 )
 from app.domain.objective_guard import OBJECTIVE_GUARD_MIN_TURNS, parse_objective_result
+from app.domain.setup_flow import (
+    is_setup_flow,
+    resolve_setup_phase_prompt,
+    setup_phase_for_turn,
+)
 from app.domain.session_length import (
     is_time_over,
     mentions_duration,
@@ -114,6 +119,8 @@ class ConversationService:
         conversation_id: str,
         prompt_slug: Optional[str],
         model_slug: Optional[str],
+        history: Optional[list[dict[str, str]]] = None,
+        pending_messages: Optional[list[dict[str, str]]] = None,
     ) -> tuple[str, str, str]:
         """Resolve the prompt + model for a turn on an EXISTING conversation.
 
@@ -121,18 +128,26 @@ class ConversationService:
         caller's prompt_slug only for legacy rows that pre-date per-conversation
         storage. Renders the instructions anchored to the conversation's start time.
 
+        `history` (messages already persisted) and `pending_messages` (the new
+        turn about to be persisted) are only used by the setup flow's turn-count
+        phase switch — pass both when calling this for an existing conversation;
+        lesson flows ignore them (they key off time-over / objective-guard state).
+
         Returns: (used_prompt_slug, rendered_instructions, resolved_model)
         """
         conv_meta = uow.repo.get_conversation(conversation_id, self._user_id)
         flow_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
         created_at = uow.repo.get_conversation_created_at(conversation_id)
 
-        # Subsequent turn on an existing conversation. For a lesson flow, pick the
-        # phase from code-owned state: CLOSURE once the session's time is up (see
-        # session_length.is_time_over), otherwise CORE. For flat prompts the phase
-        # resolves to the identity, so setup/admin conversations are unaffected.
-        phase = phase_for_turn(is_opening_turn=False)
+        # Subsequent turn on an existing conversation. Pick the phase from
+        # code-owned state, never inferred by the model:
+        #   - lesson flow  → CLOSURE once the session's time is up (see
+        #     session_length.is_time_over) or the objective guard latched, else CORE.
+        #   - setup flow   → OUTLINE once the learner has answered all framing
+        #     questions (a fixed turn count), else FRAMING.
+        #   - flat prompts → identity (setup/admin conversations unaffected).
         if flow_slug and is_lesson_flow(flow_slug):
+            phase = phase_for_turn(is_opening_turn=False)
             session_len = (conv_meta or {}).get("session_length_minutes")
             time_over = bool(
                 session_len and created_at
@@ -142,7 +157,15 @@ class ConversationService:
             # objective guard latched the current module as complete.
             if time_over or (conv_meta or {}).get("objective_met"):
                 phase = LessonPhase.CLOSURE
-        effective_slug = resolve_phase_prompt(flow_slug, phase) if flow_slug else flow_slug
+            effective_slug = resolve_phase_prompt(flow_slug, phase)
+        elif flow_slug and is_setup_flow(flow_slug):
+            total_user_turns = sum(1 for m in (history or []) if m["role"] == "user")
+            total_user_turns += sum(1 for m in (pending_messages or []) if m["role"] == "user")
+            effective_slug = resolve_setup_phase_prompt(
+                flow_slug, setup_phase_for_turn(total_user_turns)
+            )
+        else:
+            effective_slug = flow_slug
 
         used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
@@ -254,7 +277,8 @@ class ConversationService:
             self._guard_not_ended(uow, conversation_id)
 
             used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
-                uow, conversation_id, prompt_slug, model_slug
+                uow, conversation_id, prompt_slug, model_slug,
+                history=history, pending_messages=messages,
             )
 
             # Persist user messages for this turn
@@ -427,7 +451,8 @@ class ConversationService:
             self._guard_not_ended(uow_setup, conversation_id)
 
             used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
-                uow_setup, conversation_id, prompt_slug, model_slug
+                uow_setup, conversation_id, prompt_slug, model_slug,
+                history=history, pending_messages=messages,
             )
 
             for msg in messages:
@@ -482,8 +507,14 @@ class ConversationService:
 
             self._guard_not_ended(uow_setup, conversation_id)
 
+            # `history` here is pre-truncation, so it may overcount user turns for
+            # the setup phase switch if message_id removes some — an accepted
+            # imprecision for this rare edit path (rewind is not part of the setup
+            # UI flow); worst case is one turn's phase misjudged.
             used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
-                uow_setup, conversation_id, prompt_slug, model_slug
+                uow_setup, conversation_id, prompt_slug, model_slug,
+                history=history,
+                pending_messages=[{"role": "user", "content": new_content}],
             )
 
             uow_setup.repo.truncate_from(conversation_id, message_id, self._user_id)
