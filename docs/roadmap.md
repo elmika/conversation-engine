@@ -11,7 +11,14 @@ Full simple learning flow tested live via `make up` + Chrome (new user → setup
 Module 1 intro → core exchange → End Session). Functionally the flow worked end-to-end with no
 errors and good content quality. Two issues surfaced:
 
-### 1. Setup flow pinned to `gpt-5.4-pro` — high cost, high latency (priority: high)
+### 1. Setup flow pinned to `gpt-5.4-pro` — high cost, high latency (priority: high) — ✅ Shipped 2026-08-04
+
+Implemented as designed below: `prompts/user-profile-collection.md` now covers only the 4 framing
+questions on `gpt-4.1`; a new `prompts/course-outline-proposal.md` (still `gpt-5.4-pro`) handles
+just the outline turn. Phase switching is code-owned via `app/domain/setup_flow.py` (turn-count
+based, mirrors `lesson_flow.py`). Live-verified: framing turns now respond in 1.4–3.5s (vs.
+44–140s before); the outline turn still takes ~95-130s on gpt-5.4-pro, which is now isolated to
+just that one call instead of all five setup turns.
 
 `prompts/user-profile-collection.md` (the "Setup — Profile & Goal" onboarding prompt) declares
 `model: gpt-5.4-pro` — the most expensive model in `app/domain/model_registry.py`. Every other
@@ -78,7 +85,7 @@ if applicable) should redirect to the user's existing UUID-scoped route (from `l
 the identity model in `docs/features.md` §1.1) or to a neutral landing page — never trigger
 conversation/session creation as a side effect of a GET navigation.
 
-### 3. No "please be patient" UI for the course-outline compile step (priority: medium)
+### 3. No "please be patient" UI for the course-outline compile step (priority: medium) — ✅ Shipped 2026-08-04
 
 Once item 1 ships (splitting setup into a fast framing-Q&A phase + a deliberately slower,
 higher-quality course-outline-compile phase), that one remaining step will still legitimately
@@ -103,6 +110,27 @@ time, a staged checklist, or similar) rather than a static/looping animation, so
 tell the difference between "still working" and "stuck." Scope this alongside item 1's phase
 split, since that's what makes this step's timing predictable enough to design a loading state
 around.
+
+**Shipped as:** `frontend/components/chat/CourseOutlineLoadingIndicator.tsx` — spinner + "Compiling
+your personalised course… This can take a minute or two." + a live elapsed-seconds counter,
+shown whenever the SSE `meta` event reports `prompt_slug: "course-outline-proposal"`
+(`frontend/components/chat/StreamingMessage.tsx`). `prompt_slug` is threaded through
+`useStreamingChat.ts`'s state machine the same way `model` already was.
+
+**A second, more serious bug surfaced building this:** the new indicator initially never rendered
+at all, because `app/api/routes.py`'s streaming `event_generator()` yielded the `meta` SSE frame
+and then ran a **blocking synchronous `for` loop** over the OpenAI SDK's streaming generator with
+no `await`/`asyncio.to_thread` — monopolizing the asyncio event loop for the entire LLM wait, so
+the already-queued `meta` bytes never actually flushed to the socket until the blocking call
+finally returned. For `gpt-4.1` (first token in ~1-2s) this was invisible; for `gpt-5.4-pro`
+(first token in 95-125s) it meant `meta`, the full response, and `done` all arrived in one burst
+at the very end — confirmed via a raw `curl -N` directly against FastAPI, bypassing the frontend
+entirely. This affected **all four streaming endpoints**, not just the outline turn — any slow
+model on any prompt would have hit the same silent stall. Fixed by bridging the sync generator
+through a background thread (`_iter_in_thread()` in `app/api/routes.py`, using
+`loop.run_in_executor`) so the event loop stays free to flush queued SSE frames while the LLM
+call is in flight. Verified via the same `curl -N` probe: `meta` now arrives within ~1s,
+independent of how long the model takes to produce its first token.
 
 ---
 

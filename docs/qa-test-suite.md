@@ -52,7 +52,7 @@ button presence/state, missing icon, etc.).
 | 1.3 | Reply with a free-text message that includes your name, role, and a stated learning goal (e.g. *"I'm Alex, a backend engineer, I want to learn pandas for data analysis"*) → Enter | Message sends (appears as a right-aligned bubble); a typing indicator appears; assistant reply addresses you **by name** and asks exactly **one** follow-up question, about your **industry**. No re-asking for your name. |
 | 1.4 | Reply describing your industry | Assistant reply acknowledges it and asks **one** question about **why** you want this skill now / your motivation. |
 | 1.5 | Reply describing your motivation | Assistant reply asks **one** question about your usual **session length** (e.g. "15 min / 30 min / an hour"). |
-| 1.6 | Reply with a session length (e.g. "20-30 minutes") | Assistant proposes a **structured course outline**: a numbered list of modules (each with a bold title + one-sentence description), visibly tailored to the stated goal/industry (not generic). Ends with an instruction to click **"Let's start"** to begin. **This is the one step allowed to be slow** — up to ~2 minutes is fine, beyond ~5 minutes is a bug to flag regardless of cause — but the wait must be accompanied by a patience/progress UI element once `docs/roadmap.md` item 3 ships, not a bare typing indicator. 📸 |
+| 1.6 | Reply with a session length (e.g. "20-30 minutes") | While waiting: the dedicated **"Compiling your personalised course…"** indicator appears (spinner + "This can take a minute or two." + a live elapsed-seconds counter, e.g. "37s elapsed") — **not** the generic three-dot indicator. The counter must visibly increment across two checks a few seconds apart. Once content arrives: assistant proposes a **structured course outline**: a numbered list of modules (each with a bold title + one-sentence description), visibly tailored to the stated goal/industry (not generic). Ends with an instruction to click **"Let's start"** to begin. **This is the one step allowed to be slow** — up to ~2 minutes is fine, beyond ~5 minutes is a bug to flag regardless of cause. 📸 |
 | 1.7 | 📸 Inspect the header | A **"Let's start"** button (sparkle icon) is now present in the header, next to the prompt-slug selector. |
 | 1.8 | Click **"Let's start"** | No error toast/banner. Within a few seconds, you are navigated into a **new** conversation, named after the proposed course, marked **Active** in History. The old "Setup — Profile & Goal" conversation remains in History but is **no longer Active**. |
 | 1.9 | 📸 Inspect History sidebar | Exactly **2** conversations exist for this learner: the Setup conversation (inactive) and the new course conversation (active). No duplicates, no orphaned/empty conversations. |
@@ -94,21 +94,20 @@ Two bands, depending on what the turn is doing:
 | Turn type | Target | Fail threshold |
 |---|---|---|
 | Ordinary conversational turn (Test 1 steps 1.2–1.5; all of Test 2) | ≤ 3 seconds | ≥ 5 seconds |
-| Course-outline compile (Test 1 step 1.6, only) | ≤ 2 minutes, **with** the patience/progress UI element from `docs/roadmap.md` item 3 | ≥ 5 minutes |
+| Course-outline compile (Test 1 step 1.6, only) | ≤ 2 minutes, **with** the `CourseOutlineLoadingIndicator` (`docs/roadmap.md` item 3, shipped) | ≥ 5 minutes |
 
 The course-outline compile is the one generation in the whole flow worth trading speed for
 quality (see `docs/roadmap.md` item 1) — a 1–2 minute wait there is acceptable *only* if the
-learner sees a dedicated "this may take a couple of minutes" treatment, not the bare chat typing
-indicator, which reads as frozen well before the 2-minute mark. Every other step failing its
-threshold is a bug to file, not noise to shrug off — 3 seconds is already a noticeably long
-wait for a short conversational reply, and 5+ seconds is a clear regression regardless of model.
+learner sees the dedicated indicator, not the bare chat typing indicator, which reads as frozen
+well before the 2-minute mark. Every other step failing its threshold is a bug to file, not
+noise to shrug off — 3 seconds is already a noticeably long wait for a short conversational
+reply, and 5+ seconds is a clear regression regardless of model.
 
-As of this writing, `user-profile-collection` (Test 1, steps 1.2–1.6) is not yet split by phase
-and runs entirely on `gpt-5.4-pro`, so steps 1.2–1.5 currently take 45–140s each and will
-legitimately **fail** the ordinary-turn threshold until `docs/roadmap.md` item 1 (the
-framing-Q&A/course-outline phase split) ships. That's expected and intentional: this document
-encodes the target behavior, not today's behavior — a failing run on steps 1.2–1.5 right now is
-confirming the roadmap item is still open, not signaling a new regression.
+**Both thresholds are shipped and enforced as of 2026-08-04** (`docs/roadmap.md` items 1 and 3):
+`user-profile-collection` now covers only the 4 framing questions on `gpt-4.1` (steps 1.2–1.5
+respond in 1.4–3.5s), and a separate `course-outline-proposal` prompt (`gpt-5.4-pro`) handles just
+the outline turn, paired with the loading indicator above. A failing run on steps 1.2–1.5 now
+signals a real regression, not an open roadmap item.
 
 ---
 
@@ -119,6 +118,28 @@ confirming the roadmap item is still open, not signaling a new regression.
   the page viewport has been observed to resize between tool calls, which silently misdirects a
   click typed against stale coordinates. Prefer `find` (element ref) over raw coordinates where
   the tool supports it.
+- **Intermittent click/focus failures on the message input (AI-agent-specific):** both raw
+  coordinate clicks and `find`-based ref clicks have been observed to silently fail to focus the
+  textarea on a freshly-navigated page (no error — the click "succeeds" but nothing types), with
+  no clear trigger. The reliable workaround: drive the input directly via JS — set `.value`
+  through the native `HTMLTextAreaElement` setter, dispatch an `input` event, `.focus()`, then
+  dispatch a `keydown` `Enter` event — all in one `javascript_exec` call, avoiding any race
+  between separate tool round-trips:
+  ```js
+  function sendMessage(text) {
+    const ta = document.querySelector('textarea');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(ta, text);
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+  }
+  ```
+- **Tool round-trip latency is not negligible:** each Chrome-tool call in an AI-driven run can take
+  real minutes, not seconds — don't trust an explicit `wait` duration as the true elapsed time
+  since a message was sent. When timing matters (e.g. confirming a loading state is live), read
+  `console` history or re-check backend logs rather than relying on wall-clock assumptions from
+  your own `wait` calls.
 
 ---
 
@@ -127,3 +148,4 @@ confirming the roadmap item is still open, not signaling a new regression.
 | Date | Change |
 |---|---|
 | 2026-08-03 | Initial version, derived from the first live run of both tests. |
+| 2026-08-04 | Setup phase split (roadmap item 1) and course-outline loading indicator (roadmap item 3) shipped and live-verified; latency requirement is now enforced rather than aspirational. Added AI-agent click-reliability and tool-latency notes. |

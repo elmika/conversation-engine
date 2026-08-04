@@ -221,7 +221,7 @@ async def create_conversation_stream(
             total_ms = 0
             model = resolved_model
 
-            for ev in events:
+            async for ev in _iter_in_thread(events):
                 if ev.get("type") == "delta":
                     delta = ev.get("delta", "")
                     if not delta:
@@ -326,7 +326,7 @@ async def init_session_stream(
             total_ms = 0
             model = resolved_model
 
-            for ev in events:
+            async for ev in _iter_in_thread(events):
                 if ev.get("type") == "delta":
                     delta = ev.get("delta", "")
                     if not delta:
@@ -404,6 +404,21 @@ async def create_conversation(
         model=model,
         timings=TimingsSchema(ttfb_ms=ttfb_ms, total_ms=total_ms),
     )
+
+
+async def _iter_in_thread(sync_iter):
+    """Drive a blocking synchronous iterator from a background thread so the event
+    loop stays free to flush already-queued output (e.g. the `meta` SSE frame)
+    while waiting on a slow synchronous call (the OpenAI SDK's streaming client).
+    """
+    it = iter(sync_iter)
+    loop = asyncio.get_event_loop()
+    _DONE = object()
+    while True:
+        item = await loop.run_in_executor(None, next, it, _DONE)
+        if item is _DONE:
+            return
+        yield item
 
 
 def _sse_event(event: str, data: dict[str, Any]) -> str:
@@ -508,7 +523,7 @@ async def append_conversation_turn_stream(
             total_ms = 0
             model = resolved_model
 
-            for ev in events:
+            async for ev in _iter_in_thread(events):
                 if ev.get("type") == "delta":
                     delta = ev.get("delta", "")
                     if not delta:
@@ -620,7 +635,7 @@ async def rewind_conversation_stream(
             total_ms = 0
             model = resolved_model
 
-            for ev in events:
+            async for ev in _iter_in_thread(events):
                 if ev.get("type") == "delta":
                     delta = ev.get("delta", "")
                     if not delta:
