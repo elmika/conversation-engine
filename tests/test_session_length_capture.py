@@ -11,10 +11,10 @@ from sqlalchemy.pool import StaticPool
 
 from app.application.ports import LLMResult
 from app.application.services import ConversationService
-from app.learning.flow_orchestrator import LearningFlowOrchestrator
 from app.infra.persistence.db import Base
 from app.infra.persistence.models import Conversation, Message, Run  # noqa: F401 - register models
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
+from app.learning.flow_orchestrator import LearningFlowOrchestrator
 
 TEST_USER = "test-user"
 CID = "conv-1"
@@ -37,7 +37,14 @@ class RecordingLLM:
 
     def complete(self, instructions, messages, model=None) -> LLMResult:
         self.calls.append((instructions, messages, model))
-        return LLMResult(text=self.text, model=model or "fake", ttfb_ms=0, total_ms=0, input_tokens=0, output_tokens=0)
+        return LLMResult(
+            text=self.text,
+            model=model or "fake",
+            ttfb_ms=0,
+            total_ms=0,
+            input_tokens=0,
+            output_tokens=0,
+        )
 
     def stream(self, *args, **kwargs):  # unused here
         yield from ()
@@ -82,7 +89,9 @@ def _service(uow_factory, llm) -> ConversationService:
 def _seed_conversation(uow_factory, session_length, question, answer) -> None:
     with uow_factory() as uow:
         uow.repo.create_conversation_with_id(
-            CID, user_id=TEST_USER, prompt_slug="course-session-init",
+            CID,
+            user_id=TEST_USER,
+            prompt_slug="course-session-init",
             session_length_minutes=session_length,
         )
         if question is not None:
@@ -98,7 +107,9 @@ def _stored_length(uow_factory) -> int | None:
 
 
 def test_explicit_change_is_extracted_and_persisted(uow_factory):
-    _seed_conversation(uow_factory, 15, "I've got you down for 15 min — work today?", "let's do 30 today")
+    _seed_conversation(
+        uow_factory, 15, "I've got you down for 15 min — work today?", "let's do 30 today"
+    )
     llm = RecordingLLM("30")
     _service(uow_factory, llm).maybe_update_session_length(CID)
     assert _stored_length(uow_factory) == 30

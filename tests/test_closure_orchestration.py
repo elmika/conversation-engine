@@ -12,18 +12,28 @@ from sqlalchemy.pool import StaticPool
 
 from app.application.ports import StreamEvent
 from app.application.services import ConversationService
-from app.learning.flow_orchestrator import LearningFlowOrchestrator
 from app.infra.persistence.db import Base
 from app.infra.persistence.models import Conversation, Message, Run  # noqa: F401 - register models
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
+from app.learning.flow_orchestrator import LearningFlowOrchestrator
 
 TEST_USER = "test-user"
 CID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"  # valid UUID (append_and_stream validates format)
 
 # Prompts without {{section}} tags so rendering needs no section files.
 _PROMPTS = {
-    "course-session-core": {"slug": "course-session-core", "system_prompt": "CORE PROMPT", "model": None, "name": "core"},
-    "course-session-closure": {"slug": "course-session-closure", "system_prompt": "CLOSURE PROMPT", "model": None, "name": "closure"},
+    "course-session-core": {
+        "slug": "course-session-core",
+        "system_prompt": "CORE PROMPT",
+        "model": None,
+        "name": "core",
+    },
+    "course-session-closure": {
+        "slug": "course-session-closure",
+        "system_prompt": "CLOSURE PROMPT",
+        "model": None,
+        "name": "closure",
+    },
 }
 
 
@@ -41,7 +51,10 @@ class FakeLLM:
 
     def complete(self, *args, **kwargs):  # used by maybe_update_session_length; harmless here
         from app.application.ports import LLMResult
-        return LLMResult(text="NONE", model="fake", ttfb_ms=0, total_ms=0, input_tokens=0, output_tokens=0)
+
+        return LLMResult(
+            text="NONE", model="fake", ttfb_ms=0, total_ms=0, input_tokens=0, output_tokens=0
+        )
 
 
 class _NullResolver:
@@ -78,7 +91,9 @@ def _service(uow_factory) -> ConversationService:
 def _seed_course_session(uow_factory, session_length_minutes, objective_met=False) -> None:
     with uow_factory() as uow:
         uow.repo.create_conversation_with_id(
-            CID, user_id=TEST_USER, prompt_slug="course-session-init",
+            CID,
+            user_id=TEST_USER,
+            prompt_slug="course-session-init",
             session_length_minutes=session_length_minutes,
         )
         uow.repo.append_message(CID, "assistant", "opening message")

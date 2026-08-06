@@ -40,6 +40,15 @@ docker run --rm conversation-engine python -m pytest tests/test_chat.py         
 docker run --rm conversation-engine python -m pytest tests/test_chat.py::test_name  # single test
 ```
 
+**Mocking after a refactor:** `unittest.mock.patch("module.function", ...)` binds at call time — it
+patches the name in whichever module's namespace actually calls it, not the module that originally
+imported/defined it. When logic is extracted into a helper (e.g. into `app/domain/` or `app/learning/`)
+and the caller starts going through that helper instead of calling the function directly, existing
+`patch("app.application.services.the_function", ...)` targets silently stop taking effect — repoint
+them at the helper's own module. This surfaced when extracting `render_instructions()`: tests patching
+`app.application.services.render_prompt` broke silently until repointed to
+`app.domain.prompt_template.render_prompt`.
+
 **Frontend tests:**
 ```bash
 make test-frontend                                                                 # all tests
