@@ -67,7 +67,7 @@ while keeping the outline-quality bar exactly where it is today. Re-run the smok
 split to confirm framing-question latency drops to the `gpt-4.1` ballpark while the proposed course
 outline is unchanged in quality from this test's baseline.
 
-### 2. Bare `/history` route silently starts a new course session as a side effect (priority: medium)
+### 2. Bare `/history` route silently starts a new course session as a side effect (priority: medium) — ✅ Shipped 2026-08-06
 
 Navigating directly to `http://localhost:3000/history` (no `/u/{userId}` prefix) does not show a
 history page or 404 — it falls through to root-page logic, which auto-provisions/continues state
@@ -84,6 +84,10 @@ unknowingly advance a learner's course state and burn an LLM call.
 if applicable) should redirect to the user's existing UUID-scoped route (from `localStorage`, per
 the identity model in `docs/features.md` §1.1) or to a neutral landing page — never trigger
 conversation/session creation as a side effect of a GET navigation.
+
+**Fix shipped:** `/history` now redirects straight to `/u/{userId}/history` (resolving the UUID from
+`localStorage` client-side) instead of falling through `/` → `/u/{userId}/chat`. Item 5 below covers
+the second, broader entry point into the same failure mode.
 
 ### 3. No "please be patient" UI for the course-outline compile step (priority: medium) — ✅ Shipped 2026-08-04
 
@@ -134,7 +138,109 @@ independent of how long the model takes to produce its first token.
 
 ---
 
+## From: manual E2E smoke test, 2026-08-06
+
+Ran `docs/qa-test-suite.md` Test 1 (Course Setup) and Test 2 (First Learning Experience) live via
+`make up` + Chrome, on a fresh learner. Both tests passed their core scripted steps — framing Q&A
+latency was 1.4–3.5s per turn (within the ≤3s/≥5s bands), the course-outline compile showed the
+dedicated indicator with a live-incrementing elapsed counter, and lesson content stayed coherent
+and personalized across all four exchange turns. Three issues surfaced beyond the script:
+
+### 4. Session-complete card: unrendered markdown + missing module status markers (priority: medium)
+
+Step 2.6's "Session complete" card (`frontend` — same course-module-list component reused from the
+setup outline and mid-lesson header) has two rendering defects not present in the normal chat
+bubbles:
+
+- **Module titles render literal `**bold**` asterisks** instead of formatted bold text — e.g.
+  `**Pandas for a Backend Engineer** — Build a practical mental model...` shown verbatim, asterisks
+  and all. The same titles render correctly (bold, no asterisks) earlier in the same session, both
+  in the initial outline proposal (step 1.6) and the mid-lesson module list (step 2.1) — so this is
+  specific to whatever component renders the summary card, not the shared markdown renderer used
+  elsewhere.
+- **No ✓ (completed) / → (next up) markers on any module row** — the spec (`qa-test-suite.md`
+  step 2.6) requires the current module checked off and the next one marked up next. The plain
+  numbered list (1–7) carries no such markers. Contrast: the ordinary in-chat module list (seen
+  right after re-entering the course later in this session) does render `✓ 1. ...` and `→ 2. ...`
+  correctly — so the summary card again diverges from the component it's presumably meant to share
+  logic with.
+
+The "Where to pick up next time" note itself was accurate (correctly summarized the last topic
+covered), and both "Start next session"/"Close" buttons worked. Scope the fix to whatever renders
+the Session Complete card specifically — it's drifted from the module-list rendering used
+elsewhere, not a markdown-pipeline-wide regression.
+
+### 5. Bare `/u/{uuid}` route (no `/chat/{id}`) also auto-starts a new session — item 2's bug is broader than scoped (priority: medium) — ✅ Shipped 2026-08-06
+
+Item 2 above (still open, not yet fixed) documented bare `/history` auto-provisioning a new course
+session as a side effect of navigation. Today's run found the same failure mode via a different
+bare path: navigating directly to `/u/{uuid}/` (the user-root, no `/chat/{id}` suffix) 404s as
+expected, but clicking the in-app **"History"** nav link from that 404 page silently auto-created
+and started a **brand-new third course session** (`state: Active`, immediately consuming an LLM
+call for the outline generation) rather than navigating to the history list. Confirmed via the
+History sidebar going from 2 conversations to 3 with no explicit "start next session" action taken.
+
+This means the fix for item 2, whenever implemented, needs to guard the user-root route family
+(`/u/{uuid}` bare, `/u/{uuid}/history`, etc.) generally — not just the single `/history` path
+originally observed — since at least two distinct bare-path entry points now reproduce the same
+class of unwanted session creation.
+
+**Fix shipped:** two root causes, both closed. (1) The global `NavBar`'s "Chat"/"History" links were
+hardcoded to the bare legacy paths (`/chat`, `/history`) instead of the user-scoped ones — now built
+from the UUID already in the URL (or `localStorage` as fallback), so clicking "History" from anywhere,
+including this page, goes straight to `/u/{userId}/history`. (2) Bare `/u/{uuid}` (no suffix) 404'd
+instead of redirecting — added `frontend/app/u/[userId]/page.tsx`, a server-side redirect to
+`/u/{userId}/chat` (the canonical default), closing the 404 gap. Verified live: bare `/history` and
+the "History" nav link both land on `/u/{userId}/history` with the conversation count unchanged.
+
+### 6. "Let's start" button is visible and enabled from the first setup turn, not just after the outline (priority: low)
+
+`qa-test-suite.md` step 1.7 implies the "Let's start" button only appears once the course outline
+is ready (it's listed as a check *after* step 1.6). In this run the button was already visible and
+apparently enabled in the header from the very first "what's your name?" turn, before any outline
+existed — it only disappears/becomes a "Stop" control once the outline generation is actually in
+flight. Low priority since clicking it early was not tested (unclear if it's actually functional
+pre-outline, or just visually present) — worth a quick check of whether it's disabled under the
+hood (e.g. a non-obvious `pointer-events`/opacity state that didn't read as "disabled" in a
+screenshot) or a genuine dead-click waiting to happen.
+
+---
+
 ## Not yet triaged
 
 - Admin panel, conversation download, multi-user/user-switching, and "Start next session"
   continuation were not exercised in the 2026-08-03 smoke test — worth a follow-up pass.
+
+### Evaluate GPT-5.6 Luna as a replacement for `gpt-5.4-pro` on the two pro-tier calls (priority: medium)
+
+Surfaced 2026-08-05 from an OpenAI pricing observation (see
+`Areas/AI-LLM-Explorer/notes/model-pricing.md`): OpenAI cut GPT-5.6 Luna to **$0.20 input /
+$1.20 output** per million tokens — cheaper than `gpt-4.1` ($2.50/$10.00, the flat rate this
+codebase already uses for every framing/lesson-turn call) and dramatically cheaper than
+`gpt-5.4-pro`, the model item 1 above deliberately kept pinned to the two calls judged worth
+paying frontier-tier cost for: `prompts/course-outline-proposal.md` (`model: gpt-5.4-pro`) and
+`wrap_up_model` (session-end synthesis, also `gpt-5.4-pro` per `CLAUDE.md`).
+
+Item 1 already downgraded every non-critical call to `gpt-4.1`/mini/nano; these two are the
+calls that were deliberately *not* downgraded, on quality grounds — so this isn't a "switch the
+cheap stuff" pass, it's a "does the new cheap-and-recent tier now beat the model we kept for
+quality reasons" question.
+
+**Not a blind swap.** `gpt-5.6` isn't in `app/domain/model_registry.py` yet (registry tops out
+at `gpt-5.4`) — adding it is step 1. Step 2, before touching either prompt's `model:` field, is
+a head-to-head on outline quality specifically (same bar the roadmap already set for evaluating
+`gpt-5.4-mini` against `gpt-5.4-pro`, never done): does Luna's course-outline output hold up
+against `gpt-5.4-pro`'s on a fixed set of test profiles? Luna's price positions it as a
+high-volume/low-cost tier (per the OpenAI announcement), which doesn't necessarily mean
+frontier-tier reasoning quality — unverified either way as of this writing.
+
+**Steps:**
+1. Add `gpt-5.6-luna` (naming per OpenAI's actual model-slug convention — verify) to
+   `model_registry.py`.
+2. Run the same outline-quality comparison the roadmap already flagged as owed for
+   `gpt-5.4-mini` — extend it to include Luna.
+3. If quality holds, switch `course-outline-proposal.md`'s `model:` field and `wrap_up_model`
+   in settings; re-run the 2026-08-03 smoke test to confirm latency/cost move the way the
+   pricing suggests.
+4. If quality doesn't hold, at minimum re-evaluate `gpt-5.4-mini` vs Luna vs `gpt-5.4-pro`
+   together — the roadmap item 1 comparison was never done and Luna adds a third option to it.

@@ -10,6 +10,8 @@ Intended as a reference for UX review.
 ### 1.1 UUID-in-URL identity
 There is no sign-in or account. Each learner is identified by an opaque UUID that lives in the URL: every page is served under `/u/{userId}/…`. On first visit the root page mints a UUID, stores it in `localStorage`, and redirects to that learner's personal space. Returning without a URL (or via a legacy link) re-resolves the same UUID from `localStorage`.
 
+Legacy bare routes (`/chat`, `/history`) and a bare `/u/{userId}` (no `/chat` or `/history` suffix) each redirect straight to their user-scoped equivalent — `/history` never passes through `/chat` on the way there, so simply loading or bookmarking one of these URLs can never silently start a new course session as a side effect. The top nav's Chat/History links are always built from the current UUID (from the URL if already present, otherwise from `localStorage`) for the same reason.
+
 ### 1.2 Personal space & bookmarking
 All of a learner's conversations, history, and profile are scoped to their UUID. Bookmarking the `/u/{userId}/…` URL is how a learner returns to their session on the same browser. A conversation is only visible to the UUID that created it — requests under a different UUID are treated as non-existent (not enumerable across users).
 
