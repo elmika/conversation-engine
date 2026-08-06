@@ -32,6 +32,7 @@ from app.api.schemas import (
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.infra.slot_resolver_files import FileSlotResolver
+from app.learning.flow_orchestrator import LearningFlowOrchestrator
 from app.learning.session_summary import build_session_summary
 from app.learning.progress_synthesis import synthesise_progress
 from app.learning.setup_completion import SetupCompletionError, complete_setup
@@ -83,13 +84,15 @@ def get_preview_service(
     No user_id needed — slot resolver uses 'default' so this route works
     standalone without any user context.
     """
+    slot_resolver = FileSlotResolver(settings.sections_dir)
     return ConversationService(
         uow_factory=uow_factory,
         llm=llm,
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
         default_model=settings.default_model,
-        slot_resolver=FileSlotResolver(settings.sections_dir),
+        slot_resolver=slot_resolver,
+        flow=LearningFlowOrchestrator(uow_factory, llm, prompt_repo, slot_resolver),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
     )
@@ -107,13 +110,15 @@ def get_conversation_service(
     user_id is injected from the path param /u/{user_id} when used under
     user_router; defaults to 'default' for root-level routes (e.g. prompt preview).
     """
+    slot_resolver = FileSlotResolver(settings.sections_dir, user_id)
     return ConversationService(
         uow_factory=uow_factory,
         llm=llm,
         prompt_repo=prompt_repo,
         default_prompt_slug=settings.default_prompt_slug,
         default_model=settings.default_model,
-        slot_resolver=FileSlotResolver(settings.sections_dir, user_id),
+        slot_resolver=slot_resolver,
+        flow=LearningFlowOrchestrator(uow_factory, llm, prompt_repo, slot_resolver, user_id),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
         user_id=user_id,

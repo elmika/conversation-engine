@@ -2,34 +2,24 @@
 
 import logging
 from collections.abc import Callable, Iterable
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from app.application.ports import LLMPort, LLMResult, PromptRepo, SlotResolver, StreamEvent, UnitOfWork
+from app.application.ports import (
+    LearningFlowPort,
+    LLMPort,
+    LLMResult,
+    PromptRepo,
+    SlotResolver,
+    StreamEvent,
+    UnitOfWork,
+)
 from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
-from app.domain.lesson_flow import (
-    LessonPhase,
-    is_lesson_flow,
-    phase_for_turn,
-    resolve_phase_prompt,
-)
-from app.domain.objective_guard import OBJECTIVE_GUARD_MIN_TURNS, parse_objective_result
-from app.domain.setup_flow import (
-    is_setup_flow,
-    resolve_setup_phase_prompt,
-    setup_phase_for_turn,
-)
-from app.domain.session_length import (
-    is_time_over,
-    mentions_duration,
-    parse_extracted_minutes,
-    parse_session_length_minutes,
-)
 from app.domain.model_registry import validate_model_slug
-from app.domain.prompt_template import render_prompt, resolve_file_sections
+from app.domain.prompt_template import render_instructions
 from app.domain.value_objects import ConversationId
 
 
@@ -50,6 +40,7 @@ class ConversationService:
         default_prompt_slug: str,
         default_model: str,
         slot_resolver: SlotResolver,
+        flow: LearningFlowPort,
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
         user_id: str = "default",
@@ -60,6 +51,7 @@ class ConversationService:
         self._default_prompt_slug = default_prompt_slug
         self._default_model = default_model
         self._slot_resolver = slot_resolver
+        self._flow = flow
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
         self._user_id = user_id
@@ -76,30 +68,7 @@ class ConversationService:
     def _render_instructions(
         self, instructions: str, conversation_start: Optional[datetime] = None
     ) -> str:
-        # Pass 1: expand {{course}}, {{user}}, {{progress}} via SlotResolver port
-        instructions = resolve_file_sections(instructions, self._slot_resolver.resolve)
-
-        # Pass 2: resolve {{time:*}} tags
-        now = datetime.now(timezone.utc)
-        start = conversation_start or now
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
-
-        total_seconds = max(0, int((now - start).total_seconds()))
-        minutes, secs = divmod(total_seconds, 60)
-        if minutes == 0:
-            time_spent = f"{secs} seconds"
-        elif secs == 0:
-            time_spent = f"{minutes} minutes"
-        else:
-            time_spent = f"{minutes} minutes {secs} seconds"
-
-        context = {
-            "time:current": now.strftime("%Y-%m-%d %H:%M UTC"),
-            "time:conversation-start": start.strftime("%Y-%m-%d %H:%M UTC"),
-            "time:lesson-time-spent": time_spent,
-        }
-        return render_prompt(instructions, context)
+        return render_instructions(instructions, self._slot_resolver.resolve, conversation_start)
 
     def _resolve_model(
         self,
@@ -139,44 +108,16 @@ class ConversationService:
         flow_slug = (conv_meta or {}).get("prompt_slug") or prompt_slug
         created_at = uow.repo.get_conversation_created_at(conversation_id)
 
-        # Subsequent turn on an existing conversation. Pick the phase from
-        # code-owned state, never inferred by the model:
-        #   - lesson flow  → CLOSURE once the session's time is up (see
-        #     session_length.is_time_over) or the objective guard latched, else CORE.
-        #   - setup flow   → OUTLINE once the learner has answered all framing
-        #     questions (a fixed turn count), else FRAMING.
-        #   - flat prompts → identity (setup/admin conversations unaffected).
-        if flow_slug and is_lesson_flow(flow_slug):
-            phase = phase_for_turn(is_opening_turn=False)
-            session_len = (conv_meta or {}).get("session_length_minutes")
-            time_over = bool(
-                session_len and created_at
-                and is_time_over(self._elapsed_minutes(created_at), session_len)
-            )
-            # Closure fires on either trigger: the session's time is up, or the
-            # objective guard latched the current module as complete.
-            if time_over or (conv_meta or {}).get("objective_met"):
-                phase = LessonPhase.CLOSURE
-            effective_slug = resolve_phase_prompt(flow_slug, phase)
-        elif flow_slug and is_setup_flow(flow_slug):
-            total_user_turns = sum(1 for m in (history or []) if m["role"] == "user")
-            total_user_turns += sum(1 for m in (pending_messages or []) if m["role"] == "user")
-            effective_slug = resolve_setup_phase_prompt(
-                flow_slug, setup_phase_for_turn(total_user_turns)
-            )
-        else:
-            effective_slug = flow_slug
+        # Phase selection is Layer 2 (learning-specific) state, never inferred
+        # by the model — see app.learning.flow_orchestrator.LearningFlowOrchestrator.
+        effective_slug = self._flow.resolve_effective_prompt(
+            flow_slug, conv_meta, created_at, history, pending_messages
+        )
 
         used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)
         resolved_model = self._resolve_model(model_slug, prompt_model)
         instructions = self._render_instructions(instructions, created_at)
         return used_prompt_slug, instructions, resolved_model
-
-    @staticmethod
-    def _elapsed_minutes(created_at: datetime) -> float:
-        """Minutes elapsed since the conversation (session) started."""
-        start = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
-        return max(0.0, (datetime.now(timezone.utc) - start).total_seconds() / 60.0)
 
     def _guard_not_ended(self, uow, conversation_id: str) -> None:
         """Raise ValueError if the conversation is ended."""
@@ -391,11 +332,7 @@ class ConversationService:
 
         # Code-owned timing: seed the session length from the learner's profile for
         # lesson flows. Flat prompts (setup/admin) have no session and store None.
-        session_length = (
-            parse_session_length_minutes(self._slot_resolver.resolve("user"))
-            if is_lesson_flow(used_prompt_slug)
-            else None
-        )
+        session_length = self._flow.initial_session_length_minutes(used_prompt_slug)
 
         uow_setup = self._uow_factory()
         with uow_setup:
@@ -602,113 +539,12 @@ class ConversationService:
         return messages
 
     def maybe_update_session_length(self, conversation_id: str) -> None:
-        """Capture an in-chat "adjust session length" request and persist it.
-
-        Runs after a subsequent (core) turn. Best-effort and advisory:
-          1. skip non-lesson conversations (session_length_minutes is None);
-          2. cheap regex pre-filter on the learner's reply — skip if no duration hint;
-          3. cheap-model extraction over only the last tutor message + learner reply;
-          4. validate/clamp — persist only a sane, explicit, changed value.
-        Any failure or ambiguity leaves the stored length unchanged; this never
-        raises, so it can't break the turn it follows.
-        """
-        try:
-            with self._uow_factory() as uow:
-                conv = uow.repo.get_conversation(conversation_id, self._user_id)
-                if not conv or conv.get("session_length_minutes") is None:
-                    return  # not a lesson session — nothing to track
-                current = conv["session_length_minutes"]
-                question, answer = self._last_exchange(
-                    uow.repo.get_messages(conversation_id, self._user_id)
-                )
-            if not mentions_duration(answer):
-                return
-
-            record = self._prompt_repo.get_prompt("session-length-extraction")
-            if record is None:
-                return
-            exchange = [
-                {"role": "assistant", "content": question},
-                {"role": "user", "content": answer},
-            ]
-            result = self._llm.complete(
-                record["system_prompt"], exchange, model=record.get("model")
-            )
-            new_minutes = parse_extracted_minutes(result["text"])
-            if new_minutes is None or new_minutes == current:
-                return
-
-            with self._uow_factory() as uow:
-                uow.repo.update_session_length(conversation_id, self._user_id, new_minutes)
-                uow.commit()
-            logger.info(
-                "Session length for %s adjusted %s → %s min",
-                conversation_id, current, new_minutes,
-            )
-        except Exception:
-            logger.exception("Session-length extraction failed; keeping current value")
+        """Best-effort background hook after a turn; delegates to the Layer 2 flow port."""
+        self._flow.maybe_update_session_length(conversation_id)
 
     def maybe_flag_objective_complete(self, conversation_id: str) -> None:
-        """Run the objective guard after a core turn; latch closure if the module is met.
-
-        Best-effort and advisory, mirroring maybe_update_session_length:
-          1. skip non-lesson conversations and ones already latched;
-          2. skip while still early (< OBJECTIVE_GUARD_MIN_TURNS) — no premature close;
-          3. skip if the session's time is already up (closure fires on time anyway);
-          4. cheap-model guard over course + progress + recent transcript → YES/NO;
-          5. on YES, latch objective_met so the next turn resolves to CLOSURE.
-        Never raises — a failure leaves the objective treated as not yet met.
-        """
-        try:
-            with self._uow_factory() as uow:
-                conv = uow.repo.get_conversation(conversation_id, self._user_id)
-                if not conv or conv.get("session_length_minutes") is None or conv.get("objective_met"):
-                    return
-                created_at = uow.repo.get_conversation_created_at(conversation_id)
-                messages = uow.repo.get_messages(conversation_id, self._user_id)
-
-            session_len = conv.get("session_length_minutes")
-            if created_at and session_len and is_time_over(
-                self._elapsed_minutes(created_at), session_len
-            ):
-                return  # already closing on time — don't spend the guard call
-            if sum(1 for m in messages if m["role"] == "user") < OBJECTIVE_GUARD_MIN_TURNS:
-                return
-
-            record = self._prompt_repo.get_prompt("lesson-objective-complete")
-            if record is None:
-                return
-            instructions = self._render_instructions(record["system_prompt"], created_at)
-            result = self._llm.complete(instructions, messages[-12:], model=record.get("model"))
-            if not parse_objective_result(result["text"]):
-                return
-
-            with self._uow_factory() as uow:
-                uow.repo.set_objective_met(conversation_id, self._user_id)
-                uow.commit()
-            logger.info("Objective met for %s — next turn will close", conversation_id)
-        except Exception:
-            logger.exception("Objective guard failed; treating objective as not met")
-
-    @staticmethod
-    def _last_exchange(messages: list[dict]) -> tuple[str, str]:
-        """Return (last tutor message, last learner reply) from a message list.
-
-        Used to give the session-length extractor just enough context without the
-        whole conversation. Returns empty strings if there is no learner message.
-        """
-        last_user = next(
-            (i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"),
-            None,
-        )
-        if last_user is None:
-            return "", ""
-        answer = messages[last_user]["content"]
-        question = next(
-            (messages[j]["content"] for j in range(last_user - 1, -1, -1) if messages[j]["role"] == "assistant"),
-            "",
-        )
-        return question, answer
+        """Best-effort background hook after a turn; delegates to the Layer 2 flow port."""
+        self._flow.maybe_flag_objective_complete(conversation_id)
 
     def persist_stream_result(
         self,

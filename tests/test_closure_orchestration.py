@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.application.ports import StreamEvent
 from app.application.services import ConversationService
+from app.learning.flow_orchestrator import LearningFlowOrchestrator
 from app.infra.persistence.db import Base
 from app.infra.persistence.models import Conversation, Message, Run  # noqa: F401 - register models
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -59,13 +60,17 @@ def uow_factory():
 
 
 def _service(uow_factory) -> ConversationService:
+    llm = FakeLLM()
+    prompt_repo = FakePromptRepo()
+    slot_resolver = _NullResolver()
     return ConversationService(
         uow_factory=uow_factory,
-        llm=FakeLLM(),
-        prompt_repo=FakePromptRepo(),
+        llm=llm,
+        prompt_repo=prompt_repo,
         default_prompt_slug="course-session-init",
         default_model="gpt-4.1",
-        slot_resolver=_NullResolver(),
+        slot_resolver=slot_resolver,
+        flow=LearningFlowOrchestrator(uow_factory, llm, prompt_repo, slot_resolver, TEST_USER),
         user_id=TEST_USER,
     )
 

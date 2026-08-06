@@ -5,7 +5,7 @@ No LLM, no DB — fully deterministic, runs in CI on every commit.
 
 import pytest
 
-from app.domain.setup_flow import (
+from app.learning.setup_flow import (
     FRAMING_TURNS,
     SetupPhase,
     is_setup_flow,

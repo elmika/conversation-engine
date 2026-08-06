@@ -154,21 +154,29 @@ The app uses hexagonal (ports & adapters) architecture with four layers:
 app/
 ├── main.py            # Entrypoint: wires infra, injects into app.state via lifespan
 ├── settings.py        # Pydantic-settings; reads .env
-├── api/               # HTTP layer (FastAPI)
+├── api/               # HTTP layer (FastAPI) — Layer API
 │   ├── routes.py      # Thin routes: validate input, call service, format response/SSE
 │   ├── schemas.py     # Request/response Pydantic models
 │   └── middleware.py  # Adds request_id, logs endpoint + latency
 ├── application/       # Business logic (no infra imports)
-│   ├── ports.py       # Interfaces: LLMPort, ConversationRepo, UnitOfWork (Protocols)
-│   ├── use_cases.py   # Pure functions: chat(), stream_chat()
-│   └── services.py    # ConversationService: orchestrates history + LLM + persistence
-├── domain/            # Core domain
-│   ├── prompt_registry.py  # PROMPTS dict keyed by slug; get_prompt(), validate_prompt_slug()
+│   ├── ports.py       # Interfaces: LLMPort, ConversationRepo, UnitOfWork, LearningFlowPort (Protocols) — Layer 1a
+│   ├── use_cases.py   # Pure functions: chat(), stream_chat() — Layer 1a
+│   └── services.py    # ConversationService: orchestrates history + LLM + persistence — Layer 1b
+├── domain/            # Core, generic domain — Layer 1a (no learning-specific vocabulary)
+│   ├── prompt_template.py  # {{tag}} rendering: file sections + {{time:*}} — render_instructions()
+│   ├── model_registry.py   # Static registry of supported OpenAI models
 │   ├── history.py     # trim_history(): caps context by turns/tokens before LLM calls
 │   ├── entities.py    # Domain entities
 │   └── value_objects.py    # ConversationId, PromptSlug
-└── infra/             # Concrete adapters
+├── learning/           # Learning-platform logic — Layer 2 (see "Layer model" below)
+│   ├── flow_orchestrator.py  # LearningFlowOrchestrator: the LearningFlowPort adapter
+│   ├── setup_flow.py / lesson_flow.py   # phase → prompt-slug mapping (pure)
+│   ├── objective_guard.py / session_length.py  # guard parsing, timing (pure)
+│   ├── setup_completion.py   # "Let's start" → writes sections/{user,course}/<id>.md
+│   ├── session_summary.py / progress_synthesis.py  # end-session summary + progress write
+└── infra/             # Concrete adapters — Layer 1b
     ├── llm_openai.py  # OpenAILLMAdapter: wraps Responses API, handles retries/timeouts
+    ├── slot_resolver_files.py  # FileSlotResolver: default SlotResolver, no Layer 2 knowledge
     ├── logging.py     # Structured JSON logging setup
     └── persistence/   # SQLite via sync SQLAlchemy
         ├── db.py      # Engine creation (StaticPool for tests)
@@ -176,11 +184,39 @@ app/
         └── repo_sqlalchemy.py  # ConversationRepo + UnitOfWork implementations
 ```
 
+### Layer model
+
+Three tiers, by product scale — full business-context version in the (gitignored, private)
+`.notes/product-design.md`; this is the version every session and contributor sees regardless:
+
+| Layer | What it is | Infra | Code |
+|---|---|---|---|
+| **L1** | Generic chat engine — reusable for any conversational product | FastAPI + LLM adapter | `app/api/`, `app/application/`, `app/domain/`, `app/infra/` |
+| **L2** | Learning platform — lessons, setup, courses | Markdown section files | `app/learning/` |
+| **L3** | School (not built) — teachers, curricula, cohorts | DB, multi-tenant | — |
+
+L1 is split further, by **I/O purity, not genericity** — both halves are still generic, neither
+knows what a "lesson" is:
+- **L1a** — pure, no I/O: `app/domain/`, `app/application/ports.py`, `app/application/use_cases.py`.
+- **L1b** — touches infra (DB, LLM calls) but is still generic: `app/application/services.py`, `app/infra/`.
+
+**The rule:** a lower layer never imports from a higher one (L1a ⊂ L1b ⊂ L2 ⊂ API). Enforced by
+`tests/test_architecture.py` (static import-graph check) + `make check-layers`, which also runs
+automatically via a `PostToolUse` hook on every edit under `app/`.
+
+**How L1b reaches L2 without importing it:** through a port, same pattern as `LLMPort`/`ConversationRepo`.
+`LearningFlowPort` (`app/application/ports.py`, L1a) declares the seam; `LearningFlowOrchestrator`
+(`app/learning/flow_orchestrator.py`, L2) implements it; `routes.py` wires the concrete adapter into
+`ConversationService`'s constructor. `NullLearningFlow` (`ports.py`) is the trivial default — every
+conversation is treated as a flat, phase-less prompt — proving `ConversationService` can run with
+zero Layer 2 knowledge bound, the same guarantee `FileSlotResolver` gives `SlotResolver`. A future
+L3 concept would follow this exact shape: a new port in `ports.py`, a concrete adapter above L2.
+
 ### Key design decisions
 
-**Dependency injection via `app.state`:** `main.py` is the single composition root. It creates `Settings`, `OpenAILLMAdapter`, and a `uow_factory`, then stores them on `app.state`. Routes read from `app.state` — nothing is constructed in routes or use cases.
+**Dependency injection via `app.state` + FastAPI `Depends`:** `main.py`'s `lifespan()` is the composition root for process-lifetime infra — it creates `Settings` and `OpenAILLMAdapter`, storing both on `app.state`. Per-request dependencies (`uow_factory`, `PromptRepo`, `ConversationService`, `LearningFlowOrchestrator`) are built in `api/routes.py` via `Depends(...)` provider functions (`get_uow_factory`, `get_conversation_service`, etc.), since they need a request-scoped DB session. Nothing is constructed inside a use case.
 
-**Ports (Protocols):** `LLMPort`, `ConversationRepo`, and `UnitOfWork` in `ports.py` are Python `Protocol` classes. The service layer depends only on these; the test suite injects fakes/mocks.
+**Ports (Protocols):** `LLMPort`, `ConversationRepo`, `UnitOfWork`, `SlotResolver`, and `LearningFlowPort` in `ports.py` are Python `Protocol` classes. The service layer depends only on these; the test suite injects fakes/mocks.
 
 **ConversationService** (`application/services.py`) is the main orchestrator. It owns the transaction logic: for non-streaming, everything (persist user msg → call LLM → persist assistant msg + run) commits atomically. For streaming, setup commits immediately; the route calls `service.persist_stream_result()` after consuming the stream.
 
@@ -192,7 +228,7 @@ app/
 
 **SSE streaming shape:** Three event types — `meta` (conversation_id, model, slug), `chunk` (delta text), `done` (full message + timings, or `error` field on failure). Streaming routes always emit a terminal `done` event so clients never hang.
 
-**Prompt registry:** Prompts live in `domain/prompt_registry.py` as a dict. To add a new persona, add an entry to `PROMPTS` with a slug key and a `system_prompt`. The `default_prompt_slug` setting controls the fallback.
+**Prompts:** stored in SQLite, seeded from `prompts/*.md` on startup (see "Prompt system" above) — there is no in-code prompt dict. The `default_prompt_slug` setting controls the fallback when a conversation has no prompt bound.
 
 ### Settings (key knobs)
 | Setting | Default | Purpose |

@@ -5,7 +5,7 @@ No LLM, no DB — fully deterministic, runs in CI on every commit.
 
 import pytest
 
-from app.domain.lesson_flow import (
+from app.learning.lesson_flow import (
     LessonPhase,
     is_lesson_flow,
     phase_for_turn,
