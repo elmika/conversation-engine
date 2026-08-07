@@ -31,7 +31,7 @@ During a setup conversation, once the outline has been proposed, a **Let's start
 2. Marks the setup conversation as ended.
 3. Immediately opens the first real course session (AI-initiated).
 
-Extraction and file writes happen **before** the conversation is ended, so if extraction fails the setup conversation stays active and the learner can retry — nothing is left half-finished. While the request is in flight the button shows a spinner and is disabled.
+Extraction and file writes happen **before** the conversation is ended, so if extraction fails the setup conversation stays active and the learner can retry — nothing is left half-finished. While the request is in flight the button shows a spinner and is disabled. The button is hidden for the entire framing Q&A (the 4 opening questions) and appears only once the outline exists; the backend independently rejects a complete-setup call made before then (400), so a request racing ahead of the UI can't silently extract a course/profile from a partial transcript.
 
 ### 1.6 Per-user isolation
 Conversation listing, messages, rename, delete, end-session, summary, and setup are all scoped to the learner's UUID. Reading or modifying another learner's conversation returns *not found* (404) or is a silent no-op (idempotent 204 on delete), so resources are never enumerable across learners.
@@ -106,7 +106,7 @@ An **End Session** button (exit icon) in the chat header bar is shown when an ac
 1. Sends `POST /u/{userId}/conversations/{id}/end-session` to the backend.
 2. While the request is in flight, the button shows a spinner and is disabled.
 3. The backend marks the conversation ended immediately and returns; progress synthesis (an LLM wrap-up that updates the learner's `sections/progress/{userId}.md` snapshot) runs as a background task so the learner is never blocked.
-4. A **session summary card** replaces the input, showing the course name, modules covered, and the suggested next step, with a **Start new session** action. The card can be dismissed to a compact "Session ended" banner (with a **View summary** link to reopen it).
+4. A **session summary card** replaces the input, showing the course name, modules covered, and the suggested next step, with a **Start new session** action. The card can be dismissed to a compact "Session ended" banner (with a **View summary** link to reopen it). Module titles render as formatted Markdown (matching the rest of the chat), and each module is prefixed with a status marker — ✓ for done, → for the module in progress, a plain number for upcoming — derived from the learner's progress record, matching the markers already used in the in-chat module list.
 
 Attempting to start a new conversation while one is active returns 409.
 
@@ -223,6 +223,7 @@ A static registry of 14 supported OpenAI models is served via `GET /models`. Eac
 - **GPT-5.4 pro** (`gpt-5.4-pro`) — Version of GPT-5.4 that produces smarter and more precise responses
 - **GPT-5.4 mini** (`gpt-5.4-mini`) — Our strongest mini model yet for coding, computer use, and subagents
 - **GPT-5.4 nano** (`gpt-5.4-nano`) — Our cheapest GPT-5.4-class model for simple high-volume tasks
+- **GPT-5.6 Luna** (`gpt-5.6-luna`) — High-volume/low-cost GPT-5.6 tier; used by `course-outline-proposal` and `wrap_up_model` as of 2026-08-07 (`docs/architecture-decisions.md` §5)
 
 ### 7.2 Model selector UI
 A **dropdown** in the chat header (next to the assistant selector) lets the user pick a model for their messages. The first option is **Default (auto)**, which defers to the prompt's preferred model or the global default (`gpt-4.1`). Model descriptions are shown as tooltips on each option.

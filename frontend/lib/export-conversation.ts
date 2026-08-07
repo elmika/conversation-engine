@@ -64,7 +64,13 @@ export function conversationToMarkdown(
     const summaryLines = ["## Session summary"];
     if (s.course_name) summaryLines.push(`**Course:** ${s.course_name}`);
     if (s.modules && s.modules.length > 0) {
-      summaryLines.push("**Modules covered:**", ...s.modules.map((mod) => `- ${mod}`));
+      summaryLines.push(
+        "**Modules covered:**",
+        ...s.modules.map((mod) => {
+          const marker = mod.status === "done" ? "✓ " : mod.status === "current" ? "→ " : "";
+          return `- ${marker}${mod.title}`;
+        }),
+      );
     }
     if (s.next_step) summaryLines.push(`**Where to pick up next time:** ${s.next_step}`);
     sections.push(summaryLines.join("\n"));

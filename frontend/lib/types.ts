@@ -131,9 +131,14 @@ export interface SSEErrorPayload {
   conversation_id?: string; // present on 409 active-conversation errors
 }
 
+export interface SessionSummaryModule {
+  title: string;
+  status: "done" | "current" | "upcoming" | null;
+}
+
 export interface SessionSummary {
   course_name: string | null;
-  modules: string[];
+  modules: SessionSummaryModule[];
   next_step: string | null;
 }
 

@@ -37,10 +37,10 @@ def mock_llm():
         LLMResult(text="and your industry?", model="gpt-4.1", ttfb_ms=10, total_ms=50),
         LLMResult(text="what's your motivation?", model="gpt-4.1", ttfb_ms=10, total_ms=50),
         LLMResult(
-            text="here's your course outline...", model="gpt-5.4-pro", ttfb_ms=10, total_ms=50
+            text="here's your course outline...", model="gpt-5.6-luna", ttfb_ms=10, total_ms=50
         ),
         LLMResult(
-            text="sure, here's the revised outline...", model="gpt-5.4-pro", ttfb_ms=10, total_ms=50
+            text="sure, here's the revised outline...", model="gpt-5.6-luna", ttfb_ms=10, total_ms=50
         ),
     ]
     return mock

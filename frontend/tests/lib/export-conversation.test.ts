@@ -45,7 +45,10 @@ describe("conversationToMarkdown", () => {
   it("appends the session summary when the session was wrapped", () => {
     const summary: SessionSummary = {
       course_name: "TypeScript Mentor",
-      modules: ["1. Basics ✓", "2. Generics →"],
+      modules: [
+        { title: "Basics", status: "done" },
+        { title: "Generics", status: "current" },
+      ],
       next_step: "Practice generic constraints.",
     };
     const md = conversationToMarkdown({
@@ -56,7 +59,8 @@ describe("conversationToMarkdown", () => {
     });
     expect(md).toContain("## Session summary");
     expect(md).toContain("**Course:** TypeScript Mentor");
-    expect(md).toContain("- 1. Basics ✓");
+    expect(md).toContain("- ✓ Basics");
+    expect(md).toContain("- → Generics");
     expect(md).toContain("**Where to pick up next time:** Practice generic constraints.");
   });
 

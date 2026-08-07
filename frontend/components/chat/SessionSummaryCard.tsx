@@ -35,10 +35,14 @@ export function SessionSummaryCard({ summary, onStartNextSession, onClose }: Ses
             Course modules
           </p>
           <ol className="space-y-0.5">
-            {summary.modules.map((name, i) => (
+            {summary.modules.map((mod, i) => (
               <li key={i} className="text-sm text-muted-foreground flex items-baseline gap-2">
-                <span className="w-4 text-right shrink-0 font-mono text-xs">{i + 1}.</span>
-                <span>{name}</span>
+                <span className="w-8 text-right shrink-0 font-mono text-xs">
+                  {mod.status === "done" ? "✓" : mod.status === "current" ? "→" : ""} {i + 1}.
+                </span>
+                <span className="prose prose-sm dark:prose-invert max-w-none [&_p]:m-0">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{mod.title}</ReactMarkdown>
+                </span>
               </li>
             ))}
           </ol>

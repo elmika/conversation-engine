@@ -504,7 +504,7 @@
                 }
               ],
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"status\": \"ending\",\n  \"summary\": {\n    \"course_name\": \"Intro to TypeScript\",\n    \"modules\": [\"Types\", \"Interfaces\"],\n    \"next_step\": \"Generics\"\n  }\n}"
+              "body": "{\n  \"status\": \"ending\",\n  \"summary\": {\n    \"course_name\": \"Intro to TypeScript\",\n    \"modules\": [\n      {\"title\": \"Types\", \"status\": \"done\"},\n      {\"title\": \"Interfaces\", \"status\": \"current\"}\n    ],\n    \"next_step\": \"Generics\"\n  }\n}"
             },
             {
               "name": "409 Conflict \u2014 already ended",
@@ -722,7 +722,7 @@
                 }
               ],
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"course_name\": \"Intro to TypeScript\",\n  \"modules\": [\"Types\", \"Interfaces\"],\n  \"next_step\": \"Generics\"\n}"
+              "body": "{\n  \"course_name\": \"Intro to TypeScript\",\n  \"modules\": [\n    {\"title\": \"Types\", \"status\": \"done\"},\n    {\"title\": \"Interfaces\", \"status\": \"current\"}\n  ],\n  \"next_step\": \"Generics\"\n}"
             },
             {
               "name": "409 Conflict \u2014 not ended",
@@ -756,7 +756,7 @@
                 "complete-setup"
               ]
             },
-            "description": "Completes the setup flow: runs profile + outline extraction, writes the user and course section files, then ends the conversation. Synchronous. Returns 409 if already ended; 500 if extraction/writes fail (conversation stays active)."
+            "description": "Completes the setup flow: runs profile + outline extraction, writes the user and course section files, then ends the conversation. Synchronous. Returns 400 if the framing Q&A isn't finished yet (fewer than 4 user turns \u2014 no outline exists to extract); 409 if already ended; 500 if extraction/writes fail (conversation stays active)."
           },
           "response": [
             {
@@ -771,6 +771,19 @@
               ],
               "_postman_previewlanguage": "json",
               "body": "{\n  \"status\": \"completed\"\n}"
+            },
+            {
+              "name": "400 Bad Request \u2014 framing not finished",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": \"Setup isn't ready to complete yet \u2014 the framing questions aren't finished (2/4 answered).\"\n}"
             },
             {
               "name": "409 Conflict \u2014 already ended",

@@ -94,20 +94,23 @@ Two bands, depending on what the turn is doing:
 | Turn type | Target | Fail threshold |
 |---|---|---|
 | Ordinary conversational turn (Test 1 steps 1.2–1.5; all of Test 2) | ≤ 3 seconds | ≥ 5 seconds |
-| Course-outline compile (Test 1 step 1.6, only) | ≤ 2 minutes, **with** the `CourseOutlineLoadingIndicator` (`docs/roadmap.md` item 3, shipped) | ≥ 5 minutes |
+| Course-outline compile (Test 1 step 1.6, only) | ≤ 10 seconds, still shown via the `CourseOutlineLoadingIndicator` (`docs/roadmap.md` item 3, shipped) | ≥ 30 seconds |
 
-The course-outline compile is the one generation in the whole flow worth trading speed for
-quality (see `docs/roadmap.md` item 1) — a 1–2 minute wait there is acceptable *only* if the
-learner sees the dedicated indicator, not the bare chat typing indicator, which reads as frozen
-well before the 2-minute mark. Every other step failing its threshold is a bug to file, not
-noise to shrug off — 3 seconds is already a noticeably long wait for a short conversational
-reply, and 5+ seconds is a clear regression regardless of model.
+The course-outline compile used to be the one generation in the whole flow worth trading speed
+for quality (see `docs/roadmap.md` item 1) — while it ran on `gpt-5.4-pro` a 1–2 minute wait was
+acceptable *only* if the learner saw the dedicated indicator, not the bare chat typing indicator.
+Since the `gpt-5.6-luna` switch (`docs/architecture-decisions.md` §5) the outline turn normally
+completes in 4–7 seconds, so it's now much closer to an ordinary turn's budget — the indicator
+still fires (it's driven by prompt slug, not a timer), but a run regularly landing near the old
+2-minute band would itself be the regression to file. Every other step failing its threshold is a
+bug to file, not noise to shrug off — 3 seconds is already a noticeably long wait for a short
+conversational reply, and 5+ seconds is a clear regression regardless of model.
 
 **Both thresholds are shipped and enforced as of 2026-08-04** (`docs/roadmap.md` items 1 and 3):
-`user-profile-collection` now covers only the 4 framing questions on `gpt-4.1` (steps 1.2–1.5
-respond in 1.4–3.5s), and a separate `course-outline-proposal` prompt (`gpt-5.4-pro`) handles just
-the outline turn, paired with the loading indicator above. A failing run on steps 1.2–1.5 now
-signals a real regression, not an open roadmap item.
+`user-profile-collection` covers only the 4 framing questions on `gpt-4.1` (steps 1.2–1.5 respond
+in 1.4–3.5s), and a separate `course-outline-proposal` prompt (`gpt-5.6-luna` as of 2026-08-07)
+handles just the outline turn, paired with the loading indicator above. A failing run on steps
+1.2–1.5 now signals a real regression, not an open roadmap item.
 
 ---
 

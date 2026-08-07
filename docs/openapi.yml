@@ -447,7 +447,11 @@ paths:
                 status: "ending"
                 summary:
                   course_name: "Intro to TypeScript"
-                  modules: ["Types", "Interfaces"]
+                  modules:
+                    - title: "Types"
+                      status: "done"
+                    - title: "Interfaces"
+                      status: "current"
                   next_step: "Generics"
         "404":
           $ref: "#/components/responses/NotFound"
@@ -474,7 +478,9 @@ paths:
         session can begin. Ordering is recoverable: extraction + file writes run FIRST
         and the conversation is ended LAST, so if extraction/writes fail (500) the
         conversation stays active and the learner can retry. Returns 409 if the
-        conversation is already ended.
+        conversation is already ended, or 400 if the framing Q&A isn't finished yet
+        (fewer than 4 user turns) — calling this before the outline phase would run
+        extraction against a partial transcript.
       tags: [conversations]
       parameters:
         - $ref: "#/components/parameters/userId"
@@ -488,6 +494,14 @@ paths:
                 $ref: "#/components/schemas/CompleteSetupResponse"
               example:
                 status: "completed"
+        "400":
+          description: Framing Q&A isn't finished yet — no course outline exists to extract
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: "Setup isn't ready to complete yet — the framing questions aren't finished (2/4 answered)."
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -564,7 +578,11 @@ paths:
                 $ref: "#/components/schemas/SessionSummary"
               example:
                 course_name: "Intro to TypeScript"
-                modules: ["Types", "Interfaces"]
+                modules:
+                  - title: "Types"
+                    status: "done"
+                  - title: "Interfaces"
+                    status: "current"
                 next_step: "Generics"
         "404":
           $ref: "#/components/responses/NotFound"
@@ -1044,12 +1062,27 @@ components:
         modules:
           type: array
           items:
-            type: string
-          description: Module/topic names covered or planned
+            $ref: "#/components/schemas/SessionSummaryModule"
+          description: Course modules, in order, with completion status
         next_step:
           type: string
           nullable: true
           description: Suggested next step for the learner
+
+    SessionSummaryModule:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          description: Module title
+        status:
+          type: string
+          enum: [done, current, upcoming]
+          nullable: true
+          description: >
+            Derived from the Progress section; null when the Progress section
+            names no module (e.g. a brand-new course with no session yet)
 
     EndSessionResponse:
       type: object

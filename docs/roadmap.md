@@ -146,7 +146,7 @@ latency was 1.4–3.5s per turn (within the ≤3s/≥5s bands), the course-outli
 dedicated indicator with a live-incrementing elapsed counter, and lesson content stayed coherent
 and personalized across all four exchange turns. Three issues surfaced beyond the script:
 
-### 4. Session-complete card: unrendered markdown + missing module status markers (priority: medium)
+### 4. Session-complete card: unrendered markdown + missing module status markers (priority: medium) — ✅ Shipped 2026-08-07
 
 Step 2.6's "Session complete" card (`frontend` — same course-module-list component reused from the
 setup outline and mid-lesson header) has two rendering defects not present in the normal chat
@@ -169,6 +169,25 @@ The "Where to pick up next time" note itself was accurate (correctly summarized 
 covered), and both "Start next session"/"Close" buttons worked. Scope the fix to whatever renders
 the Session Complete card specifically — it's drifted from the module-list rendering used
 elsewhere, not a markdown-pipeline-wide regression.
+
+**Fix shipped:** two changes, one per bug. (1) `SessionSummaryCard.tsx` now renders each module
+title through `ReactMarkdown`/`remarkGfm` (the same pipeline `MessageBubble`/`StreamingMessage`
+already use for chat text) instead of dropping it into a raw `<span>`, so `**bold**` renders
+correctly. (2) Module completion status wasn't available in the data at all — the in-chat module
+list gets its ✓/→ markers from the LLM reading the Progress section live, but the summary card's
+`modules` field was just a flat list of titles with no status. `build_session_summary()`
+(`app/learning/session_summary.py`) now also scans the Progress section for the highest `Module
+N` it names (the same section the LLM is instructed to treat as sole source of truth) and tags
+each module `done` / `current` / `upcoming` accordingly; `status` is `null` when the Progress
+section names no module (e.g. before the first session). `SessionSummarySchema`/`SessionSummary`
+(backend + frontend types), `docs/openapi.yml`, and `docs/postman_collection.json` were updated
+to carry `modules: {title, status}[]` instead of `modules: string[]`; `export-conversation.ts`'s
+Markdown export was updated to prefix the same ✓/→ markers. Verified: 5 new backend unit tests
+(`tests/test_session_summary.py`) + full backend suite (247 passed); frontend `tsc --noEmit`
+clean and 43/43 frontend tests pass (including an updated `export-conversation.test.ts` case);
+live-verified via Chrome against a real ended conversation on the running stack — the summary
+card correctly showed bold module titles and a `→` marker on the in-progress module, matching a
+direct `curl` of the `/summary` endpoint.
 
 ### 5. Bare `/u/{uuid}` route (no `/chat/{id}`) also auto-starts a new session — item 2's bug is broader than scoped (priority: medium) — ✅ Shipped 2026-08-06
 
@@ -193,7 +212,7 @@ instead of redirecting — added `frontend/app/u/[userId]/page.tsx`, a server-si
 `/u/{userId}/chat` (the canonical default), closing the 404 gap. Verified live: bare `/history` and
 the "History" nav link both land on `/u/{userId}/history` with the conversation count unchanged.
 
-### 6. "Let's start" button is visible and enabled from the first setup turn, not just after the outline (priority: low)
+### 6. "Let's start" button is visible and enabled from the first setup turn, not just after the outline (priority: low) — ✅ Shipped 2026-08-07
 
 `qa-test-suite.md` step 1.7 implies the "Let's start" button only appears once the course outline
 is ready (it's listed as a check *after* step 1.6). In this run the button was already visible and
@@ -204,14 +223,107 @@ pre-outline, or just visually present) — worth a quick check of whether it's d
 hood (e.g. a non-obvious `pointer-events`/opacity state that didn't read as "disabled" in a
 screenshot) or a genuine dead-click waiting to happen.
 
+**Investigation found this was a genuine dead-click, not just cosmetic.** The button's only
+gating was `isSetupConversation` (conversation's flow slug), which stays `"user-profile-collection"`
+for the entire setup flow — both the framing Q&A and the outline phase — so there was no
+outline-readiness check at all. Worse, the `complete-setup` endpoint itself had no phase guard
+either: clicking early would silently run the extraction LLM calls against a partial Q&A
+transcript and durably write a garbage `sections/course/<user_id>.md` / `sections/user/<user_id>.md`
+(flipping `has_profile` true) and end the conversation — a "succeeds incorrectly" failure, not an
+error.
+
+**Fix shipped**, at both layers: (1) Frontend (`ChatShell.tsx`) now also requires
+`localMessages` to contain at least `SETUP_FRAMING_TURNS` (4) user messages before rendering the
+button — mirrors `FRAMING_TURNS`/`setup_phase_for_turn()` in `app/learning/setup_flow.py`. (2)
+Backend (`complete_setup_route` in `app/api/routes.py`) independently recomputes the same
+`setup_phase_for_turn()` from the conversation's actual message count and returns 400 if the
+framing phase isn't finished — this is the real safety net, since it can't be bypassed by a
+direct API call. `docs/openapi.yml` and `docs/postman_collection.json` document the new 400.
+Verified: 2 new backend tests (a rejection case + fixing an existing test that unintentionally
+relied on the old, ungated behavior) plus the full suite (248 passed); frontend `tsc`/tests
+unaffected (43 passed). Live-verified in Chrome end-to-end on the running stack with a fresh
+learner: the button stayed hidden through all 4 framing turns and appeared only once the outline
+was rendered, matching `qa-test-suite.md` step 1.7 exactly.
+
 ---
 
 ## Not yet triaged
 
 - Admin panel, conversation download, multi-user/user-switching, and "Start next session"
   continuation were not exercised in the 2026-08-03 smoke test — worth a follow-up pass.
+- `course-session-core` (the lesson's Core moment) has an open interaction-quality regression —
+  needs tuning. Carried over from before the init/core/closure split (`docs/architecture-decisions.md`
+  §3), never resolved.
+- `course-session-closure` (the lesson's Closure moment) needs a review pass against its current
+  spec — same carry-over, not yet done.
 
-### Evaluate GPT-5.6 Luna as a replacement for `gpt-5.4-pro` on the two pro-tier calls (priority: medium)
+### Testing harness gaps (surfaced 2026-08-07)
+
+`docs/architecture-decisions.md` §4 splits prompt-behavior testing into B(i) recorded/golden
+replay and B(ii) live smoke harness. Only B(ii) is built, and it doesn't cover everything the
+strategy implies it should:
+
+- **B(i) golden/recorded replay — decided 2026-06-24, never started.** Right now B(ii) (`make
+  smoke`, on-demand only) is the *only* automated coverage of prompt behavior; nothing catches a
+  prompt regression between manual runs. This is the highest-priority harness gap since it's a
+  committed decision with zero implementation, not just an uncovered edge case.
+- **`make smoke` (`scripts/smoke_lesson_lifecycle.py`) only exercises the objective-guard closure
+  path** (11/11 against "the objective path" per §4) — the *other* closure trigger, session
+  time-over, is untested by the automated harness and only ever hit incidentally during manual
+  Chrome runs. A time-over closure regression would not be caught by `make smoke`.
+- **No harness mechanism to catch a recurrence of the open `course-session-core`/
+  `course-session-closure` quality regressions** (both flagged above, still unresolved). Once
+  either gets a tuning/review pass, neither B(i) nor B(ii) as currently scoped is designed to
+  assert on interaction quality specifically — `make smoke` asserts on *shape*, not content
+  quality (per §4), so a fixed regression could silently reappear with nothing catching it.
+
+### Infra & ops backlog (rescued from `RISKS-AND-IMPROVEMENTS.md`, 2026-08-07)
+
+That file predated the `docs/` convention (last touched 4 months ago) and had drifted out of
+sight — its "Done" items are already reflected in `docs/build-status.md`; what's below is what's
+still genuinely open. File deleted, content folded in here so it stays visible.
+
+**Deployment & operability — the biggest gaps, nothing here today:**
+- No deployment pipeline: no CI/CD, no automated tests on push, no staging environment. Everything
+  runs locally.
+- No dedicated monitoring/metrics (e.g. Prometheus, tracing/APM). Only structured request logs
+  (`request_id`, endpoint, status, latency) exist — fine for reasoning about one request after the
+  fact, not for noticing degradation before a learner reports it.
+- No alerting on top of those logs — nothing pages anyone if the service degrades or errors spike.
+- SQLite is fine for local/demo but has no backup story and limited write concurrency; a real
+  database (e.g. Postgres) is the recommended move once this runs unattended.
+
+**Streaming robustness:**
+- No backpressure/throttling on outbound SSE events, and the OpenAI stream iteration still runs on
+  the event loop inside `event_generator()` — fine at demo load, may not hold under concurrent
+  streams.
+- Error payloads use one generic `http_error` type — no `validation_error`/`rate_limit` granularity,
+  no `retry_after` hint, no partial-content recovery if a stream fails mid-way.
+- Two streaming entrypoints (`POST /conversations/stream` and `.../{id}/stream`) share an SSE
+  contract by convention only — no shared code/test enforcing they can't drift apart.
+
+**Input & resilience:**
+- Input cap (`max_input_chars`) is character-based, not token-based — no real token-budget
+  enforcement across history + new turn.
+- OpenAI SDK timeout handling has known quirks (not always honoured); worth wrapping in
+  `asyncio.wait_for` if this becomes a real problem under load.
+- Retry-on-transient-error restarts the stream from scratch; the client sees a new connection, not
+  a resume — acceptable today, worth documenting as a known limitation at minimum.
+
+**Testing gaps outside the prompt-behavior harness (see the testing-harness section above):**
+- No opt-in smoke test that hits the real OpenAI API directly (as opposed to `make smoke`, which
+  exercises the app's own endpoints) — would catch upstream contract drift (e.g. Responses API
+  payload shape changes) that mocked tests can't see.
+- Not validated against OpenAI's published OpenAPI spec — payload shape is only protected by an
+  internal snapshot test today.
+
+**Lower priority:**
+- No lint/test guardrail preventing an accidental synchronous DB call on the event loop (currently
+  enforced by convention only — `asyncio.to_thread` around every DB op in routes).
+- Still targeting Python 3.9 (`Optional[...]`, `UP045` ignored) — revisit when there's a reason to
+  drop it.
+
+### Evaluate GPT-5.6 Luna as a replacement for `gpt-5.4-pro` on the two pro-tier calls (priority: medium) — ✅ Shipped 2026-08-07
 
 Surfaced 2026-08-05 from an OpenAI pricing observation (see
 `Areas/AI-LLM-Explorer/notes/model-pricing.md`): OpenAI cut GPT-5.6 Luna to **$0.20 input /
@@ -244,3 +356,18 @@ frontier-tier reasoning quality — unverified either way as of this writing.
    pricing suggests.
 4. If quality doesn't hold, at minimum re-evaluate `gpt-5.4-mini` vs Luna vs `gpt-5.4-pro`
    together — the roadmap item 1 comparison was never done and Luna adds a third option to it.
+
+**Shipped:** all 4 steps completed. `gpt-5.6-luna` registered in `model_registry.py`;
+`scripts/compare_outline_models.py` ran a head-to-head across 8 profiles (3 software-adjacent +
+5 deliberately wider-spread: nurse, bakery owner, teacher, designer, financial analyst) — Luna
+was 12–24x faster on every profile with no observed quality regression (full results and the
+decision itself logged in `docs/architecture-decisions.md` §5, not duplicated here). Switched
+`prompts/course-outline-proposal.md`'s `model:` field and `app/settings.py`'s `wrap_up_model`
+default (which had silently drifted to `gpt-5.4-mini` since an unrelated commit 3 months ago —
+`CLAUDE.md`/`.env.example` were stale and now corrected too) to `gpt-5.6-luna`. Verified: full
+backend suite (248 passed), `make smoke` (11/11, after confirming an initial failure was a
+pre-existing flake unrelated to this change — reproduced on the pre-switch tree too), and two
+live end-to-end checks against the running stack — a real setup-outline generation and a real
+end-session progress synthesis, both completing correctly on `gpt-5.6-luna` in seconds instead
+of 1–2 minutes. `docs/qa-test-suite.md`'s course-outline-compile latency band tightened from
+≤2min/≥5min to ≤10s/≥30s to match.

@@ -14,10 +14,12 @@ from app.application.ports import SlotResolver
 def build_session_summary(slot_resolver: SlotResolver) -> dict:
     """Extract session summary from course and progress content.
 
-    Returns: {course_name: str|None, modules: list[str], next_step: str|None}
+    Returns: {course_name: str|None, modules: list[{title, status}], next_step: str|None}
+    `status` is "done" | "current" | "upcoming" | None (None when the Progress
+    section names no module, e.g. a brand-new course with no session yet).
     """
     course_name: Optional[str] = None
-    modules: list[str] = []
+    titles: list[str] = []
 
     course_content = slot_resolver.resolve("course")
     if course_content:
@@ -30,9 +32,10 @@ def build_session_summary(slot_resolver: SlotResolver) -> dict:
         for line in lines:
             m = re.match(r"^\d+\.\s+(.+)$", line.strip())
             if m:
-                modules.append(m.group(1).strip())
+                titles.append(m.group(1).strip())
 
     next_step: Optional[str] = None
+    current_module: Optional[int] = None
     progress_content = slot_resolver.resolve("progress")
     if progress_content:
         m = re.search(
@@ -50,5 +53,25 @@ def build_session_summary(slot_resolver: SlotResolver) -> dict:
                 if s:
                     stripped_lines.append(s)
             next_step = "\n".join(stripped_lines) or None
+
+            # The Progress section is the sole source of truth for module status
+            # (same rule the course-session-init prompt follows for the in-chat
+            # module list) — the highest module number it names is the one the
+            # student is currently on; anything below is done, above is upcoming.
+            module_nums = [int(n) for n in re.findall(r"Module\s+(\d+)", section)]
+            if module_nums:
+                current_module = max(module_nums)
+
+    modules: list[dict] = []
+    for i, title in enumerate(titles, start=1):
+        if current_module is None:
+            status = None
+        elif i < current_module:
+            status = "done"
+        elif i == current_module:
+            status = "current"
+        else:
+            status = "upcoming"
+        modules.append({"title": title, "status": status})
 
     return {"course_name": course_name, "modules": modules, "next_step": next_step}
