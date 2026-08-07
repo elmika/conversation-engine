@@ -1,9 +1,19 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getOrCreateUserId } from "@/lib/user-id";
 
 /**
  * Legacy route — the canonical URL is now /u/{userId}/chat.
- * Redirect to root so the entry point can assign a userId and redirect properly.
  */
 export default function ChatPage() {
-  redirect("/");
+  const router = useRouter();
+
+  useEffect(() => {
+    const userId = getOrCreateUserId();
+    router.replace(`/u/${userId}/chat`);
+  }, [router]);
+
+  return null;
 }

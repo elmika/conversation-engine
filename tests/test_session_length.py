@@ -5,7 +5,7 @@ No LLM, no DB — fully deterministic, runs in CI on every commit.
 
 import pytest
 
-from app.domain.session_length import (
+from app.learning.session_length import (
     DEFAULT_SESSION_MINUTES,
     is_time_over,
     mentions_duration,

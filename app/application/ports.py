@@ -19,6 +19,71 @@ class SlotResolver(Protocol):
         ...
 
 
+class LearningFlowPort(Protocol):
+    """Port for learning-specific (Layer 2) turn logic.
+
+    ConversationService (Layer 1b) reaches learning concepts — lesson/setup
+    phases, session-length capture, the objective guard — only through this
+    seam, never by importing app.learning directly. See CLAUDE.md "Layer
+    model". Layer 1b ships NullLearningFlow below so the engine works
+    standalone without any upper layer bound, mirroring SlotResolver above.
+    """
+
+    def resolve_effective_prompt(
+        self,
+        flow_slug: Optional[str],
+        conv_meta: Optional[dict],
+        created_at: Optional[datetime],
+        history: Optional[list[dict[str, str]]],
+        pending_messages: Optional[list[dict[str, str]]],
+    ) -> Optional[str]:
+        """Return the prompt slug that should drive this turn.
+
+        Flows without phases (or an unrecognized flow_slug) return flow_slug
+        unchanged.
+        """
+        ...
+
+    def initial_session_length_minutes(self, flow_slug: Optional[str]) -> Optional[int]:
+        """Return minutes to seed on a new conversation of this flow, or None if not applicable."""
+        ...
+
+    def maybe_update_session_length(self, conversation_id: str) -> None:
+        """Best-effort background hook; must never raise."""
+        ...
+
+    def maybe_flag_objective_complete(self, conversation_id: str) -> None:
+        """Best-effort background hook; must never raise."""
+        ...
+
+
+class NullLearningFlow:
+    """Default LearningFlowPort: every conversation is treated as a flat, phase-less prompt.
+
+    Lets ConversationService run as a standalone chat engine with no Layer 2
+    bound — the counterpart to FileSlotResolver's role for SlotResolver.
+    """
+
+    def resolve_effective_prompt(
+        self,
+        flow_slug: Optional[str],
+        conv_meta: Optional[dict],
+        created_at: Optional[datetime],
+        history: Optional[list[dict[str, str]]],
+        pending_messages: Optional[list[dict[str, str]]],
+    ) -> Optional[str]:
+        return flow_slug
+
+    def initial_session_length_minutes(self, flow_slug: Optional[str]) -> Optional[int]:
+        return None
+
+    def maybe_update_session_length(self, conversation_id: str) -> None:
+        return None
+
+    def maybe_flag_objective_complete(self, conversation_id: str) -> None:
+        return None
+
+
 class Timings(TypedDict):
     """TTFB and total latency in ms."""
 

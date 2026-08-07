@@ -10,6 +10,8 @@ Intended as a reference for UX review.
 ### 1.1 UUID-in-URL identity
 There is no sign-in or account. Each learner is identified by an opaque UUID that lives in the URL: every page is served under `/u/{userId}/…`. On first visit the root page mints a UUID, stores it in `localStorage`, and redirects to that learner's personal space. Returning without a URL (or via a legacy link) re-resolves the same UUID from `localStorage`.
 
+Legacy bare routes (`/chat`, `/history`) and a bare `/u/{userId}` (no `/chat` or `/history` suffix) each redirect straight to their user-scoped equivalent — `/history` never passes through `/chat` on the way there, so simply loading or bookmarking one of these URLs can never silently start a new course session as a side effect. The top nav's Chat/History links are always built from the current UUID (from the URL if already present, otherwise from `localStorage`) for the same reason.
+
 ### 1.2 Personal space & bookmarking
 All of a learner's conversations, history, and profile are scoped to their UUID. Bookmarking the `/u/{userId}/…` URL is how a learner returns to their session on the same browser. A conversation is only visible to the UUID that created it — requests under a different UUID are treated as non-existent (not enumerable across users).
 
@@ -43,6 +45,8 @@ The core interaction. The user types a message and receives a streaming response
 
 ### 2.2 Streaming responses
 The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading. The view auto-follows the streamed text, but the reader stays in control: scrolling up at any point (wheel, trackpad, touch, or keyboard) immediately stops the auto-follow so you can read earlier text while the response keeps streaming. Scrolling back to the bottom re-engages auto-follow.
+
+The course-outline-compile step during setup (§1.3) runs on a slower, higher-quality model and can take up to ~2 minutes — during that wait it shows a dedicated loading state ("Compiling your personalised course… This can take a minute or two.") with a live elapsed-seconds counter, instead of the generic typing indicator, so the wait reads as "still working" rather than "frozen."
 
 ### 2.3 Stop / cancel streaming
 A **Stop** button replaces the input field while the assistant is responding. Clicking it immediately halts the stream.

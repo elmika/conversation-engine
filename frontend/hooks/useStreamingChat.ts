@@ -27,6 +27,8 @@ export interface StreamingChatState {
   timings: Timings | null;
   /** Model used for this response, captured from the SSE meta event. */
   model: string | null;
+  /** Prompt slug driving this response, captured from the SSE meta event. */
+  promptSlug: string | null;
   /** Set when status === "error". */
   errorMessage: string | null;
 }
@@ -37,6 +39,7 @@ const INITIAL_STATE: StreamingChatState = {
   conversationId: null,
   timings: null,
   model: null,
+  promptSlug: null,
   errorMessage: null,
 };
 
@@ -62,6 +65,7 @@ export function useStreamingChat(userId: string) {
         conversationId: existingConversationId ?? null,
         timings: null,
         model: null,
+        promptSlug: null,
         errorMessage: null,
       });
 
@@ -80,6 +84,7 @@ export function useStreamingChat(userId: string) {
         let finalConversationId = existingConversationId ?? null;
         let finalTimings: Timings | null = null;
         let finalModel: string | null = null;
+        let finalPromptSlug: string | null = null;
         let accText = "";
 
         for await (const event of parseSSEStream(stream)) {
@@ -88,6 +93,8 @@ export function useStreamingChat(userId: string) {
           if (event.event === "meta") {
             finalConversationId = event.data.conversation_id;
             finalModel = event.data.model;
+            finalPromptSlug = event.data.prompt_slug;
+            setState((s) => ({ ...s, promptSlug: finalPromptSlug }));
           } else if (event.event === "chunk") {
             accText += event.data.delta;
             setState((s) => ({ ...s, partialText: accText }));
@@ -99,6 +106,7 @@ export function useStreamingChat(userId: string) {
                 conversationId: finalConversationId,
                 timings: null,
                 model: finalModel,
+                promptSlug: finalPromptSlug,
                 errorMessage: String(event.data.error.message ?? "Stream error"),
               });
               return;
@@ -118,6 +126,7 @@ export function useStreamingChat(userId: string) {
           conversationId: finalConversationId,
           timings: finalTimings,
           model: finalModel,
+          promptSlug: finalPromptSlug,
           errorMessage: null,
         });
 
@@ -161,6 +170,7 @@ export function useStreamingChat(userId: string) {
         conversationId,
         timings: null,
         model: null,
+        promptSlug: null,
         errorMessage: null,
       });
 
@@ -178,6 +188,7 @@ export function useStreamingChat(userId: string) {
 
         let finalTimings: Timings | null = null;
         let finalModel: string | null = null;
+        let finalPromptSlug: string | null = null;
         let accText = "";
 
         for await (const event of parseSSEStream(stream)) {
@@ -185,6 +196,8 @@ export function useStreamingChat(userId: string) {
 
           if (event.event === "meta") {
             finalModel = event.data.model;
+            finalPromptSlug = event.data.prompt_slug;
+            setState((s) => ({ ...s, promptSlug: finalPromptSlug }));
           } else if (event.event === "chunk") {
             accText += event.data.delta;
             setState((s) => ({ ...s, partialText: accText }));
@@ -196,6 +209,7 @@ export function useStreamingChat(userId: string) {
                 conversationId,
                 timings: null,
                 model: finalModel,
+                promptSlug: finalPromptSlug,
                 errorMessage: String(event.data.error.message ?? "Stream error"),
               });
               return;
@@ -215,6 +229,7 @@ export function useStreamingChat(userId: string) {
           conversationId,
           timings: finalTimings,
           model: finalModel,
+          promptSlug: finalPromptSlug,
           errorMessage: null,
         });
 
@@ -248,6 +263,7 @@ export function useStreamingChat(userId: string) {
         conversationId: null,
         timings: null,
         model: null,
+        promptSlug: null,
         errorMessage: null,
       });
 
@@ -263,6 +279,7 @@ export function useStreamingChat(userId: string) {
         let finalConversationId: string | null = null;
         let finalTimings: Timings | null = null;
         let finalModel: string | null = null;
+        let finalPromptSlug: string | null = null;
         let accText = "";
         let notifiedActiveConversation = false;
 
@@ -272,6 +289,8 @@ export function useStreamingChat(userId: string) {
           if (event.event === "meta") {
             finalConversationId = event.data.conversation_id;
             finalModel = event.data.model;
+            finalPromptSlug = event.data.prompt_slug;
+            setState((s) => ({ ...s, promptSlug: finalPromptSlug }));
             if (finalConversationId && onActiveConversation && !notifiedActiveConversation) {
               notifiedActiveConversation = true;
               onActiveConversation(finalConversationId);
@@ -295,6 +314,7 @@ export function useStreamingChat(userId: string) {
                 conversationId: finalConversationId,
                 timings: null,
                 model: finalModel,
+                promptSlug: finalPromptSlug,
                 errorMessage: String(event.data.error.message ?? "Failed to open session"),
               });
               return;
@@ -314,6 +334,7 @@ export function useStreamingChat(userId: string) {
           conversationId: finalConversationId,
           timings: finalTimings,
           model: finalModel,
+          promptSlug: finalPromptSlug,
           errorMessage: null,
         });
 

@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Optional
 
 KNOWN_TAGS = {"time:current", "time:conversation-start", "time:lesson-time-spent"}
@@ -63,6 +64,40 @@ def resolve_file_sections(
         return content
 
     return TAG_PATTERN.sub(_replace, template)
+
+
+def render_instructions(
+    instructions: str,
+    resolve: Callable[[str], Optional[str]],
+    conversation_start: Optional[datetime] = None,
+) -> str:
+    """Full two-pass render: file sections ({{course}}/{{user}}/{{progress}}) then {{time:*}}.
+
+    `resolve` is a SlotResolver-shaped loader (tag -> file content or None).
+    `conversation_start` anchors the {{time:*}} tags; defaults to now (elapsed = 0).
+    """
+    instructions = resolve_file_sections(instructions, resolve)
+
+    now = datetime.now(timezone.utc)
+    start = conversation_start or now
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+
+    total_seconds = max(0, int((now - start).total_seconds()))
+    minutes, secs = divmod(total_seconds, 60)
+    if minutes == 0:
+        time_spent = f"{secs} seconds"
+    elif secs == 0:
+        time_spent = f"{minutes} minutes"
+    else:
+        time_spent = f"{minutes} minutes {secs} seconds"
+
+    context = {
+        "time:current": now.strftime("%Y-%m-%d %H:%M UTC"),
+        "time:conversation-start": start.strftime("%Y-%m-%d %H:%M UTC"),
+        "time:lesson-time-spent": time_spent,
+    }
+    return render_prompt(instructions, context)
 
 
 def render_prompt(template: str, context: dict[str, str]) -> str:

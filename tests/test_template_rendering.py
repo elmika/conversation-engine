@@ -127,7 +127,7 @@ def test_conversation_start_consistent_across_turns(client_with_mock_llm, mock_l
 def test_template_error_in_create_route_returns_400(client_with_mock_llm) -> None:
     """PromptTemplateError during create_and_chat must surface as HTTP 400."""
     with patch(
-        "app.application.services.render_prompt",
+        "app.domain.prompt_template.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
         r = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
@@ -145,7 +145,7 @@ def test_template_error_in_append_route_returns_400(client_with_mock_llm, mock_l
     cid = r1.json()["conversation_id"]
 
     with patch(
-        "app.application.services.render_prompt",
+        "app.domain.prompt_template.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
         r2 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations/{cid}", json={
@@ -161,7 +161,7 @@ def test_template_error_in_append_route_returns_400(client_with_mock_llm, mock_l
 def test_template_error_in_create_stream_emits_error_done(client_with_mock_stream) -> None:
     """PromptTemplateError during create_and_stream must emit a done SSE error event."""
     with patch(
-        "app.application.services.render_prompt",
+        "app.domain.prompt_template.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
         r = client_with_mock_stream.post(f"/u/{TEST_USER}/conversations/stream", json={
@@ -186,7 +186,7 @@ def test_template_error_in_append_stream_emits_error_done(
 
     mock_llm_streaming.stream.return_value = list(_make_stream_events())
     with patch(
-        "app.application.services.render_prompt",
+        "app.domain.prompt_template.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
         r2 = client_with_mock_stream.post(f"/u/{TEST_USER}/conversations/{cid}/stream", json={

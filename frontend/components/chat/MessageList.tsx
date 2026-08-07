@@ -15,6 +15,7 @@ interface MessageListProps {
   partialText: string;
   timings: Timings | null;
   model?: string | null;
+  promptSlug?: string | null;
   onRewind?: (messageId: number, newContent: string) => void;
 }
 
@@ -27,6 +28,7 @@ export function MessageList({
   partialText,
   timings,
   model,
+  promptSlug,
   onRewind,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -127,7 +129,7 @@ export function MessageList({
           />
         ))}
 
-        {isStreaming && <StreamingMessage partialText={partialText} />}
+        {isStreaming && <StreamingMessage partialText={partialText} promptSlug={promptSlug} />}
 
         {streamStatus === "done" && timings && (
           <div className="flex justify-start pl-1">
