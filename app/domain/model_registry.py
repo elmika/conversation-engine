@@ -28,6 +28,11 @@ MODELS: dict[str, dict] = {
         "name": "GPT-5.4 pro",
         "description": "Most capable GPT-5.4 model",
     },
+    "gpt-5.6-luna": {
+        "name": "GPT-5.6 Luna",
+        "description": "High-volume/low-cost GPT-5.6 tier — under evaluation as a gpt-5.4-pro "
+        "replacement for course-outline-proposal/wrap_up_model (docs/roadmap.md, untriaged)",
+    },
 
     # --- Expensive models: commented out to prevent accidental use during development ---
     # "gpt-5": {"name": "GPT-5", "description": "Reasoning model"},

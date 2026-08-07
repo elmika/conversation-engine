@@ -81,4 +81,62 @@ The lesson architecture (§3) splits the testing problem into two layers. The wh
 
 ---
 
+## 5. Model evaluation — GPT-5.6 Luna vs. `gpt-5.4-pro` for the two pro-tier calls
+
+**Status: evaluation complete, switch not yet applied.** `docs/roadmap.md`'s untriaged item asked
+whether GPT-5.6 Luna (cut to $0.10–0.20/M input, $0.60–1.20/M output — see search results in the
+2026-08-07 session) can replace `gpt-5.4-pro` on the two calls item 1 deliberately kept
+frontier-tier: `prompts/course-outline-proposal.md` and `wrap_up_model` (session-end synthesis).
+Public benchmarks were mixed and not a good proxy (agentic/coding-heavy suites, not structured
+long-form reasoning), so this needed a direct head-to-head — `scripts/compare_outline_models.py`
+drives the real setup flow end to end against the running stack, varying only the outline turn's
+`model_slug`, so both models see the exact same 4-turn framing transcript per profile.
+
+**Method:** 8 fixed test profiles across two rounds, deliberately spanning both a software-adjacent
+cluster (round 1) and unrelated domains (round 2: healthcare, small business, education,
+creative/design, finance) to avoid tuning the comparison to one course shape. Quality judged by eye
+(module relevance, tailoring to stated goal/industry/session length, scannability) — this script
+makes no automated quality judgment, only records timing and the raw outputs.
+
+**Results — round 1 (2026-08-07, software-adjacent):**
+
+| Profile | `gpt-5.4-pro` wall time | `gpt-5.6-luna` wall time | Quality (by eye) |
+|---|---|---|---|
+| backend-engineer-pandas | 79.7s | 3.7s | Parity; Luna added a fraud-specific module + capstone pro's outline lacked |
+| marketing-manager-sql | 129.1s | 7.2s | Near-parity; pro's KPI module slightly more concrete, Luna still on-target |
+| product-manager-llm-features | 90.2s | 5.0s | Parity; Luna added a spec-review-checklist module (fallback/privacy/observability) |
+
+**Results — round 2 (2026-08-07, wider spread):**
+
+| Profile | `gpt-5.4-pro` wall time | `gpt-5.6-luna` wall time | Quality (by eye) |
+|---|---|---|---|
+| nurse-research-statistics | 89.9s | 4.7s | Parity; both correctly scoped to critiquing papers + a beginner analysis, not a stats degree |
+| bakery-owner-spreadsheets | 52.5s | 3.8s | Parity; both anchored on margin-tracking for a non-technical owner in 10–15 min sessions |
+| teacher-python-classroom-tools | 119.7s | 6.7s | Parity; both built around chemistry-classroom tools (quiz gen, grade calc), not generic Python |
+| designer-frontend-dev | 55.6s | 4.0s | Parity; Luna added an accessibility/cross-browser polish module + capstone pro's outline lacked |
+| financial-analyst-vba-modeling | 92.7s | 3.8s | Parity; both correctly assumed Excel fluency and skipped straight to VBA/automation |
+
+**Findings:**
+- **Latency: not close.** Luna is 12–24x faster across all 8 profiles (3.7–7.2s vs. 52.5–129.1s
+  wall time) — consistent with the public TTFB numbers, and directly addresses item 1's original
+  complaint about the outline step's ~2-minute wait.
+- **Quality: held up on every profile, no regressions observed.** Across a mix of technical
+  (pandas, VBA, frontend) and non-technical (bakery owner, nurse, teacher) profiles and stated
+  session lengths from 10 to 60 minutes, Luna correctly anchored on the stated goal, industry, and
+  technical level every time. In 3 of 8 cases Luna's outline was arguably *more* tailored (added a
+  domain-specific or capstone module `gpt-5.4-pro`'s outline didn't include) — never the reverse.
+  No case of generic "AI 101" content, wrong technical level, or a missed stated goal from either
+  model.
+- **Sample size caveat:** 8 profiles is enough to rule out an obvious quality cliff, not a
+  large-scale eval — this was an "eyeball head-to-head," per the roadmap item's own framing, not a
+  scored benchmark.
+
+**Decision:** evidence supports switching `course-outline-proposal.md`'s `model:` field and
+`wrap_up_model` in settings to `gpt-5.6-luna`. Not yet applied — pending explicit go-ahead, since
+this changes production model spend/latency/quality characteristics on both pinned calls at once.
+
+*Added: 2026-08-07*
+
+---
+
 *Created: 2026-04-21*
