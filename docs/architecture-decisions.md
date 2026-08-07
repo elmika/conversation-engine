@@ -145,6 +145,16 @@ real end-session progress synthesis, both correct and completing in single-digit
 of 1–2 minutes. `docs/qa-test-suite.md`'s course-outline-compile latency band tightened from
 ≤2min/≥5min to ≤10s/≥30s to match the new reality.
 
+**Reuse plan (not yet built):** model evaluations like this one are expected to become routine —
+new models ship faster than the prompts they'd replace get re-evaluated, and a second provider
+will make it a 2-axis comparison, not just a tier comparison within OpenAI. `scripts/compare_outline_models.py`
+is currently hardcoded to one turn (the setup/outline turn) with one canned framing transcript
+per profile. Generalizing it — parameterizing by prompt slug/flow stage so it can compare
+`course-session-core` or `-closure` the same way, and supporting a non-OpenAI model once a second
+`LLMPort` adapter exists — is intentionally deferred until the next evaluation actually needs it,
+rather than building it out speculatively now. See `CLAUDE.md`'s "Compare candidate models"
+section for current usage.
+
 *Added: 2026-08-07*
 
 ---

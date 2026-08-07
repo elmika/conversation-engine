@@ -73,6 +73,19 @@ make format
 make build
 ```
 
+**Compare candidate models:**
+```bash
+python3 scripts/compare_outline_models.py                                              # all profiles, default models
+python3 scripts/compare_outline_models.py --models gpt-5.4-pro,gpt-5.6-luna --profiles nurse-research-statistics
+```
+Live head-to-head tool (needs `make up` + a real `OPENAI_API_KEY`, real cost) for deciding whether
+to switch a prompt's pinned model. Drives the real flow against the running stack, varying only
+`model_slug` on the turn under test, so the comparison sees exactly what a learner would — not a
+re-implementation of the prompt/template logic. Used for the `gpt-5.6-luna` vs. `gpt-5.4-pro`
+evaluation (`docs/architecture-decisions.md` §5); currently scoped to the setup/outline turn only.
+Expected to be extended to other flow stages (lesson core/closure) and, once a second `LLMPort`
+adapter exists, other providers — this will become routine as models keep shipping.
+
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
 
 ## End-to-End Verification Gate
