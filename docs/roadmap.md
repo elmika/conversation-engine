@@ -210,6 +210,11 @@ screenshot) or a genuine dead-click waiting to happen.
 
 - Admin panel, conversation download, multi-user/user-switching, and "Start next session"
   continuation were not exercised in the 2026-08-03 smoke test — worth a follow-up pass.
+- `course-session-core` (the lesson's Core moment) has an open interaction-quality regression —
+  needs tuning. Carried over from before the init/core/closure split (`docs/architecture-decisions.md`
+  §3), never resolved.
+- `course-session-closure` (the lesson's Closure moment) needs a review pass against its current
+  spec — same carry-over, not yet done.
 
 ### Evaluate GPT-5.6 Luna as a replacement for `gpt-5.4-pro` on the two pro-tier calls (priority: medium)
 
