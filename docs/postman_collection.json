@@ -504,7 +504,7 @@
                 }
               ],
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"status\": \"ending\",\n  \"summary\": {\n    \"course_name\": \"Intro to TypeScript\",\n    \"modules\": [\"Types\", \"Interfaces\"],\n    \"next_step\": \"Generics\"\n  }\n}"
+              "body": "{\n  \"status\": \"ending\",\n  \"summary\": {\n    \"course_name\": \"Intro to TypeScript\",\n    \"modules\": [\n      {\"title\": \"Types\", \"status\": \"done\"},\n      {\"title\": \"Interfaces\", \"status\": \"current\"}\n    ],\n    \"next_step\": \"Generics\"\n  }\n}"
             },
             {
               "name": "409 Conflict \u2014 already ended",
@@ -722,7 +722,7 @@
                 }
               ],
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"course_name\": \"Intro to TypeScript\",\n  \"modules\": [\"Types\", \"Interfaces\"],\n  \"next_step\": \"Generics\"\n}"
+              "body": "{\n  \"course_name\": \"Intro to TypeScript\",\n  \"modules\": [\n    {\"title\": \"Types\", \"status\": \"done\"},\n    {\"title\": \"Interfaces\", \"status\": \"current\"}\n  ],\n  \"next_step\": \"Generics\"\n}"
             },
             {
               "name": "409 Conflict \u2014 not ended",

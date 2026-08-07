@@ -447,7 +447,11 @@ paths:
                 status: "ending"
                 summary:
                   course_name: "Intro to TypeScript"
-                  modules: ["Types", "Interfaces"]
+                  modules:
+                    - title: "Types"
+                      status: "done"
+                    - title: "Interfaces"
+                      status: "current"
                   next_step: "Generics"
         "404":
           $ref: "#/components/responses/NotFound"
@@ -564,7 +568,11 @@ paths:
                 $ref: "#/components/schemas/SessionSummary"
               example:
                 course_name: "Intro to TypeScript"
-                modules: ["Types", "Interfaces"]
+                modules:
+                  - title: "Types"
+                    status: "done"
+                  - title: "Interfaces"
+                    status: "current"
                 next_step: "Generics"
         "404":
           $ref: "#/components/responses/NotFound"
@@ -1044,12 +1052,27 @@ components:
         modules:
           type: array
           items:
-            type: string
-          description: Module/topic names covered or planned
+            $ref: "#/components/schemas/SessionSummaryModule"
+          description: Course modules, in order, with completion status
         next_step:
           type: string
           nullable: true
           description: Suggested next step for the learner
+
+    SessionSummaryModule:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          description: Module title
+        status:
+          type: string
+          enum: [done, current, upcoming]
+          nullable: true
+          description: >
+            Derived from the Progress section; null when the Progress section
+            names no module (e.g. a brand-new course with no session yet)
 
     EndSessionResponse:
       type: object

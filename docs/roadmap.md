@@ -146,7 +146,7 @@ latency was 1.4–3.5s per turn (within the ≤3s/≥5s bands), the course-outli
 dedicated indicator with a live-incrementing elapsed counter, and lesson content stayed coherent
 and personalized across all four exchange turns. Three issues surfaced beyond the script:
 
-### 4. Session-complete card: unrendered markdown + missing module status markers (priority: medium)
+### 4. Session-complete card: unrendered markdown + missing module status markers (priority: medium) — ✅ Shipped 2026-08-07
 
 Step 2.6's "Session complete" card (`frontend` — same course-module-list component reused from the
 setup outline and mid-lesson header) has two rendering defects not present in the normal chat
@@ -169,6 +169,25 @@ The "Where to pick up next time" note itself was accurate (correctly summarized 
 covered), and both "Start next session"/"Close" buttons worked. Scope the fix to whatever renders
 the Session Complete card specifically — it's drifted from the module-list rendering used
 elsewhere, not a markdown-pipeline-wide regression.
+
+**Fix shipped:** two changes, one per bug. (1) `SessionSummaryCard.tsx` now renders each module
+title through `ReactMarkdown`/`remarkGfm` (the same pipeline `MessageBubble`/`StreamingMessage`
+already use for chat text) instead of dropping it into a raw `<span>`, so `**bold**` renders
+correctly. (2) Module completion status wasn't available in the data at all — the in-chat module
+list gets its ✓/→ markers from the LLM reading the Progress section live, but the summary card's
+`modules` field was just a flat list of titles with no status. `build_session_summary()`
+(`app/learning/session_summary.py`) now also scans the Progress section for the highest `Module
+N` it names (the same section the LLM is instructed to treat as sole source of truth) and tags
+each module `done` / `current` / `upcoming` accordingly; `status` is `null` when the Progress
+section names no module (e.g. before the first session). `SessionSummarySchema`/`SessionSummary`
+(backend + frontend types), `docs/openapi.yml`, and `docs/postman_collection.json` were updated
+to carry `modules: {title, status}[]` instead of `modules: string[]`; `export-conversation.ts`'s
+Markdown export was updated to prefix the same ✓/→ markers. Verified: 5 new backend unit tests
+(`tests/test_session_summary.py`) + full backend suite (247 passed); frontend `tsc --noEmit`
+clean and 43/43 frontend tests pass (including an updated `export-conversation.test.ts` case);
+live-verified via Chrome against a real ended conversation on the running stack — the summary
+card correctly showed bold module titles and a `→` marker on the in-progress module, matching a
+direct `curl` of the `/summary` endpoint.
 
 ### 5. Bare `/u/{uuid}` route (no `/chat/{id}`) also auto-starts a new session — item 2's bug is broader than scoped (priority: medium) — ✅ Shipped 2026-08-06
 

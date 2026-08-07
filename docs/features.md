@@ -106,7 +106,7 @@ An **End Session** button (exit icon) in the chat header bar is shown when an ac
 1. Sends `POST /u/{userId}/conversations/{id}/end-session` to the backend.
 2. While the request is in flight, the button shows a spinner and is disabled.
 3. The backend marks the conversation ended immediately and returns; progress synthesis (an LLM wrap-up that updates the learner's `sections/progress/{userId}.md` snapshot) runs as a background task so the learner is never blocked.
-4. A **session summary card** replaces the input, showing the course name, modules covered, and the suggested next step, with a **Start new session** action. The card can be dismissed to a compact "Session ended" banner (with a **View summary** link to reopen it).
+4. A **session summary card** replaces the input, showing the course name, modules covered, and the suggested next step, with a **Start new session** action. The card can be dismissed to a compact "Session ended" banner (with a **View summary** link to reopen it). Module titles render as formatted Markdown (matching the rest of the chat), and each module is prefixed with a status marker — ✓ for done, → for the module in progress, a plain number for upcoming — derived from the learner's progress record, matching the markers already used in the in-chat module list.
 
 Attempting to start a new conversation while one is active returns 409.
 

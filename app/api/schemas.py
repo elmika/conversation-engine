@@ -1,6 +1,6 @@
 """Request/response schemas for conversation API."""
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -84,9 +84,14 @@ class MessagesResponse(BaseModel):
     messages: list[MessageSchema]
 
 
+class SessionSummaryModuleSchema(BaseModel):
+    title: str
+    status: Optional[Literal["done", "current", "upcoming"]] = None
+
+
 class SessionSummarySchema(BaseModel):
     course_name: Optional[str] = None
-    modules: list[str] = []
+    modules: list[SessionSummaryModuleSchema] = []
     next_step: Optional[str] = None
 
 
