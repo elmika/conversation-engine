@@ -31,7 +31,7 @@
 | Sections system (file-based content injection at render time) | `done` | user, course, progress sections |
 | Prompt CRUD | `done` | |
 | `user-profile-collection` (setup, framing only) | `done` | Narrowed to 4 framing questions on `gpt-4.1`; outline turn split out below (cost — see `docs/roadmap.md`) |
-| `course-outline-proposal` (setup, outline) | `done` | Split out onto `gpt-5.4-pro` — the one setup call judged worth frontier-tier cost |
+| `course-outline-proposal` (setup, outline) | `done` | Split out onto `gpt-5.6-luna` (2026-08-07, was `gpt-5.4-pro`; see `docs/architecture-decisions.md` §5) — the one setup call judged worth paying for outline quality |
 | `course-session-init` / `course-session-core` / `course-session-closure` | `done` | Lesson decomposed into Introduction/Core/Closure moments per `docs/architecture-decisions.md` §3 (bites 3a–3d) |
 | `session-length-extraction` | `done` | Captures an in-chat "adjust today's length" override, consumed by the code-owned time-over check |
 | `lesson-objective-complete` guard | `done` | `app/learning/objective_guard.py`; latches `objective_met`; closure fires on this OR time-over |

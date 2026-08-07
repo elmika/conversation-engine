@@ -223,6 +223,7 @@ A static registry of 14 supported OpenAI models is served via `GET /models`. Eac
 - **GPT-5.4 pro** (`gpt-5.4-pro`) — Version of GPT-5.4 that produces smarter and more precise responses
 - **GPT-5.4 mini** (`gpt-5.4-mini`) — Our strongest mini model yet for coding, computer use, and subagents
 - **GPT-5.4 nano** (`gpt-5.4-nano`) — Our cheapest GPT-5.4-class model for simple high-volume tasks
+- **GPT-5.6 Luna** (`gpt-5.6-luna`) — High-volume/low-cost GPT-5.6 tier; used by `course-outline-proposal` and `wrap_up_model` as of 2026-08-07 (`docs/architecture-decisions.md` §5)
 
 ### 7.2 Model selector UI
 A **dropdown** in the chat header (next to the assistant selector) lets the user pick a model for their messages. The first option is **Default (auto)**, which defers to the prompt's preferred model or the global default (`gpt-4.1`). Model descriptions are shown as tooltips on each option.

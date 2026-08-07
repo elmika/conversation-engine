@@ -257,7 +257,73 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 - `course-session-closure` (the lesson's Closure moment) needs a review pass against its current
   spec — same carry-over, not yet done.
 
-### Evaluate GPT-5.6 Luna as a replacement for `gpt-5.4-pro` on the two pro-tier calls (priority: medium)
+### Testing harness gaps (surfaced 2026-08-07)
+
+`docs/architecture-decisions.md` §4 splits prompt-behavior testing into B(i) recorded/golden
+replay and B(ii) live smoke harness. Only B(ii) is built, and it doesn't cover everything the
+strategy implies it should:
+
+- **B(i) golden/recorded replay — decided 2026-06-24, never started.** Right now B(ii) (`make
+  smoke`, on-demand only) is the *only* automated coverage of prompt behavior; nothing catches a
+  prompt regression between manual runs. This is the highest-priority harness gap since it's a
+  committed decision with zero implementation, not just an uncovered edge case.
+- **`make smoke` (`scripts/smoke_lesson_lifecycle.py`) only exercises the objective-guard closure
+  path** (11/11 against "the objective path" per §4) — the *other* closure trigger, session
+  time-over, is untested by the automated harness and only ever hit incidentally during manual
+  Chrome runs. A time-over closure regression would not be caught by `make smoke`.
+- **No harness mechanism to catch a recurrence of the open `course-session-core`/
+  `course-session-closure` quality regressions** (both flagged above, still unresolved). Once
+  either gets a tuning/review pass, neither B(i) nor B(ii) as currently scoped is designed to
+  assert on interaction quality specifically — `make smoke` asserts on *shape*, not content
+  quality (per §4), so a fixed regression could silently reappear with nothing catching it.
+
+### Infra & ops backlog (rescued from `RISKS-AND-IMPROVEMENTS.md`, 2026-08-07)
+
+That file predated the `docs/` convention (last touched 4 months ago) and had drifted out of
+sight — its "Done" items are already reflected in `docs/build-status.md`; what's below is what's
+still genuinely open. File deleted, content folded in here so it stays visible.
+
+**Deployment & operability — the biggest gaps, nothing here today:**
+- No deployment pipeline: no CI/CD, no automated tests on push, no staging environment. Everything
+  runs locally.
+- No dedicated monitoring/metrics (e.g. Prometheus, tracing/APM). Only structured request logs
+  (`request_id`, endpoint, status, latency) exist — fine for reasoning about one request after the
+  fact, not for noticing degradation before a learner reports it.
+- No alerting on top of those logs — nothing pages anyone if the service degrades or errors spike.
+- SQLite is fine for local/demo but has no backup story and limited write concurrency; a real
+  database (e.g. Postgres) is the recommended move once this runs unattended.
+
+**Streaming robustness:**
+- No backpressure/throttling on outbound SSE events, and the OpenAI stream iteration still runs on
+  the event loop inside `event_generator()` — fine at demo load, may not hold under concurrent
+  streams.
+- Error payloads use one generic `http_error` type — no `validation_error`/`rate_limit` granularity,
+  no `retry_after` hint, no partial-content recovery if a stream fails mid-way.
+- Two streaming entrypoints (`POST /conversations/stream` and `.../{id}/stream`) share an SSE
+  contract by convention only — no shared code/test enforcing they can't drift apart.
+
+**Input & resilience:**
+- Input cap (`max_input_chars`) is character-based, not token-based — no real token-budget
+  enforcement across history + new turn.
+- OpenAI SDK timeout handling has known quirks (not always honoured); worth wrapping in
+  `asyncio.wait_for` if this becomes a real problem under load.
+- Retry-on-transient-error restarts the stream from scratch; the client sees a new connection, not
+  a resume — acceptable today, worth documenting as a known limitation at minimum.
+
+**Testing gaps outside the prompt-behavior harness (see the testing-harness section above):**
+- No opt-in smoke test that hits the real OpenAI API directly (as opposed to `make smoke`, which
+  exercises the app's own endpoints) — would catch upstream contract drift (e.g. Responses API
+  payload shape changes) that mocked tests can't see.
+- Not validated against OpenAI's published OpenAPI spec — payload shape is only protected by an
+  internal snapshot test today.
+
+**Lower priority:**
+- No lint/test guardrail preventing an accidental synchronous DB call on the event loop (currently
+  enforced by convention only — `asyncio.to_thread` around every DB op in routes).
+- Still targeting Python 3.9 (`Optional[...]`, `UP045` ignored) — revisit when there's a reason to
+  drop it.
+
+### Evaluate GPT-5.6 Luna as a replacement for `gpt-5.4-pro` on the two pro-tier calls (priority: medium) — ✅ Shipped 2026-08-07
 
 Surfaced 2026-08-05 from an OpenAI pricing observation (see
 `Areas/AI-LLM-Explorer/notes/model-pricing.md`): OpenAI cut GPT-5.6 Luna to **$0.20 input /
@@ -290,3 +356,18 @@ frontier-tier reasoning quality — unverified either way as of this writing.
    pricing suggests.
 4. If quality doesn't hold, at minimum re-evaluate `gpt-5.4-mini` vs Luna vs `gpt-5.4-pro`
    together — the roadmap item 1 comparison was never done and Luna adds a third option to it.
+
+**Shipped:** all 4 steps completed. `gpt-5.6-luna` registered in `model_registry.py`;
+`scripts/compare_outline_models.py` ran a head-to-head across 8 profiles (3 software-adjacent +
+5 deliberately wider-spread: nurse, bakery owner, teacher, designer, financial analyst) — Luna
+was 12–24x faster on every profile with no observed quality regression (full results and the
+decision itself logged in `docs/architecture-decisions.md` §5, not duplicated here). Switched
+`prompts/course-outline-proposal.md`'s `model:` field and `app/settings.py`'s `wrap_up_model`
+default (which had silently drifted to `gpt-5.4-mini` since an unrelated commit 3 months ago —
+`CLAUDE.md`/`.env.example` were stale and now corrected too) to `gpt-5.6-luna`. Verified: full
+backend suite (248 passed), `make smoke` (11/11, after confirming an initial failure was a
+pre-existing flake unrelated to this change — reproduced on the pre-switch tree too), and two
+live end-to-end checks against the running stack — a real setup-outline generation and a real
+end-session progress synthesis, both completing correctly on `gpt-5.6-luna` in seconds instead
+of 1–2 minutes. `docs/qa-test-suite.md`'s course-outline-compile latency band tightened from
+≤2min/≥5min to ≤10s/≥30s to match.

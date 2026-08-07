@@ -83,7 +83,7 @@ The lesson architecture (§3) splits the testing problem into two layers. The wh
 
 ## 5. Model evaluation — GPT-5.6 Luna vs. `gpt-5.4-pro` for the two pro-tier calls
 
-**Status: evaluation complete, switch not yet applied.** `docs/roadmap.md`'s untriaged item asked
+**Status: switched 2026-08-07.** `docs/roadmap.md`'s untriaged item asked
 whether GPT-5.6 Luna (cut to $0.10–0.20/M input, $0.60–1.20/M output — see search results in the
 2026-08-07 session) can replace `gpt-5.4-pro` on the two calls item 1 deliberately kept
 frontier-tier: `prompts/course-outline-proposal.md` and `wrap_up_model` (session-end synthesis).
@@ -131,9 +131,19 @@ makes no automated quality judgment, only records timing and the raw outputs.
   large-scale eval — this was an "eyeball head-to-head," per the roadmap item's own framing, not a
   scored benchmark.
 
-**Decision:** evidence supports switching `course-outline-proposal.md`'s `model:` field and
-`wrap_up_model` in settings to `gpt-5.6-luna`. Not yet applied — pending explicit go-ahead, since
-this changes production model spend/latency/quality characteristics on both pinned calls at once.
+**Decision:** switched. `course-outline-proposal.md`'s `model:` field and `app/settings.py`'s
+`wrap_up_model` default are now `gpt-5.6-luna`. Along the way, found and fixed a 3-months-stale
+drift: `wrap_up_model`'s actual code default had been `gpt-5.4-mini`, not `gpt-5.4-pro`, since an
+unrelated commit (`53f59dc7`, "Fix hanging conversation closure") — `CLAUDE.md`/`.env.example`
+never caught up. Both now correctly document `gpt-5.6-luna`.
+
+**Verification:** full backend suite (248 passed); `make smoke` 11/11 (an initial failure
+reproduced identically on the pre-switch tree via `git stash`, confirming it's the pre-existing
+harness flake `docs/roadmap.md`'s "Testing harness gaps" note already flags, not a regression
+from this change); live end-to-end on the running stack — a real setup-outline generation and a
+real end-session progress synthesis, both correct and completing in single-digit seconds instead
+of 1–2 minutes. `docs/qa-test-suite.md`'s course-outline-compile latency band tightened from
+≤2min/≥5min to ≤10s/≥30s to match the new reality.
 
 *Added: 2026-08-07*
 
