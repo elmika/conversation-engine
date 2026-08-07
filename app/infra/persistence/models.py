@@ -40,6 +40,12 @@ class Conversation(Base):
     )
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True, default="default")
     prompt_slug: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    # Per-session length in minutes; defaulted from the learner profile at session
+    # start, overridable by an in-chat adjustment. Code-owned timing state.
+    session_length_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Latched once the objective guard judges the current module's objective met;
+    # makes subsequent turns resolve to the closure phase. Code-owned lesson state.
+    objective_met: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
     messages: Mapped[list[Message]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"

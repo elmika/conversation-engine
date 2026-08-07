@@ -42,7 +42,7 @@ Conversation listing, messages, rename, delete, end-session, summary, and setup 
 The core interaction. The user types a message and receives a streaming response from the AI assistant. Responses render as formatted markdown (headings, lists, tables, code blocks).
 
 ### 2.2 Streaming responses
-The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading.
+The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading. The view auto-follows the streamed text, but the reader stays in control: scrolling up at any point (wheel, trackpad, touch, or keyboard) immediately stops the auto-follow so you can read earlier text while the response keeps streaming. Scrolling back to the bottom re-engages auto-follow.
 
 ### 2.3 Stop / cancel streaming
 A **Stop** button replaces the input field while the assistant is responding. Clicking it immediately halts the stream.
@@ -68,6 +68,15 @@ Any past user message can be edited and resent. Hovering over a user message rev
 
 ### 2.9 Response timings
 After each complete response, a small badge shows the time-to-first-byte (TTFB) and total response time in milliseconds.
+
+### 2.10 Course session pacing (open → teach → wind down)
+A course session moves through three moments automatically, driven by the platform (not the model guessing):
+- **Opening** — the AI's first message presents the module list and where to pick up, and confirms the learner's usual session length, offering to adjust it for today.
+- **Teaching** — subsequent turns are a focused coaching exchange.
+- **Wind-down** — the AI shifts to wrapping up once **either** the session's time is up **or** the current module's objective has been met: it summarises what was covered, names what's next, and invites the learner to **End Session** (it won't start new material).
+
+### 2.11 Adjustable session length
+Each learner has a default session length (from their profile). In the opening message the AI offers to adapt it for the current session; if the learner asks for more or less time in chat ("let's do 30 today"), that length is captured and used to time the wind-down for this session. Unclear or implausible values are ignored, leaving the default in place.
 
 ---
 
@@ -97,7 +106,10 @@ An **End Session** button (exit icon) in the chat header bar is shown when an ac
 
 Attempting to start a new conversation while one is active returns 409.
 
-### 3.7 Active / ended conversation state
+### 3.7 Download conversation
+A **Download** button (download icon) in the chat header is shown whenever the open conversation has at least one message and the stream is not running. It saves the full conversation client-side as a single Markdown file (`conversation-<course>-<id>-<date>.md`) — no server round-trip. The file is designed to be read by both a human and a machine: a YAML frontmatter block carries metadata (conversation id, course prompt, created/ended/exported timestamps, message count), followed by the transcript with one heading per turn (**Tutor** / **Learner**, with timestamps). If the session has been wrapped, the **session summary** (course, modules covered, where to pick up next time) is appended at the end.
+
+### 3.8 Active / ended conversation state
 Conversations have an `ended_at` timestamp (null when active). In the sidebar and history table:
 - **Active conversations** show a green **Active** badge.
 - Ended conversations show no badge (most conversations are ended).

@@ -99,8 +99,8 @@ class ConversationRepo(Protocol):
         """Create a new conversation with a generated ID; return its id."""
         ...
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None) -> None:
-        """Create a new conversation with a specific ID, optional name, user_id, and prompt_slug."""
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None, session_length_minutes: Optional[int] = None) -> None:
+        """Create a new conversation with a specific ID, optional name, user_id, prompt_slug, and session length."""
         ...
 
     def record_run(
@@ -143,7 +143,15 @@ class ConversationRepo(Protocol):
         ...
 
     def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at, prompt_slug}, or None if not found or not owned by user_id."""
+        """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes}, or None if not found or not owned by user_id."""
+        ...
+
+    def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
+        """Set the per-session length (minutes) for a conversation owned by user_id."""
+        ...
+
+    def set_objective_met(self, conversation_id: str, user_id: str) -> None:
+        """Latch the objective-met flag for a conversation owned by user_id."""
         ...
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:

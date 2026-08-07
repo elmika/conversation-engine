@@ -30,6 +30,9 @@ test-frontend: ## Run frontend tests
 test-watch: ## Run frontend tests in watch mode
 	docker compose run --rm frontend pnpm test:watch
 
+smoke: ## Live smoke test of the course-session lifecycle (needs `make up` + real OPENAI_API_KEY; makes real LLM calls)
+	python3 scripts/smoke_lesson_lifecycle.py
+
 usage: ## Show token usage per run (last 20), ordered by most recent
 	@sqlite3 -column -header data/chat.db \
 		"SELECT created_at, prompt_slug, model, input_tokens, output_tokens, (input_tokens + output_tokens) AS total_tokens FROM runs ORDER BY created_at DESC LIMIT 20"

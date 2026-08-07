@@ -27,9 +27,15 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self.create_conversation_with_id(conv_id, user_id=user_id)
         return conv_id
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None) -> None:
-        """Create a new conversation with a specific ID, optional name, user_id, and prompt_slug."""
-        conv = Conversation(id=conversation_id, name=name, user_id=user_id, prompt_slug=prompt_slug)
+    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None, session_length_minutes: Optional[int] = None) -> None:
+        """Create a new conversation with a specific ID, optional name, user_id, prompt_slug, and session length."""
+        conv = Conversation(
+            id=conversation_id,
+            name=name,
+            user_id=user_id,
+            prompt_slug=prompt_slug,
+            session_length_minutes=session_length_minutes,
+        )
         self._session.add(conv)
 
     def get_messages(self, conversation_id: str, user_id: str) -> list[dict[str, str]]:
@@ -157,7 +163,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         ]
 
     def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at, prompt_slug} for the conversation, or None if not found or not owned by user_id."""
+        """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes} for the conversation, or None if not found or not owned by user_id."""
         row = self._session.get(Conversation, conversation_id)
         if row is None or row.user_id != user_id:
             return None
@@ -167,7 +173,21 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             "created_at": row.created_at.isoformat(),
             "ended_at": row.ended_at.isoformat() if row.ended_at else None,
             "prompt_slug": row.prompt_slug,
+            "session_length_minutes": row.session_length_minutes,
+            "objective_met": bool(row.objective_met),
         }
+
+    def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
+        """Set the per-session length (minutes) for a conversation owned by user_id."""
+        row = self._session.get(Conversation, conversation_id)
+        if row and row.user_id == user_id:
+            row.session_length_minutes = minutes
+
+    def set_objective_met(self, conversation_id: str, user_id: str) -> None:
+        """Latch the objective-met flag for a conversation owned by user_id."""
+        row = self._session.get(Conversation, conversation_id)
+        if row and row.user_id == user_id:
+            row.objective_met = True
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""

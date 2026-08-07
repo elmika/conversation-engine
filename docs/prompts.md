@@ -36,6 +36,24 @@ Safe workflow:
 
 ---
 
+## Two-phase prompts (first-response vs. ongoing)
+
+When a prompt has a structured "opening" format followed by free conversation, the LLM will re-emit the opening format on every turn unless you explicitly separate the two phases in the system prompt.
+
+Pattern that works:
+
+```
+## Your very first response only
+<structured format instructions>
+
+## All subsequent turns
+<open-ended behavior instructions — explicitly say NOT to repeat the opening format>
+```
+
+Without the explicit `## All subsequent turns` section, the model treats the opening format as the default behavior for all responses.
+
+---
+
 ## Prompt `.md` format
 
 ```markdown
