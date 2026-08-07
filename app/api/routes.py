@@ -36,6 +36,7 @@ from app.learning.flow_orchestrator import LearningFlowOrchestrator
 from app.learning.session_summary import build_session_summary
 from app.learning.progress_synthesis import synthesise_progress
 from app.learning.setup_completion import SetupCompletionError, complete_setup
+from app.learning.setup_flow import FRAMING_TURNS, SetupPhase, setup_phase_for_turn
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
 from app.domain.prompt_template import PromptTemplateError, validate_template
@@ -849,7 +850,10 @@ async def complete_setup_route(
     SYNCHRONOUS by design — the learner is blocked on this before the first course
     session can begin, and follow-up prompts require sections/user/<user_id>.md
     and sections/course/<user_id>.md to exist. Two extraction LLM calls run before
-    the response returns. Returns 409 if the conversation is already ended.
+    the response returns. Returns 409 if the conversation is already ended, or 400
+    if the framing Q&A isn't finished yet (see setup_flow.setup_phase_for_turn) —
+    calling this before the outline phase would run extraction against a partial
+    transcript and silently write a garbage course/profile (docs/roadmap.md item 6).
 
     Ordering matters: extraction + file writes run FIRST, and the conversation is
     ended LAST. If extraction/writes fail, the conversation stays active and the
@@ -864,6 +868,16 @@ async def complete_setup_route(
             raise HTTPException(status_code=404, detail=str(e))
 
     messages = await asyncio.to_thread(_load_messages)
+
+    total_user_turns = sum(1 for m in messages if m["role"] == "user")
+    if setup_phase_for_turn(total_user_turns) is not SetupPhase.OUTLINE:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Setup isn't ready to complete yet — the framing questions "
+                f"aren't finished ({total_user_turns}/{FRAMING_TURNS} answered)."
+            ),
+        )
 
     try:
         await asyncio.to_thread(

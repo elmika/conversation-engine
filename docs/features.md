@@ -31,7 +31,7 @@ During a setup conversation, once the outline has been proposed, a **Let's start
 2. Marks the setup conversation as ended.
 3. Immediately opens the first real course session (AI-initiated).
 
-Extraction and file writes happen **before** the conversation is ended, so if extraction fails the setup conversation stays active and the learner can retry — nothing is left half-finished. While the request is in flight the button shows a spinner and is disabled.
+Extraction and file writes happen **before** the conversation is ended, so if extraction fails the setup conversation stays active and the learner can retry — nothing is left half-finished. While the request is in flight the button shows a spinner and is disabled. The button is hidden for the entire framing Q&A (the 4 opening questions) and appears only once the outline exists; the backend independently rejects a complete-setup call made before then (400), so a request racing ahead of the UI can't silently extract a course/profile from a partial transcript.
 
 ### 1.6 Per-user isolation
 Conversation listing, messages, rename, delete, end-session, summary, and setup are all scoped to the learner's UUID. Reading or modifying another learner's conversation returns *not found* (404) or is a silent no-op (idempotent 204 on delete), so resources are never enumerable across learners.

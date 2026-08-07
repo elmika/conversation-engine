@@ -212,7 +212,7 @@ instead of redirecting — added `frontend/app/u/[userId]/page.tsx`, a server-si
 `/u/{userId}/chat` (the canonical default), closing the 404 gap. Verified live: bare `/history` and
 the "History" nav link both land on `/u/{userId}/history` with the conversation count unchanged.
 
-### 6. "Let's start" button is visible and enabled from the first setup turn, not just after the outline (priority: low)
+### 6. "Let's start" button is visible and enabled from the first setup turn, not just after the outline (priority: low) — ✅ Shipped 2026-08-07
 
 `qa-test-suite.md` step 1.7 implies the "Let's start" button only appears once the course outline
 is ready (it's listed as a check *after* step 1.6). In this run the button was already visible and
@@ -222,6 +222,28 @@ flight. Low priority since clicking it early was not tested (unclear if it's act
 pre-outline, or just visually present) — worth a quick check of whether it's disabled under the
 hood (e.g. a non-obvious `pointer-events`/opacity state that didn't read as "disabled" in a
 screenshot) or a genuine dead-click waiting to happen.
+
+**Investigation found this was a genuine dead-click, not just cosmetic.** The button's only
+gating was `isSetupConversation` (conversation's flow slug), which stays `"user-profile-collection"`
+for the entire setup flow — both the framing Q&A and the outline phase — so there was no
+outline-readiness check at all. Worse, the `complete-setup` endpoint itself had no phase guard
+either: clicking early would silently run the extraction LLM calls against a partial Q&A
+transcript and durably write a garbage `sections/course/<user_id>.md` / `sections/user/<user_id>.md`
+(flipping `has_profile` true) and end the conversation — a "succeeds incorrectly" failure, not an
+error.
+
+**Fix shipped**, at both layers: (1) Frontend (`ChatShell.tsx`) now also requires
+`localMessages` to contain at least `SETUP_FRAMING_TURNS` (4) user messages before rendering the
+button — mirrors `FRAMING_TURNS`/`setup_phase_for_turn()` in `app/learning/setup_flow.py`. (2)
+Backend (`complete_setup_route` in `app/api/routes.py`) independently recomputes the same
+`setup_phase_for_turn()` from the conversation's actual message count and returns 400 if the
+framing phase isn't finished — this is the real safety net, since it can't be bypassed by a
+direct API call. `docs/openapi.yml` and `docs/postman_collection.json` document the new 400.
+Verified: 2 new backend tests (a rejection case + fixing an existing test that unintentionally
+relied on the old, ungated behavior) plus the full suite (248 passed); frontend `tsc`/tests
+unaffected (43 passed). Live-verified in Chrome end-to-end on the running stack with a fresh
+learner: the button stayed hidden through all 4 framing turns and appeared only once the outline
+was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ---
 

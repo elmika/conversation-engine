@@ -122,6 +122,16 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   // never changes mid-session.
   const isSetupConversation = isActive && data?.prompt_slug === SETUP_PROMPT_SLUG;
 
+  // The setup flow asks exactly this many framing questions (name, industry,
+  // motivation, session length) before proposing a course outline — mirrors
+  // FRAMING_TURNS in app/learning/setup_flow.py. "Let's start" only makes sense
+  // once the outline exists; before that it would run extraction against a
+  // partial transcript (the backend also rejects this with 400, but gating here
+  // avoids a dead/misleading click — docs/roadmap.md item 6).
+  const SETUP_FRAMING_TURNS = 4;
+  const setupOutlineReady =
+    localMessages.filter((m) => m.role === "user").length >= SETUP_FRAMING_TURNS;
+
   // Auto-open the AI's first message on a fresh chat — per the design principle
   // "AI always opens, no blank input ever". Covers both audiences:
   //   - new users  → the setup flow (effectivePromptSlug = SETUP_PROMPT_SLUG)
@@ -309,7 +319,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
           <PromptSelector lockedSlug={lockedPromptSlug} />
           <ModelSelector />
           <div className="ml-auto flex items-center gap-2">
-            {activeConversationId && !isStreaming && !isEnded && isSetupConversation && (
+            {activeConversationId && !isStreaming && !isEnded && isSetupConversation && setupOutlineReady && (
               <Button
                 variant="default"
                 size="sm"

@@ -478,7 +478,9 @@ paths:
         session can begin. Ordering is recoverable: extraction + file writes run FIRST
         and the conversation is ended LAST, so if extraction/writes fail (500) the
         conversation stays active and the learner can retry. Returns 409 if the
-        conversation is already ended.
+        conversation is already ended, or 400 if the framing Q&A isn't finished yet
+        (fewer than 4 user turns) — calling this before the outline phase would run
+        extraction against a partial transcript.
       tags: [conversations]
       parameters:
         - $ref: "#/components/parameters/userId"
@@ -492,6 +494,14 @@ paths:
                 $ref: "#/components/schemas/CompleteSetupResponse"
               example:
                 status: "completed"
+        "400":
+          description: Framing Q&A isn't finished yet — no course outline exists to extract
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: "Setup isn't ready to complete yet — the framing questions aren't finished (2/4 answered)."
         "404":
           $ref: "#/components/responses/NotFound"
         "409":

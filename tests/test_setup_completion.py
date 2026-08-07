@@ -104,7 +104,19 @@ def test_complete_setup_failure_keeps_conversation_active(client) -> None:
     c, mock_llm = client
     cid = c.post(
         f"/u/{TEST_USER}/conversations",
-        json={"messages": [{"role": "user", "content": "hi"}]},
+        # 4 user turns clears the framing-phase guard (setup_phase_for_turn), so the
+        # request reaches extraction instead of being rejected 400 before it's tried.
+        json={
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "..."},
+                {"role": "user", "content": "hi2"},
+                {"role": "assistant", "content": "..."},
+                {"role": "user", "content": "hi3"},
+                {"role": "assistant", "content": "..."},
+                {"role": "user", "content": "hi4"},
+            ]
+        },
     ).json()["conversation_id"]
 
     # Make the extraction LLM calls fail.
@@ -116,4 +128,24 @@ def test_complete_setup_failure_keeps_conversation_active(client) -> None:
     mock_llm.complete.side_effect = None
     msgs = c.get(f"/u/{TEST_USER}/conversations/{cid}/messages")
     assert msgs.status_code == 200
+    assert msgs.json()["ended_at"] is None
+
+
+def test_complete_setup_rejects_before_framing_finishes(client) -> None:
+    """Calling complete-setup before the 4 framing turns are answered is rejected —
+    otherwise extraction would run against a partial transcript and silently write
+    a garbage course/profile (docs/roadmap.md item 6)."""
+    c, mock_llm = client
+    cid = c.post(
+        f"/u/{TEST_USER}/conversations",
+        json={"messages": [{"role": "user", "content": "hi"}]},
+    ).json()["conversation_id"]
+
+    calls_before = mock_llm.complete.call_count
+    r = c.post(f"/u/{TEST_USER}/conversations/{cid}/complete-setup")
+    assert r.status_code == 400
+    assert mock_llm.complete.call_count == calls_before  # no extraction attempted
+
+    # Conversation stays active and retryable.
+    msgs = c.get(f"/u/{TEST_USER}/conversations/{cid}/messages")
     assert msgs.json()["ended_at"] is None
