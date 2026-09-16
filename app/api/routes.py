@@ -1047,6 +1047,56 @@ async def get_usage_today(
     return await asyncio.to_thread(_query)
 
 
+@router.get("/admin/conversations", response_model=ConversationListResponse)
+async def admin_list_conversations(
+    page: int = 1,
+    page_size: int = 20,
+    uow_factory=Depends(get_uow_factory),
+    _admin: None = Depends(require_admin),
+) -> ConversationListResponse:
+    """All conversations across all users — admin support/QA read access."""
+    def _run() -> tuple[list[dict], int]:
+        with uow_factory() as uow:
+            return uow.repo.list_all_conversations(page, page_size)
+
+    rows, total = await asyncio.to_thread(_run)
+    return ConversationListResponse(
+        conversations=[
+            ConversationSummary(
+                id=r["id"], name=r.get("name"), created_at=r["created_at"],
+                last_activity=r.get("last_activity"), first_message=r.get("first_message"),
+                ended_at=r.get("ended_at"), user_id=r.get("user_id"),
+            )
+            for r in rows
+        ],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+@router.get("/admin/conversations/{conversation_id}/messages", response_model=MessagesResponse)
+async def admin_get_conversation_messages(
+    conversation_id: str,
+    uow_factory=Depends(get_uow_factory),
+    _admin: None = Depends(require_admin),
+) -> MessagesResponse:
+    """Any conversation's transcript, regardless of owner — admin support/QA read access."""
+    def _run() -> tuple[list[dict], Optional[dict]]:
+        with uow_factory() as uow:
+            conv = uow.repo.get_conversation_any_owner(conversation_id)
+            if conv is None:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            msgs = uow.repo.get_messages_with_metadata(conversation_id, conv["user_id"])
+            return msgs, conv
+
+    msgs, conv = await asyncio.to_thread(_run)
+    return MessagesResponse(
+        conversation_id=conversation_id,
+        ended_at=conv["ended_at"] if conv else None,
+        prompt_slug=conv["prompt_slug"] if conv else None,
+        messages=[MessageSchema(id=m["id"], role=m["role"], content=m["content"], created_at=m["created_at"]) for m in msgs],
+    )
+
+
 @router.get("/prompts/{slug}/render", response_model=PromptRenderResponse)
 async def render_prompt_preview(
     slug: str,

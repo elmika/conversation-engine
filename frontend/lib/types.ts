@@ -43,6 +43,7 @@ export interface ConversationSummary {
   last_activity?: string | null;
   first_message?: string | null;
   ended_at?: string | null; // ISO 8601; null/undefined means still active
+  user_id?: string | null; // populated only by the admin cross-user listing
 }
 
 export interface ConversationListResponse {

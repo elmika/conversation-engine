@@ -1559,7 +1559,7 @@
                 "today"
               ]
             },
-            "description": "Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin spend visibility for the pilot. Not yet auth-gated (planned for Piece C's require_admin).",
+            "description": "Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin spend visibility for the pilot.",
             "header": [
               {
                 "key": "Authorization",
@@ -1597,7 +1597,177 @@
                     "today"
                   ]
                 },
-                "description": "Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin spend visibility for the pilot. Not yet auth-gated (planned for Piece C's require_admin).",
+                "description": "Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin spend visibility for the pilot.",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "List All Conversations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/admin/conversations?page=1&page_size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Every conversation across all learners, ordered by created_at DESC, paginated. Each item's user_id identifies the owning learner. Admin support/QA use, not exposed to learners.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ]
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"conversations\": [\n    {\n      \"id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n      \"user_id\": \"9f1c2e3a-0b4d-4c8e-9a1f-2b3c4d5e6f70\",\n      \"name\": \"Intro to TypeScript\",\n      \"created_at\": \"2026-03-02T11:00:00\",\n      \"last_activity\": \"2026-03-02T11:30:00\",\n      \"first_message\": \"Hello! My name is Mika.\",\n      \"ended_at\": null\n    }\n  ],\n  \"total\": 1,\n  \"page\": 1,\n  \"page_size\": 20\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/admin/conversations?page=1&page_size=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "conversations"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Every conversation across all learners, ordered by created_at DESC, paginated. Each item's user_id identifies the owning learner. Admin support/QA use, not exposed to learners.",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "Get Conversation Messages (any owner)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/admin/conversations/{{conversation_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "conversations",
+                "{{conversation_id}}",
+                "messages"
+              ]
+            },
+            "description": "All messages for a conversation ordered by id ASC, regardless of which learner owns it. Admin support/QA use. Returns 404 if not found.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ]
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"ended_at\": null,\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"id\": 1,\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"role\": \"assistant\",\n      \"content\": \"Hello Mika! How can I help you today?\",\n      \"created_at\": \"2026-03-02T11:00:01\"\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/admin/conversations/{{conversation_id}}/messages",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "conversations",
+                    "{{conversation_id}}",
+                    "messages"
+                  ]
+                },
+                "description": "All messages for a conversation ordered by id ASC, regardless of which learner owns it. Admin support/QA use. Returns 404 if not found.",
                 "header": [
                   {
                     "key": "Authorization",

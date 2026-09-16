@@ -177,6 +177,65 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             "objective_met": bool(row.objective_met),
         }
 
+    def list_all_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) across all users, ordered by created_at DESC with pagination."""
+        total = self._session.execute(select(func.count()).select_from(Conversation)).scalar_one()
+
+        first_msg_sq = (
+            select(Message.content)
+            .where(Message.conversation_id == Conversation.id)
+            .where(Message.role == "user")
+            .order_by(Message.id.asc())
+            .limit(1)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+        last_activity_sq = (
+            select(func.max(Message.created_at))
+            .where(Message.conversation_id == Conversation.id)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+
+        stmt = (
+            select(
+                Conversation,
+                first_msg_sq.label("first_message"),
+                last_activity_sq.label("last_activity"),
+            )
+            .order_by(Conversation.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        rows = self._session.execute(stmt).all()
+        return [
+            {
+                "id": r.Conversation.id,
+                "user_id": r.Conversation.user_id,
+                "name": r.Conversation.name,
+                "created_at": r.Conversation.created_at.isoformat(),
+                "last_activity": (r.last_activity or r.Conversation.created_at).isoformat(),
+                "first_message": (r.first_message or "")[:120],
+                "ended_at": r.Conversation.ended_at.isoformat() if r.Conversation.ended_at else None,
+            }
+            for r in rows
+        ], total
+
+    def get_conversation_any_owner(self, conversation_id: str) -> Optional[dict]:
+        """Return conversation metadata (including user_id) with no owner check. Admin only."""
+        row = self._session.get(Conversation, conversation_id)
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "user_id": row.user_id,
+            "name": row.name,
+            "created_at": row.created_at.isoformat(),
+            "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+            "prompt_slug": row.prompt_slug,
+            "session_length_minutes": row.session_length_minutes,
+        }
+
     def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
         """Set the per-session length (minutes) for a conversation owned by user_id."""
         row = self._session.get(Conversation, conversation_id)

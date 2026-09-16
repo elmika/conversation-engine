@@ -666,6 +666,93 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /admin/conversations:
+    get:
+      operationId: adminListConversations
+      summary: List conversations across all users (admin)
+      description: >-
+        Every conversation, across all learners, ordered by `created_at` DESC with
+        page-based pagination — for admin support/QA use, not exposed to learners.
+        Each item's `user_id` identifies the owning learner.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      parameters:
+        - name: page
+          in: query
+          description: 1-based page number
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list across all users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationListResponse"
+              example:
+                conversations:
+                  - id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    user_id: "9f1c2e3a-0b4d-4c8e-9a1f-2b3c4d5e6f70"
+                    name: "Intro to TypeScript"
+                    created_at: "2026-03-02T11:00:00"
+                    last_activity: "2026-03-02T11:30:00"
+                    first_message: "Hello! My name is Mika."
+                    ended_at: null
+                total: 1
+                page: 1
+                page_size: 20
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/conversations/{conversationId}/messages:
+    get:
+      operationId: adminGetConversationMessages
+      summary: Get any conversation's messages (admin)
+      description: >-
+        Returns all messages for a conversation ordered by id ASC, regardless of
+        which learner owns it — for admin support/QA use. Returns 404 if the
+        conversation does not exist.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      parameters:
+        - $ref: "#/components/parameters/conversationId"
+      responses:
+        "200":
+          description: Full message history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagesResponse"
+              example:
+                conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                ended_at: null
+                prompt_slug: default
+                messages:
+                  - id: 1
+                    role: user
+                    content: "Hello! My name is Mika."
+                    created_at: "2026-03-02T11:00:00"
+                  - id: 2
+                    role: assistant
+                    content: "Hello Mika! How can I help you today?"
+                    created_at: "2026-03-02T11:00:01"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /prompts:
     get:
       operationId: listPrompts
@@ -1065,6 +1152,10 @@ components:
           format: date-time
           nullable: true
           description: ISO 8601 timestamp when the session was ended; null means still active
+        user_id:
+          type: string
+          nullable: true
+          description: Owning learner's opaque id. Populated only by the admin cross-user listing (GET /admin/conversations); null on the per-user endpoint.
 
     ConversationListResponse:
       type: object

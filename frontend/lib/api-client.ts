@@ -177,6 +177,26 @@ export async function getUsageToday(): Promise<UsageTodayResponse> {
   return handleAdminResponse(res);
 }
 
+export async function fetchAdminConversations(
+  page = 1,
+  pageSize = 20
+): Promise<ConversationListResponse> {
+  const res = await fetch(
+    `/api/admin/conversations?page=${page}&page_size=${pageSize}`,
+    { headers: adminHeaders() }
+  );
+  return handleAdminResponse(res);
+}
+
+export async function fetchAdminConversationMessages(
+  conversationId: string
+): Promise<MessagesResponse> {
+  const res = await fetch(`/api/admin/conversations/${conversationId}/messages`, {
+    headers: adminHeaders(),
+  });
+  return handleAdminResponse(res);
+}
+
 // ---------------------------------------------------------------------------
 // User status
 // ---------------------------------------------------------------------------

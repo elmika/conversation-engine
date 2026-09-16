@@ -211,6 +211,20 @@ class ConversationRepo(Protocol):
         """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes}, or None if not found or not owned by user_id."""
         ...
 
+    def list_all_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) across ALL users, ordered by created_at DESC with pagination.
+
+        Each row additionally carries `user_id` (list_conversations does not) since
+        there's no single implicit owner. Admin only.
+        """
+        ...
+
+    def get_conversation_any_owner(self, conversation_id: str) -> Optional[dict]:
+        """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes, user_id},
+        or None if not found. No owner check — admin only.
+        """
+        ...
+
     def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
         """Set the per-session length (minutes) for a conversation owned by user_id."""
         ...
