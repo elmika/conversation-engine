@@ -245,6 +245,9 @@ Passing an unknown `model_slug` returns a 400 error.
 ### 8.1 Admin panel
 A dedicated `/admin` section provides full management of prompt personas.
 
+### 8.1a Admin token gate
+`/admin` is behind a lightweight "paste your admin token once" gate — no login system, just a single token input. The token is validated against the backend before access is granted (not merely stored), so a stale or wrong token never reveals admin content. The token is kept in `sessionStorage` only (cleared when the tab closes, not shared across browser restarts). A **Log out** button (top-right, next to the "Admin" heading) clears it. A 401 from any admin action (mutating a prompt, viewing usage) clears the stored token and re-prompts the gate. The mutating/sensitive prompt routes (`POST/PUT/PATCH/DELETE /prompts*`, `GET /prompts/{slug}/render`) and `GET /admin/usage/today` require this token server-side; `GET /prompts` (the learner-facing persona list) stays open — see `docs/roadmap.md` for the accepted residual gap this implies.
+
 ### 8.2 Create prompt
 A **New Prompt** button (top-right) opens a dialog with fields for slug, name, system prompt, and optional model override. The slug must be lowercase alphanumeric with hyphens/underscores. Duplicate slugs are rejected with an inline error.
 
@@ -280,7 +283,7 @@ a streaming turn it arrives as the terminal SSE `done` event's `error` field. No
 made when a cap is already exceeded.
 
 ### 9.3 Admin spend visibility
-`GET /admin/usage/today` (not yet auth-gated — see Piece C) returns today's platform-wide $
+`GET /admin/usage/today` (admin token required — see 8.1a) returns today's platform-wide $
 spend and a per-user breakdown, for a quick sanity-check during the pilot. Not a full cost
 dashboard.
 

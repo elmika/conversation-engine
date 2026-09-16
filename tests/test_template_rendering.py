@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.application.ports import LLMResult, StreamEvent
 from app.domain.prompt_template import PromptTemplateError
 from app.main import app as main_app
-from tests.conftest import TEST_USER
+from tests.conftest import ADMIN_HEADERS, TEST_USER
 
 
 # ── Helpers & fixtures ─────────────────────────────────────────────────────────
@@ -61,7 +61,11 @@ def client_with_mock_stream(mock_llm_streaming):
 
 
 def _create_template_prompt(client, slug: str, system_prompt: str) -> None:
-    r = client.post("/prompts", json={"slug": slug, "name": "Test", "system_prompt": system_prompt})
+    r = client.post(
+        "/prompts",
+        json={"slug": slug, "name": "Test", "system_prompt": system_prompt},
+        headers=ADMIN_HEADERS,
+    )
     assert r.status_code == 201, r.json()
 
 
@@ -290,7 +294,7 @@ def test_render_endpoint_returns_section_content(client_with_sections, sections_
     (sections_dir / "course" / "default.md").write_text("# Rendered Course")
     _create_template_prompt(client_with_sections, "render-section-test", "Course: {{course}}")
 
-    r = client_with_sections.get("/prompts/render-section-test/render")
+    r = client_with_sections.get("/prompts/render-section-test/render", headers=ADMIN_HEADERS)
     assert r.status_code == 200
     data = r.json()
     assert "{{course}}" not in data["rendered_prompt"]

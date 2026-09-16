@@ -5,12 +5,22 @@ import { PromptCard } from "@/components/admin/PromptCard";
 import { StatsPanel } from "@/components/admin/StatsPanel";
 import { PromptDialog } from "@/components/admin/PromptDialog";
 import { DeletePromptDialog } from "@/components/admin/DeletePromptDialog";
+import { AdminTokenGate } from "@/components/admin/AdminTokenGate";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, LogOut } from "lucide-react";
 import { usePrompts, useAllPrompts } from "@/hooks/usePrompts";
+import { clearAdminToken } from "@/lib/adminToken";
 import type { Prompt } from "@/lib/types";
 
 export default function AdminPage() {
+  return (
+    <AdminTokenGate>
+      <AdminPageContent />
+    </AdminTokenGate>
+  );
+}
+
+function AdminPageContent() {
   const [showAll, setShowAll] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editPrompt, setEditPrompt] = useState<Prompt | null>(null);
@@ -49,7 +59,13 @@ export default function AdminPage() {
   return (
     <div className="h-full overflow-y-auto">
       <main className="mx-auto max-w-3xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-semibold">Admin</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Admin</h1>
+          <Button variant="ghost" size="sm" onClick={() => clearAdminToken()}>
+            <LogOut className="mr-1 h-4 w-4" />
+            Log out
+          </Button>
+        </div>
 
         <section className="mb-8">
           <div className="mb-4 flex items-center justify-between">

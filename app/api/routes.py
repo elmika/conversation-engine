@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import secrets
 from collections.abc import AsyncIterator
 from typing import Any, Optional
 
@@ -64,6 +65,22 @@ def get_settings(request: Request) -> Settings:
 def get_llm(request: Request) -> LLMPort:
     """Provide LLM adapter from app.state (injected in main lifespan)."""
     return request.app.state.llm
+
+
+def require_admin(request: Request, settings: Settings = Depends(get_settings)) -> None:
+    """Gate admin-only routes behind a static bearer token.
+
+    Fails closed: an empty settings.admin_token means "misconfigured, deny" —
+    it must never be treated as "no auth required."
+    """
+    if not settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin access is not configured")
+    auth_header = request.headers.get("Authorization", "")
+    scheme, _, token = auth_header.partition(" ")
+    if scheme != "Bearer" or not token:
+        raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
+    if not secrets.compare_digest(token, settings.admin_token):
+        raise HTTPException(status_code=401, detail="Invalid admin token")
 
 
 def get_uow_factory(db=Depends(get_session)):
@@ -981,6 +998,7 @@ async def create_prompt(
     body: PromptCreateRequest,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> PromptSchema:
     """Create a new prompt persona."""
     try:
@@ -1006,11 +1024,12 @@ async def create_prompt(
 @router.get("/admin/usage/today", response_model=UsageTodayResponse)
 async def get_usage_today(
     uow_factory=Depends(get_uow_factory),
+    _admin: None = Depends(require_admin),
 ) -> UsageTodayResponse:
     """Today's (UTC) $ spend, platform-wide and broken down by user.
 
     Minimal admin spend visibility — not a full cost dashboard, just enough to
-    sanity-check spend before/during the pilot. Not yet auth-gated (Piece C).
+    sanity-check spend before/during the pilot.
     """
     def _query() -> UsageTodayResponse:
         with uow_factory() as uow:
@@ -1033,6 +1052,7 @@ async def render_prompt_preview(
     slug: str,
     conversation_id: Optional[str] = None,
     service: ConversationService = Depends(get_preview_service),
+    _admin: None = Depends(require_admin),
 ) -> PromptRenderResponse:
     """Return the prompt's system_prompt with all template variables resolved.
 
@@ -1055,6 +1075,7 @@ async def update_prompt(
     body: PromptUpdateRequest,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> PromptSchema:
     """Update name, system_prompt, and/or model of an existing prompt."""
     try:
@@ -1082,6 +1103,7 @@ async def disable_prompt(
     slug: str,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> PromptSchema:
     """Soft-delete a prompt by setting is_active=False."""
     found = await asyncio.to_thread(prompt_repo.set_active, slug, False)
@@ -1103,6 +1125,7 @@ async def enable_prompt(
     slug: str,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> PromptSchema:
     """Re-enable a disabled prompt by setting is_active=True."""
     found = await asyncio.to_thread(prompt_repo.set_active, slug, True)
@@ -1124,6 +1147,7 @@ async def delete_prompt(
     slug: str,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> None:
     """Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation."""
     used = await asyncio.to_thread(prompt_repo.is_used_in_runs, slug)

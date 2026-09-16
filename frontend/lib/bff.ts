@@ -14,13 +14,24 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const FASTAPI_URL = process.env.FASTAPI_URL ?? "http://localhost:8000";
 
+/** Forward the incoming Authorization header, if any (used by admin-only routes). */
+function authHeader(request: NextRequest): Record<string, string> {
+  const auth = request.headers.get("Authorization");
+  return auth ? { Authorization: auth } : {};
+}
+
 /** RequestInit for a body-carrying JSON request, forwarding the incoming body verbatim. */
 export async function jsonBody(request: NextRequest, method: string): Promise<RequestInit> {
   return {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeader(request) },
     body: await request.text(),
   };
+}
+
+/** RequestInit for a request with no body (GET/PATCH/DELETE without a body), forwarding auth. */
+export function authOnly(request: NextRequest, method: string): RequestInit {
+  return { method, headers: authHeader(request) };
 }
 
 /**

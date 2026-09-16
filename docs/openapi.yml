@@ -22,12 +22,21 @@ info:
 
     ## Identity & multi-user scoping
 
-    There is no auth or sign-in. Each learner is identified by an opaque `user_id`
+    There is no learner auth or sign-in. Each learner is identified by an opaque `user_id`
     (a UUID minted client-side and kept in the URL / localStorage). All conversation
     routes are scoped under `/u/{userId}/…`; a conversation is only visible to the
     `user_id` that created it. Requests for a conversation under a different `user_id`
     are treated as non-existent (404 / 204 / empty) so resources are not enumerable
     across users.
+
+    ## Admin auth
+
+    A single static bearer token (`ADMIN_TOKEN` env var), checked with a constant-time
+    comparison. No sessions, no DB, no login system. Applies to the mutating/sensitive
+    prompt routes (`POST/PUT/PATCH/DELETE /prompts*`, `GET /prompts/{slug}/render`) and
+    `GET /admin/usage/today`. An unset `ADMIN_TOKEN` fails closed (401 on every request to
+    these routes) rather than being treated as "open". `GET /prompts` (list) stays
+    unauthenticated — the learner-facing persona dropdown depends on it.
 
     ## SSE Streaming
 
@@ -636,9 +645,10 @@ paths:
       summary: Today's $ spend (admin)
       description: >-
         Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin
-        spend visibility for the pilot — not a full cost dashboard. Not yet auth-gated (planned
-        for Piece C's `require_admin`).
+        spend visibility for the pilot — not a full cost dashboard.
       tags: [admin]
+      security:
+        - AdminBearer: []
       responses:
         "200":
           description: Today's spend summary
@@ -653,6 +663,8 @@ paths:
                     usd_today: 0.87
                   - user_id: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
                     usd_today: 0.36
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /prompts:
     get:
@@ -695,6 +707,8 @@ paths:
       summary: Create prompt
       description: Create a new prompt persona. Returns 409 if the slug already exists.
       tags: [prompts]
+      security:
+        - AdminBearer: []
       requestBody:
         required: true
         content:
@@ -719,6 +733,8 @@ paths:
                 system_prompt: "You are a custom assistant."
                 model: null
                 is_active: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "409":
           description: Slug already exists
           content:
@@ -740,6 +756,8 @@ paths:
         `{{time:lesson-time-spent}}` to a specific conversation's start time.
         Without it, both resolve to the current time (i.e. a "new conversation" preview).
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
         - name: conversation_id
@@ -761,6 +779,8 @@ paths:
                 slug: learn-typescript
                 name: TypeScript Mentor
                 rendered_prompt: "You are a technical mentor...\n\nCurrent time: 2026-03-27 12:00 UTC\nConversation started: 2026-03-27 11:45 UTC\nTime spent: 15 minutes"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -770,6 +790,8 @@ paths:
       summary: Update prompt
       description: Update the name, system_prompt, and/or model of an existing prompt.
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
       requestBody:
@@ -789,6 +811,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Prompt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -799,11 +823,15 @@ paths:
         Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation run
         (use PATCH disable instead to soft-delete it).
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
       responses:
         "204":
           description: Deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -821,6 +849,8 @@ paths:
       summary: Disable prompt
       description: Soft-delete a prompt by setting is_active=false. The prompt is hidden from GET /prompts but preserved in conversation history.
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
       responses:
@@ -830,6 +860,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Prompt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -839,6 +871,8 @@ paths:
       summary: Enable prompt
       description: Re-enable a disabled prompt by setting is_active=true.
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
       responses:
@@ -848,10 +882,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Prompt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
 components:
+
+  securitySchemes:
+    AdminBearer:
+      type: http
+      scheme: bearer
+      description: Static admin token (ADMIN_TOKEN env var), checked with a constant-time comparison.
 
   parameters:
     userId:
@@ -1408,6 +1450,25 @@ components:
             $ref: "#/components/schemas/ErrorDetail"
           example:
             detail: "Total message content length (35000) exceeds max_input_chars (32000)"
+
+    Unauthorized:
+      description: >-
+        Missing/malformed Authorization header, wrong admin token, or ADMIN_TOKEN
+        unset server-side (fails closed, never treated as "open").
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          examples:
+            missing:
+              value:
+                detail: "Missing or malformed Authorization header"
+            wrong:
+              value:
+                detail: "Invalid admin token"
+            unconfigured:
+              value:
+                detail: "Admin access is not configured"
 
     NotFound:
       description: Conversation not found (or not owned by this user)

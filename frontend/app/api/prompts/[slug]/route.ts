@@ -1,31 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const FASTAPI_URL = process.env.FASTAPI_URL ?? "http://localhost:8000";
+import { proxyJson, jsonBody, authOnly } from "@/lib/bff";
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
   const { slug } = await params;
-  const body = await request.json();
-  const res = await fetch(`${FASTAPI_URL}/prompts/${slug}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  return NextResponse.json(data, { status: res.status });
+  return proxyJson(`/prompts/${slug}`, await jsonBody(request, "PUT"));
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
   const { slug } = await params;
-  const res = await fetch(`${FASTAPI_URL}/prompts/${slug}`, { method: "DELETE" });
-  if (res.status === 204) {
-    return new NextResponse(null, { status: 204 });
-  }
-  const data = await res.json();
-  return NextResponse.json(data, { status: res.status });
+  return proxyJson(`/prompts/${slug}`, authOnly(request, "DELETE"));
 }

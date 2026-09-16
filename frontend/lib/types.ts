@@ -107,6 +107,16 @@ export interface ModelsResponse {
   models: ModelSchema[];
 }
 
+export interface UserUsage {
+  user_id: string;
+  usd_today: number;
+}
+
+export interface UsageTodayResponse {
+  platform_usd_today: number;
+  by_user: UserUsage[];
+}
+
 // ---------------------------------------------------------------------------
 // SSE event data payloads
 // ---------------------------------------------------------------------------
