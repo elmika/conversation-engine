@@ -208,11 +208,10 @@ A **Preview** button (scan icon) on each prompt card in the Admin panel opens a 
 ### 7.1 Model registry
 A static registry of 14 supported OpenAI models is served via `GET /models`. Each entry has a `slug` (the OpenAI model ID), a human-readable `name`, and a `description`. The default model is `gpt-4.1`.
 
-**Available models:**
+**Available models** (learner-facing selector — excludes `gpt-5-mini`/`gpt-5-nano`, which have no
+price-table entry and are not offered):
 - **GPT-4.1** (`gpt-4.1`) — Smartest non-reasoning model
 - **GPT-5** (`gpt-5`) — Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
-- **GPT-5 mini** (`gpt-5-mini`) — Near-frontier intelligence for cost sensitive, low latency, high volume workloads
-- **GPT-5 nano** (`gpt-5-nano`) — Fastest, most cost-efficient version of GPT-5
 - **GPT-5 Codex** (`gpt-5-codex`) — A version of GPT-5 optimized for agentic coding in Codex
 - **GPT-5.1 Codex** (`gpt-5.1-codex`) — A version of GPT-5.1 optimized for agentic coding in Codex
 - **GPT-5.1 Codex Max** (`gpt-5.1-codex-max`) — A version of GPT-5.1-codex optimized for long running tasks
@@ -263,6 +262,27 @@ A **Show disabled** checkbox at the top of the admin panel toggles display of di
 
 ### 8.7 Delete prompt
 A **trash** icon on each card opens a confirmation dialog to permanently delete the prompt. If the prompt has been used in any conversation, deletion is blocked with an error message (use Disable instead).
+
+---
+
+## 9. Usage Limits
+
+### 9.1 Server-side $ spend ceilings
+Before every LLM call, the backend checks estimated $ spend against three ceilings, checked
+platform → user → session: platform-wide per day, per-user per day, and per session. Defaults
+(tunable via env var, no code change): session $0.50, user/day $1.00, platform/day $5.00.
+
+### 9.2 Friendly block message
+When a ceiling is hit, the learner sees a plain-language message in place of the assistant's
+reply instead of an error (e.g. "SkillForge has hit today's usage limit platform-wide — please
+try again tomorrow."). For a non-streaming turn this appears as a normal assistant message; for
+a streaming turn it arrives as the terminal SSE `done` event's `error` field. No real LLM call is
+made when a cap is already exceeded.
+
+### 9.3 Admin spend visibility
+`GET /admin/usage/today` (not yet auth-gated — see Piece C) returns today's platform-wide $
+spend and a per-user breakdown, for a quick sanity-check during the pilot. Not a full cost
+dashboard.
 
 ---
 

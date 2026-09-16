@@ -31,3 +31,9 @@ class Settings(BaseSettings):
 
     prompts_dir: str = "./prompts"
     sections_dir: str = "./sections"
+
+    # Usage ceilings — starting point for a handful of supervised pilot learners,
+    # tuned after test traffic. Overridable via a Fly secret without a code change.
+    session_spend_cap_usd: float = 0.50
+    daily_user_spend_cap_usd: float = 1.00
+    daily_platform_spend_cap_usd: float = 5.00

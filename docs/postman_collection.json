@@ -1238,7 +1238,7 @@
                 "models"
               ]
             },
-            "description": "Returns all models available in the static model registry. Use a `slug` value as `model_slug` in conversation requests to override the model for that request."
+            "description": "Returns the learner-facing model selector list (excludes unpriced models with no pricing.py entry). Use a `slug` value as `model_slug` in conversation requests to override the model for that request."
           },
           "response": [
             {
@@ -1251,7 +1251,45 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5\",\n      \"name\": \"GPT-5\",\n      \"description\": \"Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort\"\n    },\n    {\n      \"slug\": \"gpt-5-mini\",\n      \"name\": \"GPT-5 mini\",\n      \"description\": \"Near-frontier intelligence for cost sensitive, low latency, high volume workloads\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    }\n  ]\n}",
+              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    },\n    {\n      \"slug\": \"gpt-5.4-nano\",\n      \"name\": \"GPT-5.4 nano\",\n      \"description\": \"Our cheapest GPT-5.4-class model for simple high-volume tasks\"\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get Usage Today",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/admin/usage/today",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "usage",
+                "today"
+              ]
+            },
+            "description": "Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin spend visibility for the pilot. Not yet auth-gated (planned for Piece C's require_admin)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"platform_usd_today\": 1.23,\n  \"by_user\": [\n    {\n      \"user_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n      \"usd_today\": 0.87\n    },\n    {\n      \"user_id\": \"7c9e6679-7425-40de-944b-e07fc1f90ae7\",\n      \"usd_today\": 0.36\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
             }
           ]

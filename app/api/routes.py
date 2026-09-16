@@ -29,6 +29,8 @@ from app.api.schemas import (
     PromptsResponse,
     SessionSummarySchema,
     TimingsSchema,
+    UsageTodayResponse,
+    UserUsageSchema,
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.infra.slot_resolver_files import FileSlotResolver
@@ -39,7 +41,9 @@ from app.learning.setup_completion import SetupCompletionError, complete_setup
 from app.learning.setup_flow import FRAMING_TURNS, SetupPhase, setup_phase_for_turn
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
+from app.domain.pricing import estimate_cost_usd
 from app.domain.prompt_template import PromptTemplateError, validate_template
+from app.domain.usage_ceiling import CapExceeded, cap_message
 from app.infra.persistence.db import get_session
 from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -96,6 +100,10 @@ def get_preview_service(
         flow=LearningFlowOrchestrator(uow_factory, llm, prompt_repo, slot_resolver),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
+        price_fn=estimate_cost_usd,
+        session_cap_usd=settings.session_spend_cap_usd,
+        user_daily_cap_usd=settings.daily_user_spend_cap_usd,
+        platform_daily_cap_usd=settings.daily_platform_spend_cap_usd,
     )
 
 
@@ -123,6 +131,10 @@ def get_conversation_service(
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
         user_id=user_id,
+        price_fn=estimate_cost_usd,
+        session_cap_usd=settings.session_spend_cap_usd,
+        user_daily_cap_usd=settings.daily_user_spend_cap_usd,
+        platform_daily_cap_usd=settings.daily_platform_spend_cap_usd,
     )
 
 
@@ -268,6 +280,8 @@ async def create_conversation_stream(
                         "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     }
                     yield _sse_event("done", done_payload)
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
@@ -371,7 +385,12 @@ async def init_session_stream(
                         "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     })
                 elif ev.get("type") == "error":
-                    yield _sse_event("done", {"error": ev.get("error_message", "Stream error")})
+                    yield _sse_event("done", {"error": {
+                        "type": ev.get("error_type", "stream_error"),
+                        "message": ev.get("error_message", "Stream error"),
+                    }})
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
@@ -577,6 +596,8 @@ async def append_conversation_turn_stream(
             # met (latching closure for the next turn).
             await asyncio.to_thread(service.maybe_update_session_length, conv_id)
             await asyncio.to_thread(service.maybe_flag_objective_complete, conv_id)
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
@@ -682,6 +703,8 @@ async def rewind_conversation_stream(
                         "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     }
                     yield _sse_event("done", done_payload)
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
@@ -978,6 +1001,31 @@ async def create_prompt(
         model=body.model,
         is_active=True,
     )
+
+
+@router.get("/admin/usage/today", response_model=UsageTodayResponse)
+async def get_usage_today(
+    uow_factory=Depends(get_uow_factory),
+) -> UsageTodayResponse:
+    """Today's (UTC) $ spend, platform-wide and broken down by user.
+
+    Minimal admin spend visibility — not a full cost dashboard, just enough to
+    sanity-check spend before/during the pilot. Not yet auth-gated (Piece C).
+    """
+    def _query() -> UsageTodayResponse:
+        with uow_factory() as uow:
+            platform_usd_today = uow.repo.get_platform_daily_spend_usd(estimate_cost_usd)
+            user_ids = uow.repo.get_user_ids_with_runs_today()
+            by_user = [
+                UserUsageSchema(
+                    user_id=user_id,
+                    usd_today=uow.repo.get_user_daily_spend_usd(user_id, estimate_cost_usd),
+                )
+                for user_id in user_ids
+            ]
+        return UsageTodayResponse(platform_usd_today=platform_usd_today, by_user=by_user)
+
+    return await asyncio.to_thread(_query)
 
 
 @router.get("/prompts/{slug}/render", response_model=PromptRenderResponse)

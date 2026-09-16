@@ -91,7 +91,7 @@ def client():
 
     mock_llm = MagicMock()
     mock_llm.complete.return_value = LLMResult(
-        text="Reply", model="gpt-4.1-mini", ttfb_ms=1, total_ms=1
+        text="Reply", model="gpt-4.1", ttfb_ms=1, total_ms=1, input_tokens=0, output_tokens=0
     )
     main_app.dependency_overrides[api_routes.get_llm] = lambda: mock_llm
     with TestClient(main_app) as c:

@@ -68,6 +68,8 @@ tags:
     description: Prompt persona registry
   - name: models
     description: Available model registry
+  - name: admin
+    description: Admin-only endpoints (not yet auth-gated — see Piece C)
 
 paths:
 
@@ -158,6 +160,9 @@ paths:
       description: |
         Creates a new conversation and processes the first user turn synchronously.
         Returns 409 if the user already has an active (not-ended) conversation.
+        If a $ usage ceiling (session/user_daily/platform_daily) is already exceeded, no LLM
+        call is made — a friendly assistant message explaining the limit is returned instead,
+        still as a normal 200 response.
       tags: [conversations]
       parameters:
         - $ref: "#/components/parameters/userId"
@@ -269,6 +274,9 @@ paths:
         reply synchronously. History is automatically trimmed before the LLM call.
         The prompt/course is locked at creation; `prompt_slug` in the body is ignored
         for existing conversations.
+        If a $ usage ceiling (session/user_daily/platform_daily) is already exceeded, no LLM
+        call is made — a friendly assistant message explaining the limit is returned instead,
+        still as a normal 200 response.
       tags: [conversations]
       parameters:
         - $ref: "#/components/parameters/userId"
@@ -599,7 +607,9 @@ paths:
     get:
       operationId: listModels
       summary: List models
-      description: Returns all models available in the static model registry. Use a `slug` value as `model_slug` in conversation requests.
+      description: >-
+        Returns the learner-facing model selector list (excludes unpriced models with no
+        `pricing.py` entry). Use a `slug` value as `model_slug` in conversation requests.
       tags: [models]
       responses:
         "200":
@@ -613,12 +623,36 @@ paths:
                   - slug: gpt-4.1
                     name: GPT-4.1
                     description: Smartest non-reasoning model
-                  - slug: gpt-5
-                    name: GPT-5
-                    description: Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
                   - slug: gpt-5.4-mini
                     name: GPT-5.4 mini
                     description: Our strongest mini model yet for coding, computer use, and subagents
+                  - slug: gpt-5.4-nano
+                    name: GPT-5.4 nano
+                    description: Our cheapest GPT-5.4-class model for simple high-volume tasks
+
+  /admin/usage/today:
+    get:
+      operationId: getUsageToday
+      summary: Today's $ spend (admin)
+      description: >-
+        Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin
+        spend visibility for the pilot — not a full cost dashboard. Not yet auth-gated (planned
+        for Piece C's `require_admin`).
+      tags: [admin]
+      responses:
+        "200":
+          description: Today's spend summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageTodayResponse"
+              example:
+                platform_usd_today: 1.23
+                by_user:
+                  - user_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    usd_today: 0.87
+                  - user_id: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                    usd_today: 0.36
 
   /prompts:
     get:
@@ -1215,6 +1249,30 @@ components:
           items:
             $ref: "#/components/schemas/Model"
 
+    UserUsage:
+      type: object
+      required: [user_id, usd_today]
+      properties:
+        user_id:
+          type: string
+        usd_today:
+          type: number
+          format: float
+          description: Estimated $ spend for this user today (UTC)
+
+    UsageTodayResponse:
+      type: object
+      required: [platform_usd_today, by_user]
+      properties:
+        platform_usd_today:
+          type: number
+          format: float
+          description: Estimated $ spend across all users today (UTC)
+        by_user:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserUsage"
+
     PromptsResponse:
       type: object
       required: [prompts]
@@ -1273,7 +1331,10 @@ components:
           properties:
             type:
               type: string
-              enum: [http_error, internal_error]
+              enum: [http_error, internal_error, stream_error, usage_cap_exceeded]
+              description: >-
+                usage_cap_exceeded means a $ spend ceiling (session/user_daily/platform_daily)
+                was already hit before this turn — no LLM call was made.
             status_code:
               type: integer
               description: HTTP status code (http_error only)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from datetime import timezone
 
@@ -209,6 +209,69 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             .limit(1)
         )
         return self._session.execute(stmt).scalar_one_or_none()
+
+    @staticmethod
+    def _sum_spend(
+        rows: list[tuple[str, int, int]], price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Apply price_fn to each (model, input_tokens, output_tokens) row and sum.
+
+        Fails closed: a row whose model has no price entry (price_fn returns None)
+        raises rather than being silently skipped or treated as free.
+        """
+        total = 0.0
+        for model, input_tokens, output_tokens in rows:
+            cost = price_fn(model, input_tokens or 0, output_tokens or 0)
+            if cost is None:
+                raise ValueError(f"No price entry for model '{model}' — cannot compute spend")
+            total += cost
+        return total
+
+    def get_session_spend_usd(
+        self, conversation_id: str, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all runs on this conversation."""
+        stmt = select(Run.model, Run.input_tokens, Run.output_tokens).where(
+            Run.conversation_id == conversation_id
+        )
+        rows = self._session.execute(stmt).all()
+        return self._sum_spend([tuple(r) for r in rows], price_fn)
+
+    def get_user_daily_spend_usd(
+        self, user_id: str, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all of user_id's runs today (UTC)."""
+        midnight_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        stmt = (
+            select(Run.model, Run.input_tokens, Run.output_tokens)
+            .join(Conversation, Run.conversation_id == Conversation.id)
+            .where(Conversation.user_id == user_id)
+            .where(Run.created_at >= midnight_utc)
+        )
+        rows = self._session.execute(stmt).all()
+        return self._sum_spend([tuple(r) for r in rows], price_fn)
+
+    def get_user_ids_with_runs_today(self) -> list[str]:
+        """Return distinct user_ids that have at least one run today (UTC)."""
+        midnight_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        stmt = (
+            select(Conversation.user_id)
+            .join(Run, Run.conversation_id == Conversation.id)
+            .where(Run.created_at >= midnight_utc)
+            .distinct()
+        )
+        return list(self._session.execute(stmt).scalars().all())
+
+    def get_platform_daily_spend_usd(
+        self, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all runs today (UTC), across all users."""
+        midnight_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        stmt = select(Run.model, Run.input_tokens, Run.output_tokens).where(
+            Run.created_at >= midnight_utc
+        )
+        rows = self._session.execute(stmt).all()
+        return self._sum_spend([tuple(r) for r in rows], price_fn)
 
     def record_run(
         self,

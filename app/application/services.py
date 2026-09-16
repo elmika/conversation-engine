@@ -20,6 +20,7 @@ from app.application.use_cases import chat, stream_chat
 from app.domain.history import trim_history
 from app.domain.model_registry import validate_model_slug
 from app.domain.prompt_template import render_instructions
+from app.domain.usage_ceiling import CapExceeded, cap_message, check_caps
 from app.domain.value_objects import ConversationId
 
 
@@ -44,6 +45,10 @@ class ConversationService:
         max_history_turns: Optional[int] = None,
         max_history_tokens: Optional[int] = None,
         user_id: str = "default",
+        price_fn: Optional[Callable[[str, int, int], Optional[float]]] = None,
+        session_cap_usd: float = 0.50,
+        user_daily_cap_usd: float = 1.00,
+        platform_daily_cap_usd: float = 5.00,
     ) -> None:
         self._uow_factory = uow_factory
         self._llm = llm
@@ -55,6 +60,28 @@ class ConversationService:
         self._max_history_turns = max_history_turns
         self._max_history_tokens = max_history_tokens
         self._user_id = user_id
+        self._price_fn = price_fn or (lambda model, i, o: None)
+        self._session_cap_usd = session_cap_usd
+        self._user_daily_cap_usd = user_daily_cap_usd
+        self._platform_daily_cap_usd = platform_daily_cap_usd
+
+    def _enforce_usage_cap(self, uow: UnitOfWork, conversation_id: str) -> None:
+        """Raise CapExceeded if platform/user/session spend has crossed its ceiling.
+
+        Reads spend via the already-open uow (same transaction as the caller), so the
+        check sees any messages already persisted in this call before the LLM runs.
+        """
+        session_spend = uow.repo.get_session_spend_usd(conversation_id, self._price_fn)
+        user_daily_spend = uow.repo.get_user_daily_spend_usd(self._user_id, self._price_fn)
+        platform_daily_spend = uow.repo.get_platform_daily_spend_usd(self._price_fn)
+        check_caps(
+            session_spend_usd=session_spend,
+            user_daily_spend_usd=user_daily_spend,
+            platform_daily_spend_usd=platform_daily_spend,
+            session_cap_usd=self._session_cap_usd,
+            user_daily_cap_usd=self._user_daily_cap_usd,
+            platform_daily_cap_usd=self._platform_daily_cap_usd,
+        )
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str], str]:
         """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name). Falls back to default."""
@@ -164,8 +191,16 @@ class ConversationService:
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
+            try:
+                self._enforce_usage_cap(uow, cid_str)
+            except CapExceeded as exc:
+                friendly = cap_message(exc.scope)
+                uow.repo.append_message(cid_str, "assistant", friendly)
+                uow.commit()
+                return cid_str, friendly, resolved_model, 0, 0
+
             # Call LLM with resolved model
-            conversation_id, assistant_message, model, ttfb_ms, total_ms = chat(
+            conversation_id, assistant_message, model, ttfb_ms, total_ms, input_tokens, output_tokens = chat(
                 messages=messages,
                 instructions=instructions,
                 llm_complete=lambda instr, msgs: self._llm.complete(instr, msgs, model=resolved_model),
@@ -183,6 +218,8 @@ class ConversationService:
                 model=model,
                 ttfb_ms=ttfb_ms,
                 total_ms=total_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
 
             # Atomic commit of all operations
@@ -237,8 +274,16 @@ class ConversationService:
             # Combine trimmed history with new messages
             combined_messages = trim_result["messages"] + messages
 
+            try:
+                self._enforce_usage_cap(uow, conversation_id)
+            except CapExceeded as exc:
+                friendly = cap_message(exc.scope)
+                uow.repo.append_message(conversation_id, "assistant", friendly)
+                uow.commit()
+                return conversation_id, friendly, resolved_model, 0, 0
+
             # Call LLM with trimmed history and resolved model
-            conv_id, assistant_message, model, ttfb_ms, total_ms = chat(
+            conv_id, assistant_message, model, ttfb_ms, total_ms, input_tokens, output_tokens = chat(
                 messages=combined_messages,
                 instructions=instructions,
                 llm_complete=lambda instr, msgs: self._llm.complete(instr, msgs, model=resolved_model),
@@ -256,6 +301,8 @@ class ConversationService:
                 model=model,
                 ttfb_ms=ttfb_ms,
                 total_ms=total_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
 
             # Atomic commit of all operations
@@ -293,6 +340,7 @@ class ConversationService:
             uow_setup.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug)
             for msg in messages:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
+            self._enforce_usage_cap(uow_setup, cid_str)
             uow_setup.commit()
 
         # Start streaming with resolved model
@@ -347,6 +395,7 @@ class ConversationService:
                 prompt_slug=used_prompt_slug,
                 session_length_minutes=session_length,
             )
+            self._enforce_usage_cap(uow_setup, cid_str)
             uow_setup.commit()
 
         # Hidden trigger — not stored, causes the LLM to produce the opening message
@@ -394,6 +443,7 @@ class ConversationService:
 
             for msg in messages:
                 uow_setup.repo.append_message(conversation_id, msg["role"], msg["content"])
+            self._enforce_usage_cap(uow_setup, conversation_id)
             uow_setup.commit()
 
         # Trim history to stay within limits (prevents context overflow)
@@ -456,6 +506,7 @@ class ConversationService:
 
             uow_setup.repo.truncate_from(conversation_id, message_id, self._user_id)
             uow_setup.repo.append_message(conversation_id, "user", new_content)
+            self._enforce_usage_cap(uow_setup, conversation_id)
             uow_setup.commit()
 
         # Reload full history (truncated + new user message)

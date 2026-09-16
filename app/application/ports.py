@@ -1,6 +1,6 @@
 """Application ports: abstract interfaces for infra adapters."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Optional, Protocol, TypedDict
 from types import TracebackType
@@ -229,6 +229,28 @@ class ConversationRepo(Protocol):
 
     def get_active_conversation(self, user_id: str) -> Optional[str]:
         """Return the id of the active (ended_at IS NULL) conversation for user_id, or None."""
+        ...
+
+    def get_session_spend_usd(
+        self, conversation_id: str, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all runs on this conversation. Raises if any run's model has no price entry."""
+        ...
+
+    def get_user_daily_spend_usd(
+        self, user_id: str, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all of user_id's runs today (UTC). Raises if any run's model has no price entry."""
+        ...
+
+    def get_platform_daily_spend_usd(
+        self, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all runs today (UTC), across all users. Raises if any run's model has no price entry."""
+        ...
+
+    def get_user_ids_with_runs_today(self) -> list[str]:
+        """Return distinct user_ids that have at least one run today (UTC)."""
         ...
 
 

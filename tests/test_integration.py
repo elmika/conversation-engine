@@ -13,11 +13,11 @@ from tests.conftest import TEST_USER
 
 def _make_llm_result(
     text: str,
-    model: str = "gpt-4.1-mini",
+    model: str = "gpt-4.1",
     ttfb_ms: int = 50,
     total_ms: int = 100,
 ) -> LLMResult:
-    return LLMResult(text=text, model=model, ttfb_ms=ttfb_ms, total_ms=total_ms)
+    return LLMResult(text=text, model=model, ttfb_ms=ttfb_ms, total_ms=total_ms, input_tokens=0, output_tokens=0)
 
 
 @pytest.fixture
@@ -75,11 +75,12 @@ def test_integration_create_then_append_turn(client_with_mock_llm, mock_llm) -> 
     assert contents == ["Hi", "Hello back!", "Second"]
 
 
-def _make_fake_openai_response(text: str, model: str = "gpt-4.1-mini-2025-04-14"):
+def _make_fake_openai_response(text: str, model: str = "gpt-4.1-2025-04-14"):
     """Helper to build a fake OpenAI Responses API object for adapter tests."""
     block = MagicMock(type="output_text", text=text)
     item = MagicMock(type="message", content=[block])
-    return MagicMock(output=[item], model=model)
+    usage = MagicMock(input_tokens=10, output_tokens=5)
+    return MagicMock(output=[item], model=model, usage=usage)
 
 
 @pytest.fixture

@@ -143,3 +143,13 @@ class PromptRenderResponse(BaseModel):
     slug: str
     name: str
     rendered_prompt: str
+
+
+class UserUsageSchema(BaseModel):
+    user_id: str
+    usd_today: float
+
+
+class UsageTodayResponse(BaseModel):
+    platform_usd_today: float
+    by_user: list[UserUsageSchema]
