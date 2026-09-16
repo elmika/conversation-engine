@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app as main_app
+from tests.conftest import ADMIN_HEADERS
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def test_create_prompt_rejects_malformed_tag(client) -> None:
         "slug": "bad-template-1",
         "name": "Bad",
         "system_prompt": "The time is {{bad}}.",
-    })
+    }, headers=ADMIN_HEADERS)
     assert r.status_code == 400
     assert "Malformed tag" in r.json()["detail"]
 
@@ -32,7 +33,7 @@ def test_create_prompt_rejects_unknown_namespace(client) -> None:
         "slug": "bad-template-2",
         "name": "Bad",
         "system_prompt": "Value: {{foo:bar}}.",
-    })
+    }, headers=ADMIN_HEADERS)
     assert r.status_code == 400
     assert "Unknown namespace" in r.json()["detail"]
 
@@ -43,7 +44,7 @@ def test_create_prompt_rejects_unknown_tag_name(client) -> None:
         "slug": "bad-template-3",
         "name": "Bad",
         "system_prompt": "Time: {{time:whatever}}.",
-    })
+    }, headers=ADMIN_HEADERS)
     assert r.status_code == 400
     assert "Unknown tag" in r.json()["detail"]
 
@@ -54,7 +55,7 @@ def test_create_prompt_accepts_valid_template(client) -> None:
         "slug": "valid-template-test",
         "name": "Valid",
         "system_prompt": "Now: {{time:current}}. Started: {{time:conversation-start}}.",
-    })
+    }, headers=ADMIN_HEADERS)
     assert r.status_code == 201
     assert r.json()["slug"] == "valid-template-test"
 
@@ -69,12 +70,12 @@ def test_update_prompt_rejects_bad_template(client) -> None:
         "slug": "update-bad-test",
         "name": "Original",
         "system_prompt": "No tags.",
-    })
+    }, headers=ADMIN_HEADERS)
 
     r = client.put("/prompts/update-bad-test", json={
         "name": "Updated",
         "system_prompt": "Bad: {{time:nosuchname}}.",
-    })
+    }, headers=ADMIN_HEADERS)
     assert r.status_code == 400
     assert "Unknown tag" in r.json()["detail"]
 
@@ -85,11 +86,11 @@ def test_update_prompt_accepts_valid_template(client) -> None:
         "slug": "update-valid-test",
         "name": "Original",
         "system_prompt": "No tags.",
-    })
+    }, headers=ADMIN_HEADERS)
 
     r = client.put("/prompts/update-valid-test", json={
         "name": "Updated",
         "system_prompt": "Now it is {{time:current}}.",
-    })
+    }, headers=ADMIN_HEADERS)
     assert r.status_code == 200
     assert "{{time:current}}" in r.json()["system_prompt"]

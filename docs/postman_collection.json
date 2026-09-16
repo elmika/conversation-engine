@@ -29,6 +29,12 @@
       "value": "",
       "type": "string",
       "description": "Set this after creating a conversation"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string",
+      "description": "Static admin bearer token (ADMIN_TOKEN env var). Required for admin-gated requests below."
     }
   ],
   "item": [
@@ -918,7 +924,13 @@
           "name": "Render Prompt",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/prompts/learn-typescript/render",
               "host": [
@@ -968,6 +980,49 @@
                 }
               ],
               "body": "{\n  \"slug\": \"learn-typescript\",\n  \"name\": \"TypeScript Mentor\",\n  \"rendered_prompt\": \"You are a technical mentor...\\n\\nCurrent time: 2026-03-27 12:00 UTC\\nConversation started: 2026-03-27 12:00 UTC\\nTime spent: 0 seconds\"\n}"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/prompts/learn-typescript/render",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "prompts",
+                    "learn-typescript",
+                    "render"
+                  ],
+                  "query": [
+                    {
+                      "key": "conversation_id",
+                      "value": "",
+                      "description": "Optional: UUID of a conversation to anchor time tags",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Returns the prompt system_prompt with all {{namespace:tag}} template variables resolved."
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
             }
           ]
         },
@@ -979,6 +1034,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
               }
             ],
             "url": {
@@ -1027,6 +1087,52 @@
               ],
               "body": "{\n  \"detail\": \"Prompt 'my-prompt' already exists\"\n}",
               "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/prompts",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "prompts"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"slug\": \"my-prompt\",\n  \"name\": \"My Prompt\",\n  \"system_prompt\": \"You are a custom assistant.\",\n  \"model\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Create a new prompt persona. Returns 409 if the slug already exists."
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
             }
           ]
         },
@@ -1038,6 +1144,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
               }
             ],
             "url": {
@@ -1087,6 +1198,53 @@
               ],
               "body": "{\n  \"detail\": \"Prompt 'my-prompt' not found\"\n}",
               "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/prompts/my-prompt",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "prompts",
+                    "my-prompt"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Prompt\",\n  \"system_prompt\": \"Updated instructions.\",\n  \"model\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Update the name, system_prompt, and/or model of an existing prompt."
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
             }
           ]
         },
@@ -1105,7 +1263,14 @@
                 "disable"
               ]
             },
-            "description": "Soft-delete a prompt by setting is_active=false. Hidden from GET /prompts but preserved in history."
+            "description": "Soft-delete a prompt by setting is_active=false. Hidden from GET /prompts but preserved in history.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ]
           },
           "response": [
             {
@@ -1133,6 +1298,41 @@
               ],
               "body": "{\n  \"detail\": \"Prompt 'my-prompt' not found\"\n}",
               "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "PATCH",
+                "url": {
+                  "raw": "{{base_url}}/prompts/my-prompt/disable",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "prompts",
+                    "my-prompt",
+                    "disable"
+                  ]
+                },
+                "description": "Soft-delete a prompt by setting is_active=false. Hidden from GET /prompts but preserved in history.",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
             }
           ]
         },
@@ -1151,7 +1351,14 @@
                 "enable"
               ]
             },
-            "description": "Re-enable a disabled prompt by setting is_active=true."
+            "description": "Re-enable a disabled prompt by setting is_active=true.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ]
           },
           "response": [
             {
@@ -1179,6 +1386,41 @@
               ],
               "body": "{\n  \"detail\": \"Prompt 'my-prompt' not found\"\n}",
               "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "PATCH",
+                "url": {
+                  "raw": "{{base_url}}/prompts/my-prompt/enable",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "prompts",
+                    "my-prompt",
+                    "enable"
+                  ]
+                },
+                "description": "Re-enable a disabled prompt by setting is_active=true.",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
             }
           ]
         },
@@ -1196,7 +1438,14 @@
                 "my-prompt"
               ]
             },
-            "description": "Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation run."
+            "description": "Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation run.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ]
           },
           "response": [
             {
@@ -1216,6 +1465,40 @@
                 }
               ],
               "body": "{\n  \"detail\": \"Prompt has been used in conversations\"\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "DELETE",
+                "url": {
+                  "raw": "{{base_url}}/prompts/my-prompt",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "prompts",
+                    "my-prompt"
+                  ]
+                },
+                "description": "Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation run.",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
               "_postman_previewlanguage": "json"
             }
           ]
@@ -1238,7 +1521,7 @@
                 "models"
               ]
             },
-            "description": "Returns all models available in the static model registry. Use a `slug` value as `model_slug` in conversation requests to override the model for that request."
+            "description": "Returns the learner-facing model selector list (excludes unpriced models with no pricing.py entry). Use a `slug` value as `model_slug` in conversation requests to override the model for that request."
           },
           "response": [
             {
@@ -1251,7 +1534,257 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5\",\n      \"name\": \"GPT-5\",\n      \"description\": \"Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort\"\n    },\n    {\n      \"slug\": \"gpt-5-mini\",\n      \"name\": \"GPT-5 mini\",\n      \"description\": \"Near-frontier intelligence for cost sensitive, low latency, high volume workloads\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    }\n  ]\n}",
+              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    },\n    {\n      \"slug\": \"gpt-5.4-nano\",\n      \"name\": \"GPT-5.4 nano\",\n      \"description\": \"Our cheapest GPT-5.4-class model for simple high-volume tasks\"\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get Usage Today",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/admin/usage/today",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "usage",
+                "today"
+              ]
+            },
+            "description": "Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin spend visibility for the pilot.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ]
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"platform_usd_today\": 1.23,\n  \"by_user\": [\n    {\n      \"user_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n      \"usd_today\": 0.87\n    },\n    {\n      \"user_id\": \"7c9e6679-7425-40de-944b-e07fc1f90ae7\",\n      \"usd_today\": 0.36\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/admin/usage/today",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "usage",
+                    "today"
+                  ]
+                },
+                "description": "Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin spend visibility for the pilot.",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "List All Conversations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/admin/conversations?page=1&page_size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Every conversation across all learners, ordered by created_at DESC, paginated. Each item's user_id identifies the owning learner. Admin support/QA use, not exposed to learners.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ]
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"conversations\": [\n    {\n      \"id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n      \"user_id\": \"9f1c2e3a-0b4d-4c8e-9a1f-2b3c4d5e6f70\",\n      \"name\": \"Intro to TypeScript\",\n      \"created_at\": \"2026-03-02T11:00:00\",\n      \"last_activity\": \"2026-03-02T11:30:00\",\n      \"first_message\": \"Hello! My name is Mika.\",\n      \"ended_at\": null\n    }\n  ],\n  \"total\": 1,\n  \"page\": 1,\n  \"page_size\": 20\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/admin/conversations?page=1&page_size=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "conversations"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Every conversation across all learners, ordered by created_at DESC, paginated. Each item's user_id identifies the owning learner. Admin support/QA use, not exposed to learners.",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+        {
+          "name": "Get Conversation Messages (any owner)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/admin/conversations/{{conversation_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "conversations",
+                "{{conversation_id}}",
+                "messages"
+              ]
+            },
+            "description": "All messages for a conversation ordered by id ASC, regardless of which learner owns it. Admin support/QA use. Returns 404 if not found.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ]
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"ended_at\": null,\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"id\": 1,\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\",\n      \"created_at\": \"2026-03-02T11:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"role\": \"assistant\",\n      \"content\": \"Hello Mika! How can I help you today?\",\n      \"created_at\": \"2026-03-02T11:00:01\"\n    }\n  ]\n}",
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/admin/conversations/{{conversation_id}}/messages",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "conversations",
+                    "{{conversation_id}}",
+                    "messages"
+                  ]
+                },
+                "description": "All messages for a conversation ordered by id ASC, regardless of which learner owns it. Admin support/QA use. Returns 404 if not found.",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}",
+                    "type": "text"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid admin token\"\n}",
               "_postman_previewlanguage": "json"
             }
           ]

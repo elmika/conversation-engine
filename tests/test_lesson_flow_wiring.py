@@ -22,8 +22,8 @@ from tests.conftest import TEST_USER
 def mock_llm():
     mock = MagicMock()
     mock.complete.side_effect = [
-        LLMResult(text="opening", model="gpt-4.1", ttfb_ms=10, total_ms=50),
-        LLMResult(text="reply", model="gpt-4.1", ttfb_ms=10, total_ms=50),
+        LLMResult(text="opening", model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0),
+        LLMResult(text="reply", model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0),
     ]
     return mock
 

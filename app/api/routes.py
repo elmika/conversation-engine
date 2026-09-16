@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import secrets
 from collections.abc import AsyncIterator
 from typing import Any, Optional
 
@@ -29,6 +30,8 @@ from app.api.schemas import (
     PromptsResponse,
     SessionSummarySchema,
     TimingsSchema,
+    UsageTodayResponse,
+    UserUsageSchema,
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
 from app.infra.slot_resolver_files import FileSlotResolver
@@ -39,7 +42,9 @@ from app.learning.setup_completion import SetupCompletionError, complete_setup
 from app.learning.setup_flow import FRAMING_TURNS, SetupPhase, setup_phase_for_turn
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
+from app.domain.pricing import estimate_cost_usd
 from app.domain.prompt_template import PromptTemplateError, validate_template
+from app.domain.usage_ceiling import CapExceeded, cap_message
 from app.infra.persistence.db import get_session
 from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -60,6 +65,22 @@ def get_settings(request: Request) -> Settings:
 def get_llm(request: Request) -> LLMPort:
     """Provide LLM adapter from app.state (injected in main lifespan)."""
     return request.app.state.llm
+
+
+def require_admin(request: Request, settings: Settings = Depends(get_settings)) -> None:
+    """Gate admin-only routes behind a static bearer token.
+
+    Fails closed: an empty settings.admin_token means "misconfigured, deny" —
+    it must never be treated as "no auth required."
+    """
+    if not settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin access is not configured")
+    auth_header = request.headers.get("Authorization", "")
+    scheme, _, token = auth_header.partition(" ")
+    if scheme != "Bearer" or not token:
+        raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
+    if not secrets.compare_digest(token, settings.admin_token):
+        raise HTTPException(status_code=401, detail="Invalid admin token")
 
 
 def get_uow_factory(db=Depends(get_session)):
@@ -96,6 +117,10 @@ def get_preview_service(
         flow=LearningFlowOrchestrator(uow_factory, llm, prompt_repo, slot_resolver),
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
+        price_fn=estimate_cost_usd,
+        session_cap_usd=settings.session_spend_cap_usd,
+        user_daily_cap_usd=settings.daily_user_spend_cap_usd,
+        platform_daily_cap_usd=settings.daily_platform_spend_cap_usd,
     )
 
 
@@ -123,6 +148,10 @@ def get_conversation_service(
         max_history_turns=settings.max_history_turns,
         max_history_tokens=settings.max_history_tokens,
         user_id=user_id,
+        price_fn=estimate_cost_usd,
+        session_cap_usd=settings.session_spend_cap_usd,
+        user_daily_cap_usd=settings.daily_user_spend_cap_usd,
+        platform_daily_cap_usd=settings.daily_platform_spend_cap_usd,
     )
 
 
@@ -268,6 +297,8 @@ async def create_conversation_stream(
                         "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     }
                     yield _sse_event("done", done_payload)
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
@@ -371,7 +402,12 @@ async def init_session_stream(
                         "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     })
                 elif ev.get("type") == "error":
-                    yield _sse_event("done", {"error": ev.get("error_message", "Stream error")})
+                    yield _sse_event("done", {"error": {
+                        "type": ev.get("error_type", "stream_error"),
+                        "message": ev.get("error_message", "Stream error"),
+                    }})
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
@@ -577,6 +613,8 @@ async def append_conversation_turn_stream(
             # met (latching closure for the next turn).
             await asyncio.to_thread(service.maybe_update_session_length, conv_id)
             await asyncio.to_thread(service.maybe_flag_objective_complete, conv_id)
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
@@ -682,6 +720,8 @@ async def rewind_conversation_stream(
                         "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     }
                     yield _sse_event("done", done_payload)
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
@@ -958,6 +998,7 @@ async def create_prompt(
     body: PromptCreateRequest,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> PromptSchema:
     """Create a new prompt persona."""
     try:
@@ -980,11 +1021,88 @@ async def create_prompt(
     )
 
 
+@router.get("/admin/usage/today", response_model=UsageTodayResponse)
+async def get_usage_today(
+    uow_factory=Depends(get_uow_factory),
+    _admin: None = Depends(require_admin),
+) -> UsageTodayResponse:
+    """Today's (UTC) $ spend, platform-wide and broken down by user.
+
+    Minimal admin spend visibility — not a full cost dashboard, just enough to
+    sanity-check spend before/during the pilot.
+    """
+    def _query() -> UsageTodayResponse:
+        with uow_factory() as uow:
+            platform_usd_today = uow.repo.get_platform_daily_spend_usd(estimate_cost_usd)
+            user_ids = uow.repo.get_user_ids_with_runs_today()
+            by_user = [
+                UserUsageSchema(
+                    user_id=user_id,
+                    usd_today=uow.repo.get_user_daily_spend_usd(user_id, estimate_cost_usd),
+                )
+                for user_id in user_ids
+            ]
+        return UsageTodayResponse(platform_usd_today=platform_usd_today, by_user=by_user)
+
+    return await asyncio.to_thread(_query)
+
+
+@router.get("/admin/conversations", response_model=ConversationListResponse)
+async def admin_list_conversations(
+    page: int = 1,
+    page_size: int = 20,
+    uow_factory=Depends(get_uow_factory),
+    _admin: None = Depends(require_admin),
+) -> ConversationListResponse:
+    """All conversations across all users — admin support/QA read access."""
+    def _run() -> tuple[list[dict], int]:
+        with uow_factory() as uow:
+            return uow.repo.list_all_conversations(page, page_size)
+
+    rows, total = await asyncio.to_thread(_run)
+    return ConversationListResponse(
+        conversations=[
+            ConversationSummary(
+                id=r["id"], name=r.get("name"), created_at=r["created_at"],
+                last_activity=r.get("last_activity"), first_message=r.get("first_message"),
+                ended_at=r.get("ended_at"), user_id=r.get("user_id"),
+            )
+            for r in rows
+        ],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+@router.get("/admin/conversations/{conversation_id}/messages", response_model=MessagesResponse)
+async def admin_get_conversation_messages(
+    conversation_id: str,
+    uow_factory=Depends(get_uow_factory),
+    _admin: None = Depends(require_admin),
+) -> MessagesResponse:
+    """Any conversation's transcript, regardless of owner — admin support/QA read access."""
+    def _run() -> tuple[list[dict], Optional[dict]]:
+        with uow_factory() as uow:
+            conv = uow.repo.get_conversation_any_owner(conversation_id)
+            if conv is None:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            msgs = uow.repo.get_messages_with_metadata(conversation_id, conv["user_id"])
+            return msgs, conv
+
+    msgs, conv = await asyncio.to_thread(_run)
+    return MessagesResponse(
+        conversation_id=conversation_id,
+        ended_at=conv["ended_at"] if conv else None,
+        prompt_slug=conv["prompt_slug"] if conv else None,
+        messages=[MessageSchema(id=m["id"], role=m["role"], content=m["content"], created_at=m["created_at"]) for m in msgs],
+    )
+
+
 @router.get("/prompts/{slug}/render", response_model=PromptRenderResponse)
 async def render_prompt_preview(
     slug: str,
     conversation_id: Optional[str] = None,
     service: ConversationService = Depends(get_preview_service),
+    _admin: None = Depends(require_admin),
 ) -> PromptRenderResponse:
     """Return the prompt's system_prompt with all template variables resolved.
 
@@ -1007,6 +1125,7 @@ async def update_prompt(
     body: PromptUpdateRequest,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> PromptSchema:
     """Update name, system_prompt, and/or model of an existing prompt."""
     try:
@@ -1034,6 +1153,7 @@ async def disable_prompt(
     slug: str,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> PromptSchema:
     """Soft-delete a prompt by setting is_active=False."""
     found = await asyncio.to_thread(prompt_repo.set_active, slug, False)
@@ -1055,6 +1175,7 @@ async def enable_prompt(
     slug: str,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> PromptSchema:
     """Re-enable a disabled prompt by setting is_active=True."""
     found = await asyncio.to_thread(prompt_repo.set_active, slug, True)
@@ -1076,6 +1197,7 @@ async def delete_prompt(
     slug: str,
     prompt_repo: PromptRepo = Depends(get_prompt_repo),
     db=Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> None:
     """Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation."""
     used = await asyncio.to_thread(prompt_repo.is_used_in_runs, slug)

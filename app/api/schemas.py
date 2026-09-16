@@ -50,6 +50,7 @@ class ConversationSummary(BaseModel):
     last_activity: Optional[str] = None
     first_message: Optional[str] = None
     ended_at: Optional[str] = None  # ISO 8601; None means still active
+    user_id: Optional[str] = None  # populated only by admin cross-user listing
 
 
 class ConversationRenameRequest(BaseModel):
@@ -143,3 +144,13 @@ class PromptRenderResponse(BaseModel):
     slug: str
     name: str
     rendered_prompt: str
+
+
+class UserUsageSchema(BaseModel):
+    user_id: str
+    usd_today: float
+
+
+class UsageTodayResponse(BaseModel):
+    platform_usd_today: float
+    by_user: list[UserUsageSchema]

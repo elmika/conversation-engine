@@ -17,7 +17,7 @@ from tests.conftest import TEST_USER
 
 
 def _make_llm_result(text: str = "Reply") -> LLMResult:
-    return LLMResult(text=text, model="gpt-4.1-mini", ttfb_ms=10, total_ms=50)
+    return LLMResult(text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0)
 
 
 @pytest.fixture

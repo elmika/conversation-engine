@@ -13,9 +13,9 @@ from tests.conftest import TEST_USER
 
 
 def _make_events() -> Iterable[StreamEvent]:
-    yield StreamEvent(type="delta", delta="Hel", model="gpt-4.1-mini", ttfb_ms=10, total_ms=0)
-    yield StreamEvent(type="delta", delta="lo", model="gpt-4.1-mini", ttfb_ms=10, total_ms=0)
-    yield StreamEvent(type="final", text="Hello", model="gpt-4.1-mini", ttfb_ms=10, total_ms=20)
+    yield StreamEvent(type="delta", delta="Hel", model="gpt-4.1", ttfb_ms=10, total_ms=0)
+    yield StreamEvent(type="delta", delta="lo", model="gpt-4.1", ttfb_ms=10, total_ms=0)
+    yield StreamEvent(type="final", text="Hello", model="gpt-4.1", ttfb_ms=10, total_ms=20)
 
 
 @pytest.fixture
@@ -26,9 +26,11 @@ def mock_llm_streaming():
     # complete is unused here but some routes depend on it.
     mock.complete.return_value = {
         "text": "Hi there",
-        "model": "gpt-4.1-mini",
+        "model": "gpt-4.1",
         "ttfb_ms": 50,
         "total_ms": 100,
+        "input_tokens": 0,
+        "output_tokens": 0,
     }
     return mock
 

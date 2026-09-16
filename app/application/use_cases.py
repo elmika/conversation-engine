@@ -12,11 +12,11 @@ def chat(
     instructions: str,
     llm_complete: Callable[[str, list[dict[str, str]]], LLMResult],
     conversation_id: Optional[Union[str, ConversationId]] = None,
-) -> tuple[str, str, str, int, int]:
+) -> tuple[str, str, str, int, int, int, int]:
     """Run non-streaming chat over the provided message history.
 
     `messages` should already contain any prior turns plus the new user message(s).
-    Returns (conversation_id, assistant_message, model, ttfb_ms, total_ms).
+    Returns (conversation_id, assistant_message, model, ttfb_ms, total_ms, input_tokens, output_tokens).
     """
     cid = (
         ConversationId.from_string(conversation_id)
@@ -30,6 +30,8 @@ def chat(
         result["model"],
         result["ttfb_ms"],
         result["total_ms"],
+        result["input_tokens"],
+        result["output_tokens"],
     )
 
 

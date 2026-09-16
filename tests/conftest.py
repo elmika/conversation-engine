@@ -14,8 +14,14 @@ from app.application.ports import LLMResult, StreamEvent
 # In-memory SQLite for tests (db.init_engine uses StaticPool so one connection is shared).
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
+# Static admin token for tests exercising admin-gated routes.
+os.environ.setdefault("ADMIN_TOKEN", "test-admin-token")
+
 # Stable user_id used across all HTTP-level tests.
 TEST_USER = "test-user"
+
+TEST_ADMIN_TOKEN = "test-admin-token"
+ADMIN_HEADERS = {"Authorization": f"Bearer {TEST_ADMIN_TOKEN}"}
 
 
 class FakeLLM:

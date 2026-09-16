@@ -256,6 +256,20 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
   §3), never resolved.
 - `course-session-closure` (the lesson's Closure moment) needs a review pass against its current
   spec — same carry-over, not yet done.
+- **`GET /prompts` (list) stays unauthenticated** — accepted residual gap from Piece C's admin
+  auth (2026-09-16). `frontend/components/chat/PromptSelector.tsx` (learner-facing persona
+  dropdown) depends on it, so gating it behind `require_admin` would break the ordinary chat
+  flow. Net effect: prompt `system_prompt` text is readable without auth by anyone who can reach
+  the API. Acceptable for the pilot's threat model (no sensitive data in prompt text today) but
+  worth a real fix (e.g. a separate unauthenticated summary endpoint that omits `system_prompt`)
+  before this becomes a general-purpose multi-tenant product.
+- **NavBar's "Admin" tab visibility is presence-only, not live-revalidated** — accepted residual
+  gap from Piece C2 (2026-09-16). It checks `getAdminToken()` presence in `sessionStorage`, not
+  a real backend check, for performance/simplicity (a live check would mean an extra request on
+  every page navigation for every learner). A stale/rotated token can show the tab briefly to
+  someone no longer actually authorized; harmless, since `/admin*`'s real gate (`AdminTokenGate`)
+  still fully re-validates against the backend on every mount regardless of what the nav shows —
+  this is cosmetic only, never the actual security boundary.
 
 ### Testing harness gaps (surfaced 2026-08-07)
 

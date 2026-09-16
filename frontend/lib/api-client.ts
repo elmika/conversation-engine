@@ -8,6 +8,7 @@
  * so callers can pipe straight into `parseSSEStream` without buffering.
  */
 
+import { getAdminToken, clearAdminToken } from "./adminToken";
 import type {
   ConversationListResponse,
   ConversationRequest,
@@ -21,6 +22,7 @@ import type {
   PromptUpdateRequest,
   PromptsResponse,
   SessionSummary,
+  UsageTodayResponse,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -68,6 +70,33 @@ async function getStream(res: Response): Promise<ReadableStream<Uint8Array>> {
   return res.body;
 }
 
+/** Authorization header for an admin-only request, read from sessionStorage. */
+function adminHeaders(): Record<string, string> {
+  const token = getAdminToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Same as handleResponse, but for admin-only calls: a 401 means the stored
+ * token is missing or wrong, so clear it — the admin token gate re-prompts.
+ */
+async function handleAdminResponse<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    clearAdminToken();
+    throw new ApiError(401, "Invalid admin token");
+  }
+  return handleResponse<T>(res);
+}
+
+/** Same as handleAdminResponse but for endpoints with no JSON response body. */
+async function handleAdminVoid(res: Response): Promise<void> {
+  if (res.status === 401) {
+    clearAdminToken();
+    throw new ApiError(401, "Invalid admin token");
+  }
+  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
+}
+
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
@@ -94,44 +123,78 @@ export async function fetchAllPrompts(): Promise<PromptsResponse> {
 export async function createPrompt(body: PromptCreateRequest): Promise<Prompt> {
   const res = await fetch("/api/prompts", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminHeaders() },
     body: JSON.stringify(body),
   });
-  return handleResponse(res);
+  return handleAdminResponse(res);
 }
 
 export async function updatePrompt(slug: string, body: PromptUpdateRequest): Promise<Prompt> {
   const res = await fetch(`/api/prompts/${slug}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminHeaders() },
     body: JSON.stringify(body),
   });
-  return handleResponse(res);
+  return handleAdminResponse(res);
 }
 
 export async function disablePrompt(slug: string): Promise<void> {
-  const res = await fetch(`/api/prompts/${slug}/disable`, { method: "PATCH" });
-  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
+  const res = await fetch(`/api/prompts/${slug}/disable`, {
+    method: "PATCH",
+    headers: adminHeaders(),
+  });
+  return handleAdminVoid(res);
 }
 
 export async function enablePrompt(slug: string): Promise<void> {
-  const res = await fetch(`/api/prompts/${slug}/enable`, { method: "PATCH" });
-  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
+  const res = await fetch(`/api/prompts/${slug}/enable`, {
+    method: "PATCH",
+    headers: adminHeaders(),
+  });
+  return handleAdminVoid(res);
 }
 
 export async function deletePrompt(slug: string): Promise<void> {
-  const res = await fetch(`/api/prompts/${slug}`, { method: "DELETE" });
-  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
+  const res = await fetch(`/api/prompts/${slug}`, {
+    method: "DELETE",
+    headers: adminHeaders(),
+  });
+  return handleAdminVoid(res);
 }
 
 export async function fetchRenderedPrompt(slug: string): Promise<PromptRenderResponse> {
-  const res = await fetch(`/api/prompts/${slug}/render`);
-  return handleResponse(res);
+  const res = await fetch(`/api/prompts/${slug}/render`, { headers: adminHeaders() });
+  return handleAdminResponse(res);
 }
 
 export async function fetchModels(): Promise<ModelsResponse> {
   const res = await fetch("/api/models");
   return handleResponse(res);
+}
+
+export async function getUsageToday(): Promise<UsageTodayResponse> {
+  const res = await fetch("/api/admin/usage/today", { headers: adminHeaders() });
+  return handleAdminResponse(res);
+}
+
+export async function fetchAdminConversations(
+  page = 1,
+  pageSize = 20
+): Promise<ConversationListResponse> {
+  const res = await fetch(
+    `/api/admin/conversations?page=${page}&page_size=${pageSize}`,
+    { headers: adminHeaders() }
+  );
+  return handleAdminResponse(res);
+}
+
+export async function fetchAdminConversationMessages(
+  conversationId: string
+): Promise<MessagesResponse> {
+  const res = await fetch(`/api/admin/conversations/${conversationId}/messages`, {
+    headers: adminHeaders(),
+  });
+  return handleAdminResponse(res);
 }
 
 // ---------------------------------------------------------------------------

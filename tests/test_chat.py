@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.application.ports import LLMResult
 from app.main import app
@@ -13,11 +14,20 @@ from tests.conftest import TEST_USER
 
 def _make_llm_result(
     text: str = "Hi there",
-    model: str = "gpt-4.1-mini",
+    model: str = "gpt-4.1",
     ttfb_ms: int = 50,
     total_ms: int = 100,
+    input_tokens: int = 12,
+    output_tokens: int = 8,
 ) -> LLMResult:
-    return LLMResult(text=text, model=model, ttfb_ms=ttfb_ms, total_ms=total_ms)
+    return LLMResult(
+        text=text,
+        model=model,
+        ttfb_ms=ttfb_ms,
+        total_ms=total_ms,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
 
 
 @pytest.fixture
@@ -50,7 +60,7 @@ def test_conversations_create_returns_envelope(client_with_mock_llm, mock_llm) -
     data = response.json()
     assert "conversation_id" in data
     assert data["assistant_message"] == "Hi there"
-    assert data["model"] == "gpt-4.1-mini"
+    assert data["model"] == "gpt-4.1"
     assert data["timings"]["ttfb_ms"] == 50
     assert data["timings"]["total_ms"] == 100
     mock_llm.complete.assert_called_once()
@@ -104,6 +114,30 @@ def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mo
     # History for second call: user "First", assistant "Hi there", plus new user "Hi again".
     assert [m["role"] for m in second_call_messages] == ["user", "assistant", "user"]
     assert [m["content"] for m in second_call_messages] == ["First", "Hi there", "Hi again"]
+
+
+def test_conversations_create_records_token_usage(client_with_mock_llm, mock_llm) -> None:
+    """The LLM's input/output token counts are persisted on the run row."""
+    response = client_with_mock_llm.post(
+        f"/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "Hello"}],
+        },
+    )
+    assert response.status_code == 200
+    cid = response.json()["conversation_id"]
+
+    from app.infra.persistence.db import get_engine
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT input_tokens, output_tokens FROM runs WHERE conversation_id = :cid"),
+            {"cid": cid},
+        ).fetchone()
+    assert row is not None
+    assert row[0] == 12
+    assert row[1] == 8
 
 
 def test_conversations_reject_input_over_max_chars(client_with_mock_llm) -> None:

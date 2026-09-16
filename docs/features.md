@@ -208,11 +208,10 @@ A **Preview** button (scan icon) on each prompt card in the Admin panel opens a 
 ### 7.1 Model registry
 A static registry of 14 supported OpenAI models is served via `GET /models`. Each entry has a `slug` (the OpenAI model ID), a human-readable `name`, and a `description`. The default model is `gpt-4.1`.
 
-**Available models:**
+**Available models** (learner-facing selector — excludes `gpt-5-mini`/`gpt-5-nano`, which have no
+price-table entry and are not offered):
 - **GPT-4.1** (`gpt-4.1`) — Smartest non-reasoning model
 - **GPT-5** (`gpt-5`) — Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
-- **GPT-5 mini** (`gpt-5-mini`) — Near-frontier intelligence for cost sensitive, low latency, high volume workloads
-- **GPT-5 nano** (`gpt-5-nano`) — Fastest, most cost-efficient version of GPT-5
 - **GPT-5 Codex** (`gpt-5-codex`) — A version of GPT-5 optimized for agentic coding in Codex
 - **GPT-5.1 Codex** (`gpt-5.1-codex`) — A version of GPT-5.1 optimized for agentic coding in Codex
 - **GPT-5.1 Codex Max** (`gpt-5.1-codex-max`) — A version of GPT-5.1-codex optimized for long running tasks
@@ -246,6 +245,14 @@ Passing an unknown `model_slug` returns a 400 error.
 ### 8.1 Admin panel
 A dedicated `/admin` section provides full management of prompt personas.
 
+### 8.1a Admin token gate
+`/admin` and `/admin/conversations` share one gate (`app/admin/layout.tsx`) — a lightweight "paste your admin token once" prompt, no login system, just a single token input. The token is validated against the backend before access is granted (not merely stored), so a stale or wrong token never reveals admin content. The token is kept in `sessionStorage` only (cleared when the tab closes, not shared across browser restarts). A **Log out** button (top-right, next to the "Admin" heading) clears it. A 401 from any admin action (mutating a prompt, viewing usage or conversations) clears the stored token and re-prompts the gate. The mutating/sensitive prompt routes (`POST/PUT/PATCH/DELETE /prompts*`, `GET /prompts/{slug}/render`), `GET /admin/usage/today`, and `GET /admin/conversations*` all require this token server-side; `GET /prompts` (the learner-facing persona list) stays open — see `docs/roadmap.md` for the accepted residual gap this implies.
+
+The main nav bar's **Admin** tab is hidden unless a token is currently present in the browser (cosmetic — the token gate itself is what actually enforces access, not the tab's visibility).
+
+### 8.1b Admin conversation viewer
+`/admin/conversations` lists every learner's conversations, paginated, newest first, with a **User** column identifying the owner (a short prefix of their opaque id). Read-only — no rename/delete, unlike a learner's own History page. Clicking a row expands its transcript in place (role-labeled messages, scrollable) for support/QA purposes, fetched on first expand. A "Prompts" / "Conversations" sub-nav under the Admin header switches between this and the prompt-admin panel (8.1).
+
 ### 8.2 Create prompt
 A **New Prompt** button (top-right) opens a dialog with fields for slug, name, system prompt, and optional model override. The slug must be lowercase alphanumeric with hyphens/underscores. Duplicate slugs are rejected with an inline error.
 
@@ -263,6 +270,27 @@ A **Show disabled** checkbox at the top of the admin panel toggles display of di
 
 ### 8.7 Delete prompt
 A **trash** icon on each card opens a confirmation dialog to permanently delete the prompt. If the prompt has been used in any conversation, deletion is blocked with an error message (use Disable instead).
+
+---
+
+## 9. Usage Limits
+
+### 9.1 Server-side $ spend ceilings
+Before every LLM call, the backend checks estimated $ spend against three ceilings, checked
+platform → user → session: platform-wide per day, per-user per day, and per session. Defaults
+(tunable via env var, no code change): session $0.50, user/day $1.00, platform/day $5.00.
+
+### 9.2 Friendly block message
+When a ceiling is hit, the learner sees a plain-language message in place of the assistant's
+reply instead of an error (e.g. "SkillForge has hit today's usage limit platform-wide — please
+try again tomorrow."). For a non-streaming turn this appears as a normal assistant message; for
+a streaming turn it arrives as the terminal SSE `done` event's `error` field. No real LLM call is
+made when a cap is already exceeded.
+
+### 9.3 Admin spend visibility
+`GET /admin/usage/today` (admin token required — see 8.1a) returns today's platform-wide $
+spend and a per-user breakdown, for a quick sanity-check during the pilot. Not a full cost
+dashboard.
 
 ---
 

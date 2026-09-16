@@ -22,12 +22,21 @@ info:
 
     ## Identity & multi-user scoping
 
-    There is no auth or sign-in. Each learner is identified by an opaque `user_id`
+    There is no learner auth or sign-in. Each learner is identified by an opaque `user_id`
     (a UUID minted client-side and kept in the URL / localStorage). All conversation
     routes are scoped under `/u/{userId}/…`; a conversation is only visible to the
     `user_id` that created it. Requests for a conversation under a different `user_id`
     are treated as non-existent (404 / 204 / empty) so resources are not enumerable
     across users.
+
+    ## Admin auth
+
+    A single static bearer token (`ADMIN_TOKEN` env var), checked with a constant-time
+    comparison. No sessions, no DB, no login system. Applies to the mutating/sensitive
+    prompt routes (`POST/PUT/PATCH/DELETE /prompts*`, `GET /prompts/{slug}/render`) and
+    `GET /admin/usage/today`. An unset `ADMIN_TOKEN` fails closed (401 on every request to
+    these routes) rather than being treated as "open". `GET /prompts` (list) stays
+    unauthenticated — the learner-facing persona dropdown depends on it.
 
     ## SSE Streaming
 
@@ -68,6 +77,8 @@ tags:
     description: Prompt persona registry
   - name: models
     description: Available model registry
+  - name: admin
+    description: Admin-only endpoints (not yet auth-gated — see Piece C)
 
 paths:
 
@@ -158,6 +169,9 @@ paths:
       description: |
         Creates a new conversation and processes the first user turn synchronously.
         Returns 409 if the user already has an active (not-ended) conversation.
+        If a $ usage ceiling (session/user_daily/platform_daily) is already exceeded, no LLM
+        call is made — a friendly assistant message explaining the limit is returned instead,
+        still as a normal 200 response.
       tags: [conversations]
       parameters:
         - $ref: "#/components/parameters/userId"
@@ -269,6 +283,9 @@ paths:
         reply synchronously. History is automatically trimmed before the LLM call.
         The prompt/course is locked at creation; `prompt_slug` in the body is ignored
         for existing conversations.
+        If a $ usage ceiling (session/user_daily/platform_daily) is already exceeded, no LLM
+        call is made — a friendly assistant message explaining the limit is returned instead,
+        still as a normal 200 response.
       tags: [conversations]
       parameters:
         - $ref: "#/components/parameters/userId"
@@ -599,7 +616,9 @@ paths:
     get:
       operationId: listModels
       summary: List models
-      description: Returns all models available in the static model registry. Use a `slug` value as `model_slug` in conversation requests.
+      description: >-
+        Returns the learner-facing model selector list (excludes unpriced models with no
+        `pricing.py` entry). Use a `slug` value as `model_slug` in conversation requests.
       tags: [models]
       responses:
         "200":
@@ -613,12 +632,126 @@ paths:
                   - slug: gpt-4.1
                     name: GPT-4.1
                     description: Smartest non-reasoning model
-                  - slug: gpt-5
-                    name: GPT-5
-                    description: Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
                   - slug: gpt-5.4-mini
                     name: GPT-5.4 mini
                     description: Our strongest mini model yet for coding, computer use, and subagents
+                  - slug: gpt-5.4-nano
+                    name: GPT-5.4 nano
+                    description: Our cheapest GPT-5.4-class model for simple high-volume tasks
+
+  /admin/usage/today:
+    get:
+      operationId: getUsageToday
+      summary: Today's $ spend (admin)
+      description: >-
+        Today's (UTC) estimated $ spend, platform-wide and broken down by user. Minimal admin
+        spend visibility for the pilot — not a full cost dashboard.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      responses:
+        "200":
+          description: Today's spend summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageTodayResponse"
+              example:
+                platform_usd_today: 1.23
+                by_user:
+                  - user_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    usd_today: 0.87
+                  - user_id: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                    usd_today: 0.36
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/conversations:
+    get:
+      operationId: adminListConversations
+      summary: List conversations across all users (admin)
+      description: >-
+        Every conversation, across all learners, ordered by `created_at` DESC with
+        page-based pagination — for admin support/QA use, not exposed to learners.
+        Each item's `user_id` identifies the owning learner.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      parameters:
+        - name: page
+          in: query
+          description: 1-based page number
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list across all users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationListResponse"
+              example:
+                conversations:
+                  - id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    user_id: "9f1c2e3a-0b4d-4c8e-9a1f-2b3c4d5e6f70"
+                    name: "Intro to TypeScript"
+                    created_at: "2026-03-02T11:00:00"
+                    last_activity: "2026-03-02T11:30:00"
+                    first_message: "Hello! My name is Mika."
+                    ended_at: null
+                total: 1
+                page: 1
+                page_size: 20
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/conversations/{conversationId}/messages:
+    get:
+      operationId: adminGetConversationMessages
+      summary: Get any conversation's messages (admin)
+      description: >-
+        Returns all messages for a conversation ordered by id ASC, regardless of
+        which learner owns it — for admin support/QA use. Returns 404 if the
+        conversation does not exist.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      parameters:
+        - $ref: "#/components/parameters/conversationId"
+      responses:
+        "200":
+          description: Full message history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagesResponse"
+              example:
+                conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                ended_at: null
+                prompt_slug: default
+                messages:
+                  - id: 1
+                    role: user
+                    content: "Hello! My name is Mika."
+                    created_at: "2026-03-02T11:00:00"
+                  - id: 2
+                    role: assistant
+                    content: "Hello Mika! How can I help you today?"
+                    created_at: "2026-03-02T11:00:01"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /prompts:
     get:
@@ -661,6 +794,8 @@ paths:
       summary: Create prompt
       description: Create a new prompt persona. Returns 409 if the slug already exists.
       tags: [prompts]
+      security:
+        - AdminBearer: []
       requestBody:
         required: true
         content:
@@ -685,6 +820,8 @@ paths:
                 system_prompt: "You are a custom assistant."
                 model: null
                 is_active: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "409":
           description: Slug already exists
           content:
@@ -706,6 +843,8 @@ paths:
         `{{time:lesson-time-spent}}` to a specific conversation's start time.
         Without it, both resolve to the current time (i.e. a "new conversation" preview).
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
         - name: conversation_id
@@ -727,6 +866,8 @@ paths:
                 slug: learn-typescript
                 name: TypeScript Mentor
                 rendered_prompt: "You are a technical mentor...\n\nCurrent time: 2026-03-27 12:00 UTC\nConversation started: 2026-03-27 11:45 UTC\nTime spent: 15 minutes"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -736,6 +877,8 @@ paths:
       summary: Update prompt
       description: Update the name, system_prompt, and/or model of an existing prompt.
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
       requestBody:
@@ -755,6 +898,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Prompt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -765,11 +910,15 @@ paths:
         Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation run
         (use PATCH disable instead to soft-delete it).
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
       responses:
         "204":
           description: Deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -787,6 +936,8 @@ paths:
       summary: Disable prompt
       description: Soft-delete a prompt by setting is_active=false. The prompt is hidden from GET /prompts but preserved in conversation history.
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
       responses:
@@ -796,6 +947,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Prompt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -805,6 +958,8 @@ paths:
       summary: Enable prompt
       description: Re-enable a disabled prompt by setting is_active=true.
       tags: [prompts]
+      security:
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/promptSlug"
       responses:
@@ -814,10 +969,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Prompt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
 components:
+
+  securitySchemes:
+    AdminBearer:
+      type: http
+      scheme: bearer
+      description: Static admin token (ADMIN_TOKEN env var), checked with a constant-time comparison.
 
   parameters:
     userId:
@@ -989,6 +1152,10 @@ components:
           format: date-time
           nullable: true
           description: ISO 8601 timestamp when the session was ended; null means still active
+        user_id:
+          type: string
+          nullable: true
+          description: Owning learner's opaque id. Populated only by the admin cross-user listing (GET /admin/conversations); null on the per-user endpoint.
 
     ConversationListResponse:
       type: object
@@ -1215,6 +1382,30 @@ components:
           items:
             $ref: "#/components/schemas/Model"
 
+    UserUsage:
+      type: object
+      required: [user_id, usd_today]
+      properties:
+        user_id:
+          type: string
+        usd_today:
+          type: number
+          format: float
+          description: Estimated $ spend for this user today (UTC)
+
+    UsageTodayResponse:
+      type: object
+      required: [platform_usd_today, by_user]
+      properties:
+        platform_usd_today:
+          type: number
+          format: float
+          description: Estimated $ spend across all users today (UTC)
+        by_user:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserUsage"
+
     PromptsResponse:
       type: object
       required: [prompts]
@@ -1273,7 +1464,10 @@ components:
           properties:
             type:
               type: string
-              enum: [http_error, internal_error]
+              enum: [http_error, internal_error, stream_error, usage_cap_exceeded]
+              description: >-
+                usage_cap_exceeded means a $ spend ceiling (session/user_daily/platform_daily)
+                was already hit before this turn — no LLM call was made.
             status_code:
               type: integer
               description: HTTP status code (http_error only)
@@ -1347,6 +1541,25 @@ components:
             $ref: "#/components/schemas/ErrorDetail"
           example:
             detail: "Total message content length (35000) exceeds max_input_chars (32000)"
+
+    Unauthorized:
+      description: >-
+        Missing/malformed Authorization header, wrong admin token, or ADMIN_TOKEN
+        unset server-side (fails closed, never treated as "open").
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          examples:
+            missing:
+              value:
+                detail: "Missing or malformed Authorization header"
+            wrong:
+              value:
+                detail: "Invalid admin token"
+            unconfigured:
+              value:
+                detail: "Admin access is not configured"
 
     NotFound:
       description: Conversation not found (or not owned by this user)

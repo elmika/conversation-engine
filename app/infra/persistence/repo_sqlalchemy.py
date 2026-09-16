@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from datetime import timezone
 
@@ -177,6 +177,65 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             "objective_met": bool(row.objective_met),
         }
 
+    def list_all_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) across all users, ordered by created_at DESC with pagination."""
+        total = self._session.execute(select(func.count()).select_from(Conversation)).scalar_one()
+
+        first_msg_sq = (
+            select(Message.content)
+            .where(Message.conversation_id == Conversation.id)
+            .where(Message.role == "user")
+            .order_by(Message.id.asc())
+            .limit(1)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+        last_activity_sq = (
+            select(func.max(Message.created_at))
+            .where(Message.conversation_id == Conversation.id)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+
+        stmt = (
+            select(
+                Conversation,
+                first_msg_sq.label("first_message"),
+                last_activity_sq.label("last_activity"),
+            )
+            .order_by(Conversation.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        rows = self._session.execute(stmt).all()
+        return [
+            {
+                "id": r.Conversation.id,
+                "user_id": r.Conversation.user_id,
+                "name": r.Conversation.name,
+                "created_at": r.Conversation.created_at.isoformat(),
+                "last_activity": (r.last_activity or r.Conversation.created_at).isoformat(),
+                "first_message": (r.first_message or "")[:120],
+                "ended_at": r.Conversation.ended_at.isoformat() if r.Conversation.ended_at else None,
+            }
+            for r in rows
+        ], total
+
+    def get_conversation_any_owner(self, conversation_id: str) -> Optional[dict]:
+        """Return conversation metadata (including user_id) with no owner check. Admin only."""
+        row = self._session.get(Conversation, conversation_id)
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "user_id": row.user_id,
+            "name": row.name,
+            "created_at": row.created_at.isoformat(),
+            "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+            "prompt_slug": row.prompt_slug,
+            "session_length_minutes": row.session_length_minutes,
+        }
+
     def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
         """Set the per-session length (minutes) for a conversation owned by user_id."""
         row = self._session.get(Conversation, conversation_id)
@@ -209,6 +268,69 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             .limit(1)
         )
         return self._session.execute(stmt).scalar_one_or_none()
+
+    @staticmethod
+    def _sum_spend(
+        rows: list[tuple[str, int, int]], price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Apply price_fn to each (model, input_tokens, output_tokens) row and sum.
+
+        Fails closed: a row whose model has no price entry (price_fn returns None)
+        raises rather than being silently skipped or treated as free.
+        """
+        total = 0.0
+        for model, input_tokens, output_tokens in rows:
+            cost = price_fn(model, input_tokens or 0, output_tokens or 0)
+            if cost is None:
+                raise ValueError(f"No price entry for model '{model}' — cannot compute spend")
+            total += cost
+        return total
+
+    def get_session_spend_usd(
+        self, conversation_id: str, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all runs on this conversation."""
+        stmt = select(Run.model, Run.input_tokens, Run.output_tokens).where(
+            Run.conversation_id == conversation_id
+        )
+        rows = self._session.execute(stmt).all()
+        return self._sum_spend([tuple(r) for r in rows], price_fn)
+
+    def get_user_daily_spend_usd(
+        self, user_id: str, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all of user_id's runs today (UTC)."""
+        midnight_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        stmt = (
+            select(Run.model, Run.input_tokens, Run.output_tokens)
+            .join(Conversation, Run.conversation_id == Conversation.id)
+            .where(Conversation.user_id == user_id)
+            .where(Run.created_at >= midnight_utc)
+        )
+        rows = self._session.execute(stmt).all()
+        return self._sum_spend([tuple(r) for r in rows], price_fn)
+
+    def get_user_ids_with_runs_today(self) -> list[str]:
+        """Return distinct user_ids that have at least one run today (UTC)."""
+        midnight_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        stmt = (
+            select(Conversation.user_id)
+            .join(Run, Run.conversation_id == Conversation.id)
+            .where(Run.created_at >= midnight_utc)
+            .distinct()
+        )
+        return list(self._session.execute(stmt).scalars().all())
+
+    def get_platform_daily_spend_usd(
+        self, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all runs today (UTC), across all users."""
+        midnight_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        stmt = select(Run.model, Run.input_tokens, Run.output_tokens).where(
+            Run.created_at >= midnight_utc
+        )
+        rows = self._session.execute(stmt).all()
+        return self._sum_spend([tuple(r) for r in rows], price_fn)
 
     def record_run(
         self,

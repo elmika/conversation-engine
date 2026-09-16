@@ -45,11 +45,10 @@ MODELS: dict[str, dict] = {
     # "gpt-5.4": {"name": "GPT-5.4", ...},
 }
 
-# Display order
+# Display order — unpriced models (gpt-5-mini, gpt-5-nano) are omitted from the
+# learner-facing selector; their MODELS entries stay for reference but they're unused.
 _DISPLAY_ORDER = [
     "gpt-4.1",
-    "gpt-5-mini",
-    "gpt-5-nano",
     "gpt-5.4-mini",
     "gpt-5.4-nano",
 ]

@@ -1,6 +1,6 @@
 """Application ports: abstract interfaces for infra adapters."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Optional, Protocol, TypedDict
 from types import TracebackType
@@ -211,6 +211,20 @@ class ConversationRepo(Protocol):
         """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes}, or None if not found or not owned by user_id."""
         ...
 
+    def list_all_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
+        """Return (rows, total) across ALL users, ordered by created_at DESC with pagination.
+
+        Each row additionally carries `user_id` (list_conversations does not) since
+        there's no single implicit owner. Admin only.
+        """
+        ...
+
+    def get_conversation_any_owner(self, conversation_id: str) -> Optional[dict]:
+        """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes, user_id},
+        or None if not found. No owner check — admin only.
+        """
+        ...
+
     def update_session_length(self, conversation_id: str, user_id: str, minutes: int) -> None:
         """Set the per-session length (minutes) for a conversation owned by user_id."""
         ...
@@ -229,6 +243,28 @@ class ConversationRepo(Protocol):
 
     def get_active_conversation(self, user_id: str) -> Optional[str]:
         """Return the id of the active (ended_at IS NULL) conversation for user_id, or None."""
+        ...
+
+    def get_session_spend_usd(
+        self, conversation_id: str, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all runs on this conversation. Raises if any run's model has no price entry."""
+        ...
+
+    def get_user_daily_spend_usd(
+        self, user_id: str, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all of user_id's runs today (UTC). Raises if any run's model has no price entry."""
+        ...
+
+    def get_platform_daily_spend_usd(
+        self, price_fn: Callable[[str, int, int], Optional[float]]
+    ) -> float:
+        """Sum estimated $ cost of all runs today (UTC), across all users. Raises if any run's model has no price entry."""
+        ...
+
+    def get_user_ids_with_runs_today(self) -> list[str]:
+        """Return distinct user_ids that have at least one run today (UTC)."""
         ...
 
 

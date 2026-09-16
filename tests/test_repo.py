@@ -156,3 +156,69 @@ def test_get_active_conversation_does_not_cross_users() -> None:
         assert result is None
     finally:
         session.close()
+
+
+def test_list_all_conversations_spans_all_users() -> None:
+    """list_all_conversations returns rows for every user, each carrying its own user_id."""
+    session = _make_session()
+    try:
+        repo = SQLAlchemyConversationRepo(session)
+        cid_a = repo.create_conversation(user_id="user-a")
+        cid_b = repo.create_conversation(user_id="user-b")
+        session.commit()
+
+        rows, total = repo.list_all_conversations(page=1, page_size=100)
+        assert total >= 2
+        by_id = {r["id"]: r for r in rows}
+        assert by_id[cid_a]["user_id"] == "user-a"
+        assert by_id[cid_b]["user_id"] == "user-b"
+    finally:
+        session.close()
+
+
+def test_list_all_conversations_pagination() -> None:
+    session = _make_session()
+    try:
+        repo = SQLAlchemyConversationRepo(session)
+        for i in range(5):
+            repo.create_conversation(user_id=f"user-{i}")
+        session.commit()
+
+        rows, total = repo.list_all_conversations(page=1, page_size=2)
+        assert total == 5
+        assert len(rows) == 2
+
+        rows2, _ = repo.list_all_conversations(page=2, page_size=2)
+        assert len(rows2) == 2
+    finally:
+        session.close()
+
+
+def test_get_conversation_any_owner_ignores_ownership() -> None:
+    """Unlike get_conversation, get_conversation_any_owner has no owner filter."""
+    session = _make_session()
+    try:
+        repo = SQLAlchemyConversationRepo(session)
+        cid = repo.create_conversation(user_id="user-a")
+        session.commit()
+
+        conv = repo.get_conversation_any_owner(cid)
+        assert conv is not None
+        assert conv["id"] == cid
+        assert conv["user_id"] == "user-a"
+
+        # A wrong-user lookup via the owner-scoped method correctly finds nothing...
+        assert repo.get_conversation(cid, "user-b") is None
+        # ...but the any-owner method still finds it.
+        assert repo.get_conversation_any_owner(cid) is not None
+    finally:
+        session.close()
+
+
+def test_get_conversation_any_owner_returns_none_for_unknown() -> None:
+    session = _make_session()
+    try:
+        repo = SQLAlchemyConversationRepo(session)
+        assert repo.get_conversation_any_owner("nonexistent-id") is None
+    finally:
+        session.close()

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { MessageSquare, History, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getOrCreateUserId } from "@/lib/user-id";
+import { getAdminToken, ADMIN_TOKEN_EVENT } from "@/lib/adminToken";
 
 export function NavBar() {
   const pathname = usePathname();
@@ -22,10 +23,24 @@ export function NavBar() {
   }, [pathUserId]);
   const userId = pathUserId ?? storedUserId;
 
+  // Cosmetic only, not a security boundary — /admin's real gate (AdminTokenGate)
+  // fully re-validates the token against the backend on every mount regardless
+  // of what this tab shows. A stale token would show this tab briefly; that's
+  // harmless and self-corrects the moment it's clicked into.
+  const [hasAdminToken, setHasAdminToken] = useState(false);
+  useEffect(() => {
+    setHasAdminToken(!!getAdminToken());
+    function onTokenChange() {
+      setHasAdminToken(!!getAdminToken());
+    }
+    window.addEventListener(ADMIN_TOKEN_EVENT, onTokenChange);
+    return () => window.removeEventListener(ADMIN_TOKEN_EVENT, onTokenChange);
+  }, []);
+
   const TABS = [
     { label: "Chat", href: userId ? `/u/${userId}/chat` : "/", icon: MessageSquare },
     { label: "History", href: userId ? `/u/${userId}/history` : "/", icon: History },
-    { label: "Admin", href: "/admin", icon: Settings },
+    ...(hasAdminToken ? [{ label: "Admin", href: "/admin", icon: Settings }] : []),
   ];
 
   return (
