@@ -1,0 +1,23 @@
+{
+  "name": "baseline-2026-09",
+  "description": "The configuration running in production as of 2026-09-17, after the socratic-tutor rewrite (docs/socratic-tutor-plan.md) and the setup-flow gpt-5.4-pro -> split-phase change (docs/roadmap.md item 1). Not yet compared against any candidate -- this is the reference point.",
+  "_comment": "prompt slug -> model. Applied by rewriting each prompts/<slug>.md file's `model:` frontmatter line. Slugs not listed here are left untouched (e.g. disabled/legacy prompts that intentionally have no model: line and fall back to settings.default_model).",
+  "prompts": {
+    "course-session-init": "gpt-4.1",
+    "course-session-core": "gpt-4.1",
+    "course-session-closure": "gpt-4.1",
+    "user-profile-collection": "gpt-4.1",
+    "user-profile-extraction": "gpt-5.4-mini",
+    "course-outline-extraction": "gpt-5.4-mini",
+    "course-outline-proposal": "gpt-5.6-luna",
+    "lesson-objective-complete": "gpt-5.4-nano",
+    "session-length-extraction": "gpt-5.4-nano",
+    "closure-continue-extraction": "gpt-5.4-nano",
+    "framing-answer-check": "gpt-5.4-nano"
+  },
+  "_settings_comment": "app/settings.py fields that pick a model but aren't sourced from prompt frontmatter. The apply script prints these as .env lines to set rather than writing .env directly (it may hold secrets / personal overrides).",
+  "settings": {
+    "default_model": "gpt-4.1",
+    "wrap_up_model": "gpt-5.6-luna"
+  }
+}

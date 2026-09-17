@@ -5,13 +5,22 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-# USD per 1M tokens. Sources: docs/roadmap.md (gpt-4.1, gpt-5.6-luna) and
-# benchlm.ai/openai/api-pricing (gpt-5.4-mini, gpt-5.4-nano), confirmed 2026-09-15.
+# USD per 1M tokens (short-context, non-batch, standard tier — no cached-input or
+# cache-write discount applied). Source: https://developers.openai.com/api/docs/pricing
+# and per-model pages, confirmed live 2026-09-17. gpt-4.1 dropped from $2.50/$10.00
+# (the price recorded 2026-09-15) to $2.00/$8.00 since the last check — always
+# re-confirm against the live pricing page rather than trusting this comment's date.
 PRICE_PER_MILLION_USD: dict[str, dict[str, float]] = {
-    "gpt-4.1": {"input": 2.50, "output": 10.00},
-    "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
+    "gpt-4.1": {"input": 2.00, "output": 8.00},
+    "gpt-5.4": {"input": 2.50, "output": 15.00},
     "gpt-5.4-mini": {"input": 0.75, "output": 4.50},
     "gpt-5.4-nano": {"input": 0.20, "output": 1.25},
+    "gpt-5.4-pro": {"input": 30.00, "output": 180.00},
+    "gpt-5.5": {"input": 5.00, "output": 30.00},
+    "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
+    "gpt-5.6-terra": {"input": 2.00, "output": 12.00},
+    "gpt-5.6-sol": {"input": 4.00, "output": 20.00},
+    "gpt-6-astra": {"input": 10.00, "output": 50.00},
 }
 
 # The OpenAI API often echoes back a dated snapshot id (e.g. "gpt-4.1-2025-04-14")

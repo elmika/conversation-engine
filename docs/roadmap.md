@@ -249,6 +249,14 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ## Not yet triaged
 
+- **Model-tier review starting 2026-09-17** — full current configuration, rationale per task,
+  and the test-by-test history (what was compared, why, and the decision) now live in
+  `docs/model-decisions.md`, not here. Summary: `app/domain/pricing.py` and
+  `app/domain/model_registry.py` refreshed against live OpenAI data;
+  `course-outline-proposal` switched `gpt-5.6-luna` → `gpt-5.6-sol` after a head-to-head;
+  `gpt-6-astra` tested and rejected for the same task (slower, no quality win, and its
+  outlines conflict with the same-module-resume architecture below); `wrap_up_model`
+  deliberately left untested/unswitched — see `docs/model-decisions.md` for why.
 - Admin panel, conversation download, multi-user/user-switching, and "Start next session"
   continuation were not exercised in the 2026-08-03 smoke test — worth a follow-up pass.
 - `course-session-core` (the lesson's Core moment) interaction-quality regression —
