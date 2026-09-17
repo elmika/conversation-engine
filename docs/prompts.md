@@ -68,6 +68,28 @@ The slug is the filename stem (e.g. `learn-typescript.md` → slug `learn-typesc
 
 ---
 
+## Model presets
+
+A **preset** is a named, consistent batch of `model:` choices across every task —
+`config/model_presets/<name>.json` maps prompt slug → model, plus the two
+`app/settings.py` fields that pick a model outside prompt frontmatter
+(`default_model`, `wrap_up_model`).
+
+```bash
+python3 scripts/apply_model_preset.py --list                    # see available presets
+python3 scripts/apply_model_preset.py baseline-2026-09 --dry-run  # preview changes
+python3 scripts/apply_model_preset.py baseline-2026-09            # write them
+docker compose restart api                                        # reseed from the files
+```
+
+The script only rewrites `model:` frontmatter lines (never `.env` — that may hold
+secrets/personal overrides; settings-level values are printed for you to set by
+hand). `baseline-2026-09` is the reference point — always safe to reapply to get
+back to a known-good configuration. New candidates get their own preset file next
+to it, so a comparison is always a rewrite-and-restart away from being reverted.
+
+---
+
 ## Seed files on disk (gitignored)
 
 These files live in `prompts/` and are **not committed**. They are private prompt IP.
