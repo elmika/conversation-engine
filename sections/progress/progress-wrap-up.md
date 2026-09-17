@@ -23,6 +23,10 @@ Keep the existing format (Completed / Available lists). Update "Completed" if a 
 
 ## Progress - Current state
 
-One or two bullet points describing exactly where to pick up next time. Be specific about the next topic/module/task.
+One or two sentences, in this order:
+1. What this session actually accomplished — a short phrase naming the concrete work done. Cross-check against "What the student knows" above: never list something as still-to-do if it's already captured there.
+2. Then, starting with "Next, ": the specific remaining sub-topic or task. If the current module is now fully covered, name the next module instead.
+
+Ground both parts in what actually happened in this session's transcript, not the course's abstract module description — don't restate the module's full scope as work still ahead if part of it was already covered today.
 
 Output only the markdown for these four sections. Do not add any other sections or commentary.
