@@ -23,9 +23,9 @@ Keep the existing format (Completed / Available lists). Update "Completed" if a 
 
 ## Progress - Current state
 
-One or two sentences, in this order:
+One or two full sentences, in this order:
 1. What this session actually accomplished — a short phrase naming the concrete work done. Cross-check against "What the student knows" above: never list something as still-to-do if it's already captured there.
-2. Then, starting with "Next, ": the specific remaining sub-topic or task. If the current module is now fully covered, name the next module instead.
+2. Then a complete sentence starting with "Next, we'll " (not a sentence fragment) naming the specific remaining sub-topic or task. If the current module is now fully covered, name the next module instead.
 
 Ground both parts in what actually happened in this session's transcript, not the course's abstract module description — don't restate the module's full scope as work still ahead if part of it was already covered today.
 
