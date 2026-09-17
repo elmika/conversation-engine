@@ -120,6 +120,36 @@ negligible, so it's the lowest-risk place to check whether paying more buys anyt
 astra's price) — rejected purely on latency + the module/session-length conflation, with no
 offsetting quality gain to justify either.
 
+### Test 4 — 2026-09-17 — `course-outline-proposal`: `gpt-5.6-luna` vs `gpt-5.6-terra` vs `gpt-5.6-sol`
+
+**Method:** Same 8 profiles, three-way:
+`scripts/compare_outline_models.py --models gpt-5.6-luna,gpt-5.6-terra,gpt-5.6-sol`. Terra
+("roughly the mini tier" per its own model page, vs sol's "unsuffixed/flagship tier") hadn't
+been considered — checked since it's cheap to verify with the harness already built.
+
+**Result:**
+- Latency: terra consistently between luna and sol (~6.3s avg total this run vs sol's ~6.9s,
+  which ran unusually high due to one 11.1s outlier — sol's Test 2 average was ~5.5s, so treat
+  both as roughly comparable rather than reading too much into this run's exact gap).
+- Quality: genuinely mixed, not a clean win either way.
+  - Terra matched sol's earlier win over luna in 2 profiles: nurse-stats (terra also separates
+    out a statistical-vs-clinical-significance/NNT module) and financial-VBA (terra adds its own
+    "Importing, Cleaning, and Consolidating Data" module).
+  - Terra did something *neither* luna nor sol did in backend-pandas: added "Efficient, Safe
+    Analysis at Scale" (vectorization, when pandas stops being the right tool).
+  - But terra dropped a module both luna and sol had in marketing-SQL (6 vs 7 — missing the
+    validate/share-safely step, the same pattern Test 3 saw from astra), and trailed sol by one
+    module in 3 others (bakery, teacher-python, designer-frontend), each time missing something
+    sol's outline included (maintenance/backups, tool polish, accessibility as its own step).
+
+**Decision: no change, stayed on `gpt-5.6-sol`.** Terra is a real contender — closer to sol than
+its "mini-tier" positioning suggested — but inconsistent (strong in 3/8 profiles, thinner in
+4/8), while sol matched-or-beat both alternatives' completeness in every profile across Tests
+2-4. Cost isn't a factor either way at outline's volume (once per learner), so there's no reason
+to trade sol's consistency for terra's occasional wins. Worth a full re-test with a larger
+profile set if a future comparison suggests terra's variance was this-run noise, not a real
+gap — not warranted from a single 8-profile pass.
+
 ---
 
 ## How to run the next comparison
