@@ -138,7 +138,7 @@ class ConversationService:
         # Phase selection is Layer 2 (learning-specific) state, never inferred
         # by the model — see app.learning.flow_orchestrator.LearningFlowOrchestrator.
         effective_slug = self._flow.resolve_effective_prompt(
-            flow_slug, conv_meta, created_at, history, pending_messages
+            flow_slug, conv_meta, created_at, history, pending_messages, uow=uow
         )
 
         used_prompt_slug, instructions, prompt_model, _ = self._resolve_prompt(effective_slug)

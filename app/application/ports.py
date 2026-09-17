@@ -36,11 +36,18 @@ class LearningFlowPort(Protocol):
         created_at: Optional[datetime],
         history: Optional[list[dict[str, str]]],
         pending_messages: Optional[list[dict[str, str]]],
+        uow: Optional["UnitOfWork"] = None,
     ) -> Optional[str]:
         """Return the prompt slug that should drive this turn.
 
         Flows without phases (or an unrecognized flow_slug) return flow_slug
         unchanged.
+
+        `uow`, when given, is the CALLER's already-open unit of work — any
+        writes this needs to make (e.g. bumping framing_turns_required) must
+        go through it rather than opening a fresh one, since a second nested
+        transaction on the same connection can deadlock (observed against the
+        in-memory test DB's single shared connection). The caller commits.
         """
         ...
 
@@ -79,6 +86,7 @@ class NullLearningFlow:
         created_at: Optional[datetime],
         history: Optional[list[dict[str, str]]],
         pending_messages: Optional[list[dict[str, str]]],
+        uow: Optional["UnitOfWork"] = None,
     ) -> Optional[str]:
         return flow_slug
 

@@ -16,7 +16,11 @@ Legacy bare routes (`/chat`, `/history`) and a bare `/u/{userId}` (no `/chat` or
 All of a learner's conversations, history, and profile are scoped to their UUID. Bookmarking the `/u/{userId}/…` URL is how a learner returns to their session on the same browser. A conversation is only visible to the UUID that created it — requests under a different UUID are treated as non-existent (not enumerable across users).
 
 ### 1.3 Setup flow (new learner)
-A learner with no profile is routed into a guided **setup conversation** instead of a normal chat. This conversation (the `user-profile-collection` assistant) collects the learner's background and goal and proposes a course outline.
+A learner with no profile is routed into a guided **setup conversation** instead of a normal chat. This conversation (the `user-profile-collection` assistant) collects the learner's background and goal and proposes a course outline. The framing Q&A asks name, work, "what would you like to learn with me", and session length, one per turn, in that order — the opening message itself is the name question, so the assistant never re-asks a question the learner has already answered.
+
+If a learner's reply to the framing question that would otherwise complete the Q&A is itself a clarifying question rather than an answer (e.g. "what skill are you referring to?"), the flow stays in the framing phase for one more turn instead of jumping straight to the outline off an unanswered question — checked synchronously on that exact turn, since it's too late to correct on any later turn.
+
+Once an outline is proposed, the assistant asks the learner to confirm it looks right or say what to change, rather than prompting them to click "Let's start" — the outline can be refined any number of times (each refinement re-asks for confirmation), and moving on to the course is always the learner's own action via the button (§1.5), never something the assistant announces or ushers them toward.
 
 ### 1.4 AI opens first
 Per the design principle *"the AI always opens — no blank input ever"*, the assistant sends the first message automatically when a fresh chat is opened, for both audiences:

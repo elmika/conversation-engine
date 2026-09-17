@@ -1,4 +1,4 @@
-.PHONY: up down build test test-backend test-frontend test-watch check-layers lint format backup usage help
+.PHONY: up down build test test-backend test-frontend test-watch check-layers lint format backup usage help deploy deploy-backend deploy-frontend
 
 IMAGE := conversation-engine
 
@@ -53,3 +53,11 @@ lint: ## Run ruff linter on backend
 
 format: ## Run ruff formatter on backend
 	docker run --rm $(IMAGE) python -m ruff format .
+
+deploy-backend: ## Deploy the API to Fly.io (app: learning-platform, config: fly.toml)
+	fly deploy -c fly.toml
+
+deploy-frontend: ## Deploy the frontend to Fly.io (app: skillforge-web, config: frontend/fly.toml)
+	fly deploy -c frontend/fly.toml
+
+deploy: deploy-backend deploy-frontend ## Deploy both API and frontend to Fly.io

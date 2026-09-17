@@ -155,6 +155,65 @@ def test_skips_non_setup_flow_conversations(uow_factory):
     assert llm.complete_calls == []
 
 
+def test_synchronous_check_catches_a_detour_landing_on_the_threshold_turn_itself(uow_factory):
+    """The exact 'Bubi' repro (2026-09-17): unlike test_the_reported_repro_end_to_end
+    above (where the clarifying question lands on turn 3, strictly before the
+    threshold), here it lands ON turn 4 itself — the threshold-crossing turn.
+    maybe_extend_framing_turns can never see this case (by the time it would run,
+    OUTLINE has already fired for this exact turn) — only the synchronous check
+    inside resolve_effective_prompt can catch it, in the same turn."""
+    _seed(uow_factory, exchanges=[
+        ("What's your name?", "Bubi"),
+        ("What do you do for work?", "travel agent, organise hikes"),
+        ("What made you want to explore this skill?", "career growth"),
+    ])
+    llm = FakeLLM(complete_text="NO")  # "What skill are you referring to?" doesn't answer
+    prompt_repo = FakePromptRepo()
+    slot_resolver = _NullResolver()
+    flow = LearningFlowOrchestrator(uow_factory, llm, prompt_repo, slot_resolver, TEST_USER)
+
+    with uow_factory() as uow:
+        conv_meta = uow.repo.get_conversation(CID, TEST_USER)
+        history = uow.repo.get_messages(CID, TEST_USER)
+        pending = [{"role": "user", "content": "What skill are you referring to?"}]
+        effective_slug = flow.resolve_effective_prompt(
+            conv_meta["prompt_slug"], conv_meta, None, history, pending, uow=uow
+        )
+        uow.commit()
+
+    assert effective_slug == "user-profile-collection"  # stayed on FRAMING, not OUTLINE
+    assert _conv(uow_factory)["framing_turns_required"] == FRAMING_TURNS + 1
+
+
+def test_synchronous_check_does_not_fire_on_a_legitimate_later_outline_turn(uow_factory):
+    """Once OUTLINE has legitimately started, a normal refinement reply must
+    never be re-routed through the threshold check (that would wrongly re-lock
+    framing on every later turn)."""
+    _seed(uow_factory, exchanges=[
+        ("What's your name?", "Bubi"),
+        ("What do you do for work?", "travel agent"),
+        ("What made you want to explore this skill?", "career growth"),
+        ("How long do you usually have for a session?", "20 minutes"),
+    ])
+    llm = FakeLLM(complete_text="NO")  # would (wrongly) extend framing if ever called
+    prompt_repo = FakePromptRepo()
+    slot_resolver = _NullResolver()
+    flow = LearningFlowOrchestrator(uow_factory, llm, prompt_repo, slot_resolver, TEST_USER)
+
+    with uow_factory() as uow:
+        conv_meta = uow.repo.get_conversation(CID, TEST_USER)
+        history = uow.repo.get_messages(CID, TEST_USER)
+        pending = [{"role": "user", "content": "can you make module 2 more advanced?"}]
+        effective_slug = flow.resolve_effective_prompt(
+            conv_meta["prompt_slug"], conv_meta, None, history, pending, uow=uow
+        )
+        uow.commit()
+
+    assert effective_slug == "course-outline-proposal"
+    assert _conv(uow_factory)["framing_turns_required"] is None  # never touched
+    assert llm.complete_calls == []  # threshold check never re-fires on later turns
+
+
 def test_the_reported_repro_end_to_end(uow_factory):
     """The exact real-world sequence: clarifying question on turn 3 pushes the
     real motivation answer to turn 4 — without the fix, that turn would cross

@@ -68,6 +68,7 @@ class LearningFlowOrchestrator:
         created_at: Optional[datetime],
         history: Optional[list[dict[str, str]]],
         pending_messages: Optional[list[dict[str, str]]],
+        uow: Optional[UnitOfWork] = None,
     ) -> Optional[str]:
         """Pick the phase for this turn from code-owned state, never inferred by the model:
           - lesson flow  → CLOSURE once the session's time is up (see
@@ -94,9 +95,75 @@ class LearningFlowOrchestrator:
             total_user_turns += sum(1 for m in (pending_messages or []) if m["role"] == "user")
             framing_required = (conv_meta or {}).get("framing_turns_required") or FRAMING_TURNS
             phase = setup_phase_for_turn(total_user_turns, framing_required)
+
+            # The turn that CROSSES the threshold (total_user_turns first reaches
+            # framing_required) is exactly the one maybe_extend_framing_turns can't
+            # protect: that post-turn hook only bumps the requirement for turns
+            # *after* the one it inspects, but if the crossing turn itself is a
+            # clarifying question rather than an answer, OUTLINE already fired for
+            # it before any post-turn hook runs — there's no later turn left to
+            # correct. So check synchronously, but only exactly at the boundary
+            # (`==`, not `>=`) — once OUTLINE has legitimately started, later
+            # refinement replies ("can we review this?") must never be run through
+            # this check again, or a normal follow-up turn would wrongly re-lock
+            # framing. Real-world case that motivated this (2026-09-17): a
+            # clarifying question landed exactly on turn 4 of 4 and jumped straight
+            # to the outline, skipping the session-length question entirely.
+            if phase is SetupPhase.OUTLINE and total_user_turns == framing_required:
+                question, answer = self._last_exchange((history or []) + (pending_messages or []))
+                try:
+                    answered = not answer or self._reply_answered_pending_question(question, answer)
+                except Exception:
+                    # Fail open, like every other best-effort hook in this file — a
+                    # classifier failure must never break the turn itself.
+                    logger.exception(
+                        "Threshold-turn framing-answer check failed; treating reply as answered"
+                    )
+                    answered = True
+                if not answered:
+                    conversation_id = (conv_meta or {}).get("id")
+                    if conversation_id:
+                        new_required = framing_required + 1
+                        if uow is not None:
+                            # Reuse the caller's already-open transaction — opening a
+                            # second one here (self._uow_factory()) nests a BEGIN on
+                            # top of the caller's, which deadlocks against the
+                            # in-memory test DB's single shared connection. The
+                            # caller commits this write along with the rest of the
+                            # turn's writes.
+                            uow.repo.set_framing_turns_required(
+                                conversation_id, self._user_id, new_required
+                            )
+                        else:
+                            with self._uow_factory() as fresh_uow:
+                                fresh_uow.repo.set_framing_turns_required(
+                                    conversation_id, self._user_id, new_required
+                                )
+                                fresh_uow.commit()
+                        logger.info(
+                            "Setup turn for %s didn't answer the pending framing question "
+                            "at the threshold turn — framing now requires %d turns",
+                            conversation_id, new_required,
+                        )
+                    phase = SetupPhase.FRAMING
+
             return resolve_setup_phase_prompt(flow_slug, phase)
 
         return flow_slug
+
+    def _reply_answered_pending_question(self, question: str, answer: str) -> bool:
+        """Cheap-model check: did `answer` actually answer `question`? Used both here
+        (synchronously, only at the framing threshold turn) and by
+        maybe_extend_framing_turns (post-turn, for earlier turns)."""
+        record = self._prompt_repo.get_prompt("framing-answer-check")
+        if record is None:
+            return True  # fail open — never spuriously block a real turn
+        exchange = [
+            {"role": "assistant", "content": question},
+            {"role": "user", "content": answer},
+        ]
+        result = self._llm.complete(record["system_prompt"], exchange, model=record.get("model"))
+        return parse_framing_answer_result(result["text"])
 
     def initial_session_length_minutes(self, flow_slug: Optional[str]) -> Optional[int]:
         """Seed the session length from the learner's profile for lesson flows.
@@ -271,8 +338,15 @@ class LearningFlowOrchestrator:
         return max(0.0, (datetime.now(timezone.utc) - start).total_seconds() / 60.0)
 
     def maybe_extend_framing_turns(self, conversation_id: str) -> None:
-        """After a setup-flow turn, check whether the reply actually answered the
-        pending framing question; if not, buy one more real framing turn.
+        """After a setup-flow turn that's still (or was) below the framing
+        threshold, check whether the reply actually answered the pending framing
+        question; if not, buy one more real framing turn — catches a detour
+        happening BEFORE the threshold turn, so the raw count doesn't reach its
+        threshold too early relative to how many real questions were actually
+        answered. (The complementary case — the threshold-crossing turn itself
+        being a detour — is caught synchronously in resolve_effective_prompt,
+        since by the time this post-turn hook runs, OUTLINE has already fired
+        for that exact turn and there's nothing left here to correct.)
 
         Best-effort and advisory, mirroring maybe_update_session_length:
           1. skip non-setup-flow conversations;
@@ -301,17 +375,7 @@ class LearningFlowOrchestrator:
                 return  # already at/past the outline phase — too late to correct here
 
             question, answer = self._last_exchange(messages)
-            record = self._prompt_repo.get_prompt("framing-answer-check")
-            if record is None:
-                return
-            exchange = [
-                {"role": "assistant", "content": question},
-                {"role": "user", "content": answer},
-            ]
-            result = self._llm.complete(
-                record["system_prompt"], exchange, model=record.get("model")
-            )
-            if parse_framing_answer_result(result["text"]):
+            if not answer or self._reply_answered_pending_question(question, answer):
                 return  # answered normally — nothing to correct
 
             new_required = required + 1

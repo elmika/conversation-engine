@@ -36,6 +36,13 @@ def mock_llm():
         LLMResult(text="welcome, what's your name?", model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0),
         LLMResult(text="and your industry?", model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0),
         LLMResult(text="what's your motivation?", model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0),
+        # The turn that crosses the framing threshold (call 4 below) is checked
+        # synchronously first — see LearningFlowOrchestrator.resolve_effective_prompt
+        # — via a cheap-model YES/NO classifier call before the real turn runs.
+        LLMResult(
+            text="YES", model="gpt-5.4-nano", ttfb_ms=5, total_ms=20,
+            input_tokens=0, output_tokens=0,
+        ),
         LLMResult(
             text="here's your course outline...", model="gpt-5.6-luna", ttfb_ms=10, total_ms=50,
             input_tokens=0, output_tokens=0,
@@ -100,18 +107,23 @@ def test_framing_turns_use_profile_prompt_then_switches_to_outline_prompt(
     assert r5.status_code == 200, r5.json()
 
     instructions = [call[0][0] for call in mock_llm.complete.call_args_list]
-    assert len(instructions) == 5
+    # 5 turns + 1 synchronous framing-answer-check classifier call made on the
+    # threshold-crossing turn (call 4) before its real response is generated.
+    assert len(instructions) == 6
 
     # Calls 1-3 = FRAMING prompt.
     for i in range(3):
         assert "already asked the learner four framing questions" not in instructions[i], (
             f"call {i + 1} unexpectedly used the OUTLINE prompt"
         )
-        assert "EXACTLY these four questions" in instructions[i]
+        assert "four questions you must ask" in instructions[i]
 
-    # Calls 4-5 = OUTLINE prompt.
-    for i in (3, 4):
+    # Call 4 (index 3) = the framing-answer-check classifier, not a setup prompt.
+    assert "decide whether the learner's reply actually answered" in instructions[3]
+
+    # Calls 4-5 (indices 4-5) = OUTLINE prompt.
+    for i in (4, 5):
         assert "already asked the learner four framing questions" in instructions[i], (
-            f"call {i + 1} unexpectedly used the FRAMING prompt"
+            f"call at index {i} unexpectedly used the FRAMING prompt"
         )
-        assert "EXACTLY these four questions" not in instructions[i]
+        assert "four questions you must ask" not in instructions[i]
