@@ -249,6 +249,13 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ## Not yet triaged
 
+- **Model-tier review starting 2026-09-17.** `app/domain/pricing.py` refreshed against the
+  live OpenAI pricing page (was last confirmed 2026-09-15; `gpt-4.1` had actually dropped from
+  $2.50/$10.00 to $2.00/$8.00 in that window) and `app/domain/model_registry.py` gained the
+  current-generation candidates (`gpt-5.4`, `gpt-5.5`, `gpt-5.6-terra`, `gpt-5.6-sol`,
+  `gpt-6-astra`) pulled live from `GET /v1/models`. `config/model_presets/baseline-2026-09.json`
+  (see `docs/prompts.md` "Model presets") is the reference point to compare candidates against
+  and revert to. No task's model has actually been switched yet — pricing/registry refresh only.
 - Admin panel, conversation download, multi-user/user-switching, and "Start next session"
   continuation were not exercised in the 2026-08-03 smoke test — worth a follow-up pass.
 - `course-session-core` (the lesson's Core moment) interaction-quality regression —

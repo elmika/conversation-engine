@@ -34,6 +34,34 @@ MODELS: dict[str, dict] = {
         "replacement for course-outline-proposal/wrap_up_model (docs/roadmap.md, untriaged)",
     },
 
+    # --- Added 2026-09-17 during the model-tier review (docs/roadmap.md) — pulled
+    # live from GET /v1/models + https://developers.openai.com/api/docs/pricing.
+    "gpt-5.4": {
+        "name": "GPT-5.4",
+        "description": "Flagship GPT-5.4 model — more affordable than gpt-5.4-pro for coding "
+        "and professional work",
+    },
+    "gpt-5.5": {
+        "name": "GPT-5.5",
+        "description": "Flagship model for the most complex professional work; successor tier "
+        "to gpt-5.4",
+    },
+    "gpt-5.6-terra": {
+        "name": "GPT-5.6 Terra",
+        "description": "GPT-5.6 tier balancing intelligence and cost — roughly corresponds to "
+        "the mini tier in earlier GPT-5 families",
+    },
+    "gpt-5.6-sol": {
+        "name": "GPT-5.6 Sol",
+        "description": "Flagship GPT-5.6 model — roughly corresponds to the unsuffixed tier in "
+        "earlier GPT-5 families",
+    },
+    "gpt-6-astra": {
+        "name": "GPT-6 Astra",
+        "description": "Most capable current model, for the hardest end-to-end work — complex "
+        "reasoning, coding, computer use, research",
+    },
+
     # --- Expensive models: commented out to prevent accidental use during development ---
     # "gpt-5": {"name": "GPT-5", "description": "Reasoning model"},
     # "gpt-5-codex": {"name": "GPT-5 Codex", ...},
