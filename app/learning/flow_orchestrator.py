@@ -14,13 +14,18 @@ from typing import Optional
 
 from app.application.ports import LLMPort, PromptRepo, SlotResolver, UnitOfWork
 from app.domain.prompt_template import render_instructions
+from app.learning.closure_continuation import (
+    CONTINUE_EXTENSION_MINUTES,
+    mentions_continue_intent,
+    parse_continue_result,
+)
 from app.learning.lesson_flow import (
     LessonPhase,
     is_lesson_flow,
     phase_for_turn,
     resolve_phase_prompt,
 )
-from app.learning.objective_guard import OBJECTIVE_GUARD_MIN_TURNS, parse_objective_result
+from app.learning.objective_guard import objective_guard_min_turns, parse_objective_result
 from app.learning.session_length import (
     is_time_over,
     mentions_duration,
@@ -149,7 +154,7 @@ class LearningFlowOrchestrator:
 
         Best-effort and advisory, mirroring maybe_update_session_length:
           1. skip non-lesson conversations and ones already latched;
-          2. skip while still early (< OBJECTIVE_GUARD_MIN_TURNS) — no premature close;
+          2. skip while still early (< objective_guard_min_turns(session_len)) — no premature close;
           3. skip if the session's time is already up (closure fires on time anyway);
           4. cheap-model guard over course + progress + recent transcript → YES/NO;
           5. on YES, latch objective_met so the next turn resolves to CLOSURE.
@@ -168,7 +173,8 @@ class LearningFlowOrchestrator:
                 self._elapsed_minutes(created_at), session_len
             ):
                 return  # already closing on time — don't spend the guard call
-            if sum(1 for m in messages if m["role"] == "user") < OBJECTIVE_GUARD_MIN_TURNS:
+            min_turns = objective_guard_min_turns(session_len)
+            if sum(1 for m in messages if m["role"] == "user") < min_turns:
                 return
 
             record = self._prompt_repo.get_prompt("lesson-objective-complete")
@@ -187,6 +193,71 @@ class LearningFlowOrchestrator:
             logger.info("Objective met for %s — next turn will close", conversation_id)
         except Exception:
             logger.exception("Objective guard failed; treating objective as not met")
+
+    def maybe_resume_from_closure(self, conversation_id: str) -> None:
+        """After a turn, check whether the learner asked to keep going past closure.
+
+        Closure is a suggestion, not a cutoff (prompts/course-session-closure.md).
+        Best-effort and advisory, mirroring maybe_update_session_length:
+          1. skip non-lesson conversations;
+          2. skip unless the turn that just ran was actually CLOSURE (time-over
+             or objective-met) — nothing to resume from otherwise;
+          3. cheap regex pre-filter on the learner's reply;
+          4. cheap-model extraction over the closure invite + learner reply → YES/NO;
+          5. on YES: un-latch objective_met and add CONTINUE_EXTENSION_MINUTES to
+             the session length, so the *next* turn resolves back to CORE.
+        Never raises — a failure leaves the conversation in CLOSURE.
+        """
+        try:
+            with self._uow_factory() as uow:
+                conv = uow.repo.get_conversation(conversation_id, self._user_id)
+                if not conv or conv.get("session_length_minutes") is None:
+                    return
+                created_at = uow.repo.get_conversation_created_at(conversation_id)
+                messages = uow.repo.get_messages(conversation_id, self._user_id)
+
+            session_len = conv.get("session_length_minutes")
+            time_over = bool(
+                created_at and session_len
+                and is_time_over(self._elapsed_minutes(created_at), session_len)
+            )
+            if not (time_over or conv.get("objective_met")):
+                return  # the turn that just ran wasn't closure — nothing to resume from
+
+            question, answer = self._last_exchange(messages)
+            if not mentions_continue_intent(answer):
+                return
+
+            record = self._prompt_repo.get_prompt("closure-continue-extraction")
+            if record is None:
+                return
+            exchange = [
+                {"role": "assistant", "content": question},
+                {"role": "user", "content": answer},
+            ]
+            result = self._llm.complete(
+                record["system_prompt"], exchange, model=record.get("model")
+            )
+            if not parse_continue_result(result["text"]):
+                return
+
+            # Anchor the extension to elapsed time, not just the old target: if the
+            # learner took a while to reply while time was already up, session_len
+            # + CONTINUE_EXTENSION_MINUTES could still be in the past and re-close
+            # on the very next turn.
+            elapsed = self._elapsed_minutes(created_at) if created_at else session_len
+            new_length = int(max(session_len, elapsed) + CONTINUE_EXTENSION_MINUTES)
+
+            with self._uow_factory() as uow:
+                uow.repo.clear_objective_met(conversation_id, self._user_id)
+                uow.repo.update_session_length(conversation_id, self._user_id, new_length)
+                uow.commit()
+            logger.info(
+                "Learner asked to continue past closure for %s — resuming core, length %s -> %s",
+                conversation_id, session_len, new_length,
+            )
+        except Exception:
+            logger.exception("Closure-continuation check failed; staying in closure")
 
     @staticmethod
     def _elapsed_minutes(created_at: datetime) -> float:

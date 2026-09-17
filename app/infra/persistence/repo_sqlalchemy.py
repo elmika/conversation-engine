@@ -248,6 +248,12 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         if row and row.user_id == user_id:
             row.objective_met = True
 
+    def clear_objective_met(self, conversation_id: str, user_id: str) -> None:
+        """Un-latch the objective-met flag (learner asked to keep going past closure)."""
+        row = self._session.get(Conversation, conversation_id)
+        if row and row.user_id == user_id:
+            row.objective_met = False
+
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""
         row = self._session.get(Conversation, conversation_id)
