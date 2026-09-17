@@ -58,6 +58,6 @@ deploy-backend: ## Deploy the API to Fly.io (app: learning-platform, config: fly
 	fly deploy -c fly.toml
 
 deploy-frontend: ## Deploy the frontend to Fly.io (app: skillforge-web, config: frontend/fly.toml)
-	fly deploy -c frontend/fly.toml
+	cd frontend && fly deploy
 
 deploy: deploy-backend deploy-frontend ## Deploy both API and frontend to Fly.io
