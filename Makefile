@@ -1,4 +1,4 @@
-.PHONY: up down build test test-backend test-frontend test-watch check-layers lint format backup usage help deploy deploy-backend deploy-frontend
+.PHONY: up down build test test-backend test-frontend test-watch check-layers lint format backup usage help deploy deploy-backend deploy-frontend fly-stop fly-start
 
 IMAGE := conversation-engine
 
@@ -61,3 +61,11 @@ deploy-frontend: ## Deploy the frontend to Fly.io (app: skillforge-web, config: 
 	cd frontend && fly deploy
 
 deploy: deploy-backend deploy-frontend ## Deploy both API and frontend to Fly.io
+
+fly-stop: ## Scale both Fly apps to 0 machines (stops compute billing; app/volume/DNS stay intact)
+	fly scale count 0 -a learning-platform --yes
+	fly scale count 0 -a skillforge-web --yes
+
+fly-start: ## Scale both Fly apps back to 1 machine
+	fly scale count 1 -a learning-platform --yes
+	fly scale count 1 -a skillforge-web --yes
