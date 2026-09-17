@@ -70,6 +70,10 @@ The slug is the filename stem (e.g. `learn-typescript.md` → slug `learn-typesc
 
 ## Model presets
 
+See `docs/model-decisions.md` for *which* model each task currently uses, why, and the
+test-by-test history of comparisons run (including rejected candidates). This section is
+just the mechanism for applying a preset.
+
 A **preset** is a named, consistent batch of `model:` choices across every task —
 `config/model_presets/<name>.json` maps prompt slug → model, plus the two
 `app/settings.py` fields that pick a model outside prompt frontmatter

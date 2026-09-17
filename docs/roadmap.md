@@ -249,33 +249,14 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ## Not yet triaged
 
-- **Model-tier review starting 2026-09-17.** `app/domain/pricing.py` refreshed against the
-  live OpenAI pricing page (was last confirmed 2026-09-15; `gpt-4.1` had actually dropped from
-  $2.50/$10.00 to $2.00/$8.00 in that window) and `app/domain/model_registry.py` gained the
-  current-generation candidates (`gpt-5.4`, `gpt-5.5`, `gpt-5.6-terra`, `gpt-5.6-sol`,
-  `gpt-6-astra`) pulled live from `GET /v1/models`. `config/model_presets/baseline-2026-09.json`
-  (see `docs/prompts.md` "Model presets") is the reference point to compare candidates against
-  and revert to.
-  - **✅ `course-outline-proposal`: gpt-5.6-luna → gpt-5.6-sol, shipped 2026-09-17**
-    (`config/model_presets/course-outline-sol.json`). 8-profile head-to-head via
-    `scripts/compare_outline_models.py --models gpt-5.6-luna,gpt-5.6-sol`: sol included one
-    more genuinely relevant module in ~half the profiles (a dedicated safety/reliability
-    module for an LLM-features PM course; effect sizes/NNT for a nurse/statistics course;
-    a data-cleanup module for a VBA course; a gentler on-ramp for a non-technical SQL
-    course) — no profile favored luna. Latency difference negligible (~4.6s → ~5.5s avg
-    total, both far under the ~2min band this one-shot generation gets); cost difference
-    (~17-20x per-token) is economically irrelevant at this call frequency (once per
-    learner, ~$0.0005 → ~$0.008/learner).
-  - **`wrap_up_model` (progress synthesis, `sections/progress/progress-wrap-up.md`) — not
-    yet tested.** Currently still `gpt-5.6-luna`, same as the outline was, and for the same
-    original reason (docs/architecture-decisions.md §5: "the one generation worth paying
-    for"). Worth its own comparison before switching, not an assumed transfer from the
-    outline result — wrap-up is a different task shape (cross-referencing an existing
-    progress doc + transcript against strict formatting rules, not one-shot creative
-    structuring), so sol's demonstrated strength (module/content completeness) isn't proven
-    to carry over. No comparison harness exists yet for this prompt (`compare_outline_models.py`
-    is outline-specific); would need an analogous script driving a full lesson session twice
-    (once per candidate model) and diffing the resulting progress docs.
+- **Model-tier review starting 2026-09-17** — full current configuration, rationale per task,
+  and the test-by-test history (what was compared, why, and the decision) now live in
+  `docs/model-decisions.md`, not here. Summary: `app/domain/pricing.py` and
+  `app/domain/model_registry.py` refreshed against live OpenAI data;
+  `course-outline-proposal` switched `gpt-5.6-luna` → `gpt-5.6-sol` after a head-to-head;
+  `gpt-6-astra` tested and rejected for the same task (slower, no quality win, and its
+  outlines conflict with the same-module-resume architecture below); `wrap_up_model`
+  deliberately left untested/unswitched — see `docs/model-decisions.md` for why.
 - Admin panel, conversation download, multi-user/user-switching, and "Start next session"
   continuation were not exercised in the 2026-08-03 smoke test — worth a follow-up pass.
 - `course-session-core` (the lesson's Core moment) interaction-quality regression —
