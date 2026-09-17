@@ -249,6 +249,73 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ## Not yet triaged
 
+- **GDPR: no consent gate before a learner's personal data is collected (surfaced
+  2026-09-17, priority: high — the 2026-09-18 ICW demo QR sends real strangers straight in).**
+  Current flow (`frontend/app/page.tsx` → `getOrCreateUserId()`) silently mints a UUID and
+  redirects straight into chat, no screen of any kind. From the first framing question on, the
+  platform collects the learner's **name, role/industry, stated goal**, and the **full
+  conversation transcript** of every session, later synthesized into progress notes. All of it
+  is admin-visible per learner — `AdminConversationsTable` shows name + full message content,
+  one row per conversation. Today none of this is disclosed anywhere before it happens.
+
+  **Decided with Mika (2026-09-17): minimal consent gate before tomorrow's demo**, not a full
+  GDPR pass (that's a separate, later item — data export, deletion-on-request flow, formal
+  retention policy, DPA language for OpenAI as processor).
+
+  Minimal scope for tomorrow:
+  1. **A consent screen inserted before the UUID→chat redirect** — short disclosure + a
+     checkbox, "Continue" disabled until checked. Suggested copy (Mika should review/edit
+     before it ships, this is a draft, not final legal text):
+
+     > Before we start: SkillForge is a live pilot, not a finished product. To personalise
+     > your course we'll ask your name, role, and what you want to learn — and everything you
+     > write in a session is saved so the tutor can pick up where you left off next time. As
+     > the person running this pilot, I can see your name and messages to build and improve
+     > the product; nobody else does. Your messages are sent to OpenAI to generate the
+     > tutor's replies, same as any AI chat tool. Nothing is sold or shared beyond that. This
+     > pilot is provided as-is, with no guarantee of availability, and I may end it at any time
+     > without needing to justify why. It's expected to run for around two weeks — enough time
+     > to complete one course. After the pilot, I may keep an anonymized version of session
+     > content to improve the product. You can ask for your data to be deleted at any time —
+     > mikael.baron@squaredpoint.com.
+     >
+     > ☐ I understand and agree to this.
+
+     Notes:
+     - The "around two weeks" line doubles as the retention-period disclosure flagged as
+       missing below — a concrete criterion (pilot duration / one course's length) rather than
+       an open-ended "we keep it forever."
+     - **"Anonymized" is disclosed honestly here, but its real strength is limited — say so
+       plainly, don't let the word imply more protection than it delivers.** For a small
+       in-person pilot (ICW attendees Mika knows personally), stripping the name field doesn't
+       make a transcript unlinkable: 1-2 lines about someone's actual job/role is often enough
+       to re-identify them anyway, on top of Mika knowing who was in the room. This is
+       pseudonymization at best, not true anonymization — GDPR treats those very differently
+       (pseudonymized data is still personal data). Considered and explicitly rejected: asking
+       "what should I call you?" (nickname) instead of "what's your name?" — doesn't reduce
+       what's collected (most people give their real name anyway) and doesn't change the
+       re-identification risk above; dropped as a non-fix, not worth prompt-wording changes.
+     - Still doesn't cover the full rights list (access, portability, objection, withdrawal,
+       complaint to a supervisory authority) — those remain deferred to the full GDPR pass.
+
+  2. **Record consent server-side, timestamped, tied to `user_id`** — not just a `localStorage`
+     flag. A `localStorage`-only record can't be produced as evidence that consent was actually
+     given if ever asked. Exact schema (new table vs. a column) is an implementation call for
+     whoever builds this — just needs to be queryable later ("did user X consent, and when").
+  3. **Ideal but not a blocker for tomorrow:** have the backend reject conversation creation for
+     a `user_id` with no recorded consent, not just hide the UI. Defense in depth against
+     someone hitting the API directly, bypassing the frontend gate. If time-constrained before
+     the demo, ship the frontend gate + server-side record first; add backend enforcement after
+     if there isn't time tonight.
+
+  **Not in this pass** (full GDPR item, later): data export/download for a learner, a real
+  deletion-on-request flow (today "ask for deletion" has no implementation behind it — the
+  draft copy above promises something that doesn't exist yet), retention period decision,
+  whether OpenAI's data-processing terms need a formal DPA reference in the copy. Data
+  residency note for whenever the full pass happens: the Fly backend runs in `cdg` (Paris) —
+  worth confirming as an EU-residency fact in the eventual real privacy policy, not asserting
+  it without re-checking `fly status -a learning-platform` at that time.
+
 - **✅ Shipped 2026-09-17 — Learner-facing prompt/model override removed (security gap).**
   Mika noticed the chat header still showed prompt and model selector dropdowns and asked
   to plan what to do with them — turned out to be a real gap, not just clutter: the
