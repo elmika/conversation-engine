@@ -25,7 +25,9 @@ Keep the existing format (Completed / Available lists). Update "Completed" if a 
 
 One or two full sentences, in this order:
 1. What this session actually accomplished — a short phrase naming the concrete work done. Cross-check against "What the student knows" above: never list something as still-to-do if it's already captured there.
-2. Then a complete sentence starting with "Next, we'll " (not a sentence fragment) naming the specific remaining sub-topic or task. If the current module is now fully covered, name the next module instead.
+2. Then a complete sentence starting with "Next, we'll " (not a sentence fragment) that makes explicit whether the next session **continues the same module** or **moves on to the next one** — always name it as "Module <N>" (matching the module list from the conversation) so which module is current is unambiguous, e.g. "Next, we'll continue Module 1 by ..." or "Next, we'll move on to Module 2: <title>, starting with ...".
+
+Only move on to the next module if this module's material has been **reasonably covered** this session — most of its stated scope actually discussed and understood, not just briefly touched on. If meaningful parts of the current module are still uncovered, stay on it ("Next, we'll continue Module N ...") even if that repeats intent from an earlier session.
 
 Ground both parts in what actually happened in this session's transcript, not the course's abstract module description — don't restate the module's full scope as work still ahead if part of it was already covered today.
 
