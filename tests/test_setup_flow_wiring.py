@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 
 from app.application.ports import LLMResult
 from app.main import app as main_app
-from tests.conftest import TEST_USER
+from tests.conftest import ADMIN_HEADERS, TEST_USER
 
 
 @pytest.fixture
@@ -65,11 +65,12 @@ def test_framing_turns_use_profile_prompt_then_switches_to_outline_prompt(
     # harness (see module docstring) — always FRAMING regardless of counting,
     # since create_and_chat resolves the prompt directly from prompt_slug.
     r1 = client.post(
-        f"/u/{TEST_USER}/conversations",
+        f"/admin/u/{TEST_USER}/conversations",
         json={
             "messages": [{"role": "user", "content": "start"}],
             "prompt_slug": "user-profile-collection",
         },
+        headers=ADMIN_HEADERS,
     )
     assert r1.status_code == 200, r1.json()
     cid = r1.json()["conversation_id"]

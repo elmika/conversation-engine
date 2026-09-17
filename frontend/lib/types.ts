@@ -15,8 +15,9 @@ export interface ConversationMessage {
 }
 
 export interface ConversationRequest {
-  prompt_slug?: string | null;
-  model_slug?: string | null;
+  // No prompt_slug/model_slug — the learner-facing API doesn't accept them
+  // (see backend ConversationRequest's docstring). Which prompt/model drives a
+  // turn is a server-owned decision.
   messages: ConversationMessage[];
 }
 

@@ -182,7 +182,6 @@ paths:
             schema:
               $ref: "#/components/schemas/ConversationRequest"
             example:
-              prompt_slug: default
               messages:
                 - role: user
                   content: "Hello! My name is Mika."
@@ -228,7 +227,6 @@ paths:
             schema:
               $ref: "#/components/schemas/ConversationRequest"
             example:
-              prompt_slug: default
               messages:
                 - role: user
                   content: "Tell me a short story."
@@ -248,9 +246,10 @@ paths:
       summary: Open AI-initiated session (streaming)
       description: |
         Creates a new conversation and streams an AI-initiated opening message — no
-        user message is stored, only the assistant's opening turn. Used to start a
-        course session (the LLM opens with a recap + progress summary) or the setup
-        flow. The conversation name is derived from the course file's H1 when present.
+        user message is stored, only the assistant's opening turn. Which flow opens
+        (setup vs. course session) is derived server-side from the learner's profile
+        state, not client input. The conversation name is derived from the course
+        file's H1 when present.
         Event order: `meta` → `chunk`* → `done`.
         Returns 409 (surfaced as a `done` error event) if the user already has an
         active conversation.
@@ -258,14 +257,11 @@ paths:
       parameters:
         - $ref: "#/components/parameters/userId"
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/InitSessionRequest"
-            example:
-              prompt_slug: course-session-init
-              model_slug: null
       responses:
         "200":
           description: SSE stream — see SSE Streaming section in description
@@ -281,8 +277,7 @@ paths:
       description: |
         Appends a new user turn to an existing conversation and returns the assistant
         reply synchronously. History is automatically trimmed before the LLM call.
-        The prompt/course is locked at creation; `prompt_slug` in the body is ignored
-        for existing conversations.
+        The prompt/course is locked at creation and can't be changed by the client.
         If a $ usage ceiling (session/user_daily/platform_daily) is already exceeded, no LLM
         call is made — a friendly assistant message explaining the limit is returned instead,
         still as a normal 200 response.
@@ -753,6 +748,155 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /admin/u/{userId}/conversations:
+    post:
+      operationId: adminCreateConversation
+      summary: Create conversation with prompt/model override (admin, non-streaming)
+      description: >-
+        Admin-only mirror of `POST /u/{userId}/conversations` that accepts an
+        explicit `prompt_slug`/`model_slug` override — for internal test/comparison
+        tooling only, never reachable by a learner.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminConversationRequest"
+            example:
+              prompt_slug: default
+              messages:
+                - role: user
+                  content: "Hello! My name is Mika."
+      responses:
+        "200":
+          description: Assistant reply with conversation ID and latency timings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/ActiveConversationConflict"
+
+  /admin/u/{userId}/conversations/init-stream:
+    post:
+      operationId: adminInitSessionStream
+      summary: Open AI-initiated session with an explicit prompt (admin, streaming)
+      description: >-
+        Admin-only mirror of `POST /u/{userId}/conversations/init-stream` that
+        honors an explicit `prompt_slug` (e.g. to drive the setup flow directly for
+        testing) instead of always deriving it from profile state.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminInitSessionRequest"
+            example:
+              prompt_slug: user-profile-collection
+      responses:
+        "200":
+          description: SSE stream — see SSE Streaming section in description
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEStream"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/u/{userId}/conversations/{conversationId}:
+    post:
+      operationId: adminAppendConversationTurn
+      summary: Append turn with model override (admin, non-streaming)
+      description: >-
+        Admin-only mirror of `POST /u/{userId}/conversations/{conversationId}` that
+        accepts a `model_slug` override for this turn.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/conversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminConversationRequest"
+            example:
+              messages:
+                - role: user
+                  content: "What is my name?"
+              model_slug: gpt-5.4-mini
+      responses:
+        "200":
+          description: Assistant reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Conversation has ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /admin/u/{userId}/conversations/{conversationId}/stream:
+    post:
+      operationId: adminAppendConversationTurnStream
+      summary: Append turn with model override (admin, streaming)
+      description: >-
+        Admin-only mirror of `POST /u/{userId}/conversations/{conversationId}/stream`
+        that accepts a `model_slug` override for this turn — used by
+        scripts/compare_outline_models.py to A/B a candidate model against real flow.
+        Event order: `meta` → `chunk`* → `done`.
+      tags: [admin]
+      security:
+        - AdminBearer: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/conversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminConversationRequest"
+            example:
+              messages:
+                - role: user
+                  content: "Continue the story."
+              model_slug: gpt-5.6-sol
+      responses:
+        "200":
+          description: SSE stream — see SSE Streaming section in description
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEStream"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /prompts:
     get:
       operationId: listPrompts
@@ -1027,6 +1171,37 @@ components:
     ConversationRequest:
       type: object
       required: [messages]
+      description: |
+        No prompt_slug/model_slug — which prompt drives a turn and which model
+        answers it are server-owned decisions on the learner-facing routes, never
+        client input (closes a real gap: any caller could previously force an
+        expensive/unintended model or prompt via these fields). Internal test/
+        comparison tooling that legitimately needs to override either uses
+        AdminConversationRequest on the mirrored /admin/u/{userId}/... routes.
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ConversationMessage"
+
+    InitSessionRequest:
+      type: object
+      description: |
+        Request body for an AI-initiated session opening (no user message). Empty
+        on purpose — which flow opens (setup vs. course session) is derived
+        server-side from the learner's profile state. See ConversationRequest's
+        description.
+
+    AdminConversationRequest:
+      type: object
+      required: [messages]
+      description: |
+        Same shape as ConversationRequest, but for the admin-only
+        /admin/u/{userId}/... routes (requires the admin bearer token) — legitimately
+        accepts a prompt/model override, used by internal test and model-comparison
+        tooling that needs to drive the real flow with a specific prompt or candidate
+        model (e.g. scripts/compare_outline_models.py).
       properties:
         prompt_slug:
           type: string
@@ -1050,9 +1225,9 @@ components:
           items:
             $ref: "#/components/schemas/ConversationMessage"
 
-    InitSessionRequest:
+    AdminInitSessionRequest:
       type: object
-      description: Request body for an AI-initiated session opening (no user message).
+      description: Admin-only equivalent of InitSessionRequest — see AdminConversationRequest.
       properties:
         prompt_slug:
           type: string
@@ -1062,11 +1237,12 @@ components:
         model_slug:
           type: string
           nullable: true
-          description: Optional model override (same resolution rules as ConversationRequest).
+          description: Optional model override (same resolution rules as AdminConversationRequest).
 
     ConversationRewindRequest:
       type: object
       required: [message_id, content]
+      description: No prompt_slug/model_slug — see ConversationRequest's description.
       properties:
         message_id:
           type: integer
@@ -1076,12 +1252,6 @@ components:
           type: string
           minLength: 1
           description: New user message content to send in place of the rewound message.
-        prompt_slug:
-          type: string
-          nullable: true
-        model_slug:
-          type: string
-          nullable: true
 
     ConversationRenameRequest:
       type: object

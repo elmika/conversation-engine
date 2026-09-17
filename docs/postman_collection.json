@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Conversation Engine",
-    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Access points\n- **`base_url`** (`http://localhost:8000`) \u2014 FastAPI directly. Use this for backend development and testing.\n- **`frontend_base_url`** (`http://localhost:3000/api`) \u2014 Next.js BFF proxy. Use this to test the full stack as the browser would. All paths and schemas are identical.\n\nRun `docker compose up` to start both services together.\n\n## Quick start\n1. Choose your `base_url` or `frontend_base_url` variable, and set `user_id` (any UUID).\n2. Run **Create Conversation** \u2014 the test script automatically saves `conversation_id`.\n3. Run **Append Turn** to continue the conversation.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
+    "description": "Production-ready FastAPI + OpenAI service with streaming, conversation history, and hexagonal architecture.\n\n## Access points\n- **`base_url`** (`http://localhost:8000`) — FastAPI directly. Use this for backend development and testing.\n- **`frontend_base_url`** (`http://localhost:3000/api`) — Next.js BFF proxy. Use this to test the full stack as the browser would. All paths and schemas are identical.\n\nRun `docker compose up` to start both services together.\n\n## Quick start\n1. Choose your `base_url` or `frontend_base_url` variable, and set `user_id` (any UUID).\n2. Run **Create Conversation** — the test script automatically saves `conversation_id`.\n3. Run **Append Turn** to continue the conversation.\n\n## SSE Streaming\nStreaming endpoints return `text/event-stream`. Use Postman's \"Send and Download\" or a CLI like `curl -N` to observe events in real time. The terminal `done` event always closes the stream.",
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -10,13 +10,13 @@
       "key": "base_url",
       "value": "http://localhost:8000",
       "type": "string",
-      "description": "FastAPI base URL \u2014 direct backend access"
+      "description": "FastAPI base URL — direct backend access"
     },
     {
       "key": "frontend_base_url",
       "value": "http://localhost:3000/api",
       "type": "string",
-      "description": "Next.js BFF base URL \u2014 same API as base_url, accessed through the frontend proxy"
+      "description": "Next.js BFF base URL — same API as base_url, accessed through the frontend proxy"
     },
     {
       "key": "user_id",
@@ -96,7 +96,7 @@
           },
           "response": [
             {
-              "name": "200 OK \u2014 no profile",
+              "name": "200 OK — no profile",
               "status": "OK",
               "code": 200,
               "header": [
@@ -109,7 +109,7 @@
               "body": "{\n  \"has_profile\": false\n}"
             },
             {
-              "name": "200 OK \u2014 has profile",
+              "name": "200 OK — has profile",
               "status": "OK",
               "code": 200,
               "header": [
@@ -211,7 +211,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\"\n    }\n  ]\n}",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -248,7 +248,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "name": "409 Conflict \u2014 active conversation exists",
+              "name": "409 Conflict — active conversation exists",
               "status": "Conflict",
               "code": 409,
               "header": [
@@ -290,18 +290,18 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Tell me a short story.\"\n    }\n  ]\n}",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Tell me a short story.\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Creates a new conversation and streams the assistant reply as SSE.\n\nEvent order: `meta` \u2192 `chunk`* \u2192 `done`\n\nUse \"Send and Download\" in Postman, or:\n```\ncurl -N -X POST http://localhost:8000/conversations/stream \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'\n```"
+            "description": "Creates a new conversation and streams the assistant reply as SSE.\n\nEvent order: `meta` → `chunk`* → `done`\n\nUse \"Send and Download\" in Postman, or:\n```\ncurl -N -X POST http://localhost:8000/conversations/stream \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'\n```"
           },
           "response": [
             {
-              "name": "200 OK \u2014 SSE stream",
+              "name": "200 OK — SSE stream",
               "status": "OK",
               "code": 200,
               "header": [
@@ -413,11 +413,11 @@
                 }
               }
             },
-            "description": "Appends a new user turn to an existing conversation and streams the reply as SSE.\n\nEvent order: `meta` \u2192 `chunk`* \u2192 `done`\n\nUse \"Send and Download\" in Postman, or use curl with `-N`."
+            "description": "Appends a new user turn to an existing conversation and streams the reply as SSE.\n\nEvent order: `meta` → `chunk`* → `done`\n\nUse \"Send and Download\" in Postman, or use curl with `-N`."
           },
           "response": [
             {
-              "name": "200 OK \u2014 SSE stream",
+              "name": "200 OK — SSE stream",
               "status": "OK",
               "code": 200,
               "header": [
@@ -513,7 +513,7 @@
               "body": "{\n  \"status\": \"ending\",\n  \"summary\": {\n    \"course_name\": \"Intro to TypeScript\",\n    \"modules\": [\n      {\"title\": \"Types\", \"status\": \"done\"},\n      {\"title\": \"Interfaces\", \"status\": \"current\"}\n    ],\n    \"next_step\": \"Generics\"\n  }\n}"
             },
             {
-              "name": "409 Conflict \u2014 already ended",
+              "name": "409 Conflict — already ended",
               "status": "Conflict",
               "code": 409,
               "header": [
@@ -555,18 +555,18 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"prompt_slug\": \"course-session-init\",\n  \"model_slug\": null\n}",
+              "raw": "{}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Creates a new conversation and streams an AI-initiated opening message (no user message stored). Used to start a course session or the setup flow.\n\nEvent order: `meta` \u2192 `chunk`* \u2192 `done`"
+            "description": "Creates a new conversation and streams an AI-initiated opening message (no user message stored). Which flow opens (setup vs. course session) is derived server-side from the learner's profile state, not client input.\n\nEvent order: `meta` → `chunk`* → `done`"
           },
           "response": [
             {
-              "name": "200 OK \u2014 SSE stream",
+              "name": "200 OK — SSE stream",
               "status": "OK",
               "code": 200,
               "header": [
@@ -617,11 +617,11 @@
                 }
               }
             },
-            "description": "Rewinds to a past user message: deletes `message_id` and all later messages, appends `content` as a new user message, then streams the reply as SSE.\n\nEvent order: `meta` \u2192 `chunk`* \u2192 `done`"
+            "description": "Rewinds to a past user message: deletes `message_id` and all later messages, appends `content` as a new user message, then streams the reply as SSE.\n\nEvent order: `meta` → `chunk`* → `done`"
           },
           "response": [
             {
-              "name": "200 OK \u2014 SSE stream",
+              "name": "200 OK — SSE stream",
               "status": "OK",
               "code": 200,
               "header": [
@@ -630,7 +630,7 @@
                   "value": "text/event-stream"
                 }
               ],
-              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Sure \u2014 \"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Sure \u2014 here it is more simply...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 110, \"total_ms\": 600}}\n\n",
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Sure — \"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Sure — here it is more simply...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 110, \"total_ms\": 600}}\n\n",
               "_postman_previewlanguage": "text"
             }
           ]
@@ -731,7 +731,7 @@
               "body": "{\n  \"course_name\": \"Intro to TypeScript\",\n  \"modules\": [\n    {\"title\": \"Types\", \"status\": \"done\"},\n    {\"title\": \"Interfaces\", \"status\": \"current\"}\n  ],\n  \"next_step\": \"Generics\"\n}"
             },
             {
-              "name": "409 Conflict \u2014 not ended",
+              "name": "409 Conflict — not ended",
               "status": "Conflict",
               "code": 409,
               "header": [
@@ -762,7 +762,7 @@
                 "complete-setup"
               ]
             },
-            "description": "Completes the setup flow: runs profile + outline extraction, writes the user and course section files, then ends the conversation. Synchronous. Returns 400 if the framing Q&A isn't finished yet (fewer than 4 user turns \u2014 no outline exists to extract); 409 if already ended; 500 if extraction/writes fail (conversation stays active)."
+            "description": "Completes the setup flow: runs profile + outline extraction, writes the user and course section files, then ends the conversation. Synchronous. Returns 400 if the framing Q&A isn't finished yet (fewer than 4 user turns — no outline exists to extract); 409 if already ended; 500 if extraction/writes fail (conversation stays active)."
           },
           "response": [
             {
@@ -779,7 +779,7 @@
               "body": "{\n  \"status\": \"completed\"\n}"
             },
             {
-              "name": "400 Bad Request \u2014 framing not finished",
+              "name": "400 Bad Request — framing not finished",
               "status": "Bad Request",
               "code": 400,
               "header": [
@@ -789,10 +789,10 @@
                 }
               ],
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"detail\": \"Setup isn't ready to complete yet \u2014 the framing questions aren't finished (2/4 answered).\"\n}"
+              "body": "{\n  \"detail\": \"Setup isn't ready to complete yet — the framing questions aren't finished (2/4 answered).\"\n}"
             },
             {
-              "name": "409 Conflict \u2014 already ended",
+              "name": "409 Conflict — already ended",
               "status": "Conflict",
               "code": 409,
               "header": [
@@ -1788,6 +1788,193 @@
               "_postman_previewlanguage": "json"
             }
           ]
+        },
+        {
+          "name": "Create Conversation with Prompt/Model Override (admin, non-streaming)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "    pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "    console.log('conversation_id set to', json.conversation_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/u/{{user_id}}/conversations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "u",
+                "{{user_id}}",
+                "conversations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt_slug\": \"default\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello! My name is Mika.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Admin-only mirror of Create Conversation that accepts an explicit prompt_slug/model_slug override — for internal test/comparison tooling only, never reachable by a learner (see the learner-facing ConversationRequest, which doesn't accept these fields at all). Requires the admin bearer token."
+          },
+          "response": []
+        },
+        {
+          "name": "Open AI Session with Explicit Prompt (admin, streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/u/{{user_id}}/conversations/init-stream",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "init-stream"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt_slug\": \"user-profile-collection\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Admin-only mirror of Open AI Session that honors an explicit prompt_slug (e.g. to drive the setup flow directly for testing) instead of always deriving it from profile state. Requires the admin bearer token.\n\nEvent order: `meta` → `chunk`* → `done`"
+          },
+          "response": []
+        },
+        {
+          "name": "Append Turn with Model Override (admin, non-streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/u/{{user_id}}/conversations/{{conversation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "{{conversation_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is my name?\"\n    }\n  ],\n  \"model_slug\": \"gpt-5.4-mini\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Admin-only mirror of Append Turn that accepts a model_slug override for this turn. Requires the admin bearer token."
+          },
+          "response": []
+        },
+        {
+          "name": "Append Turn with Model Override (admin, streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/u/{{user_id}}/conversations/{{conversation_id}}/stream",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "u",
+                "{{user_id}}",
+                "conversations",
+                "{{conversation_id}}",
+                "stream"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Continue the story.\"\n    }\n  ],\n  \"model_slug\": \"gpt-5.6-sol\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Admin-only mirror of Append Turn (streaming) that accepts a model_slug override for this turn — used by scripts/compare_outline_models.py to A/B a candidate model against real flow. Requires the admin bearer token.\n\nEvent order: `meta` → `chunk`* → `done`"
+          },
+          "response": []
         }
       ]
     }

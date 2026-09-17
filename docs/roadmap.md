@@ -249,6 +249,44 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ## Not yet triaged
 
+- **✅ Shipped 2026-09-17 — Learner-facing prompt/model override removed (security gap).**
+  Mika noticed the chat header still showed prompt and model selector dropdowns and asked
+  to plan what to do with them — turned out to be a real gap, not just clutter: the
+  underlying request fields (`prompt_slug`/`model_slug` on `ConversationRequest`,
+  `InitSessionRequest`, `ConversationRewindRequest`) had no server-side authorization check,
+  so any caller (not just the UI) could force an arbitrary prompt or an expensive model tier
+  on every turn. Fixed by removing these fields from the learner-facing schemas entirely
+  (not just ignoring them) and deriving the setup-vs-course-session choice server-side from
+  profile state on `init-stream`. Internal test/comparison tooling that legitimately needs to
+  override either (`scripts/compare_outline_models.py`, `scripts/smoke_lesson_lifecycle.py`,
+  several pytest integration tests) now goes through a mirrored `/admin/u/{userId}/...` route
+  set gated by the existing admin bearer token. Frontend: `ModelSelector`/`PromptSelector`
+  components and their Zustand store fields removed from the chat header entirely — matches
+  the "code owns deterministic state, never client input" principle the lesson/setup phase
+  orchestrators already follow, and removes the dead UI clutter Mika flagged.
+  Verified: full backend suite (280, incl. 4 new regression tests specifically covering the
+  gap and its fix), frontend suite (43), `make smoke` (11/11), live browser check (no
+  selectors, zero console errors, normal turns unaffected), and a live run of both scripts
+  against the new admin routes. `docs/openapi.yml` and `docs/postman_collection.json` updated
+  (new `AdminConversationRequest`/`AdminInitSessionRequest` schemas + 4 new admin paths).
+  Not done in this pass: `GET /prompts`/`GET /models` are still unauthenticated (pre-existing,
+  separately-tracked gap below) — nothing in the learner UI calls them anymore, but the admin
+  panel's own prompt/model management pages still do, so gating them needs those pages' fetch
+  calls updated to attach the admin token first; deferred to avoid breaking the admin panel
+  in this same pass.
+
+- **Naming: usage-ceiling "session" scope should be "conversation" (surfaced 2026-09-17).**
+  Confirmed while discussing spend-cap margin with Mika: the `session` cap scope
+  (`app/domain/usage_ceiling.py`, `Settings.session_spend_cap_usd`, `get_session_spend_usd`,
+  `session_cap_usd`/`session_spend_usd` params in `services.py`/`routes.py`) is keyed on
+  `conversation_id`, and each class sitting (and setup) gets its own fresh conversation — so the
+  cap already behaves as "per class," matching what Mika meant by "per session." The code name is
+  the confusing part: "session" reads as ambiguous against a login/HTTP session to anyone new to
+  the codebase. Mika asked to rename the scope/identifiers to `conversation` (`CapScope` literal,
+  `Settings.conversation_spend_cap_usd`, `get_conversation_spend_usd`, etc.) for semantic clarity —
+  pure rename, no behavior change. **Leave learner-facing copy in `CAP_MESSAGES` saying "session"**
+  — that's correct from the learner's point of view (they call a class a session); only the
+  internal code identifiers are the confusion risk.
 - **Model-tier review starting 2026-09-17** — full current configuration, rationale per task,
   and the test-by-test history (what was compared, why, and the decision) now live in
   `docs/model-decisions.md`, not here. Summary: `app/domain/pricing.py` and
@@ -307,12 +345,17 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
   saying "let's keep going" resumes core instead of getting stuck in a repeating wrap-up), see
   `app/learning/closure_continuation.py`.
 - **`GET /prompts` (list) stays unauthenticated** — accepted residual gap from Piece C's admin
-  auth (2026-09-16). `frontend/components/chat/PromptSelector.tsx` (learner-facing persona
-  dropdown) depends on it, so gating it behind `require_admin` would break the ordinary chat
-  flow. Net effect: prompt `system_prompt` text is readable without auth by anyone who can reach
-  the API. Acceptable for the pilot's threat model (no sensitive data in prompt text today) but
-  worth a real fix (e.g. a separate unauthenticated summary endpoint that omits `system_prompt`)
-  before this becomes a general-purpose multi-tenant product.
+  auth (2026-09-16). Originally blocked on `frontend/components/chat/PromptSelector.tsx` (the
+  learner-facing persona dropdown) depending on it — **that dropdown is gone as of 2026-09-17**
+  (see the prompt/model override fix above), so the only remaining caller is the admin panel's
+  own prompt-management pages (`app/admin/page.tsx`, `PromptDialog.tsx`'s model dropdown via
+  `GET /models`). Gating both behind `require_admin` is now realistic — it just needs those
+  admin-panel fetch calls updated to attach the admin token first (they currently don't, since
+  the endpoints are open). Not done in the override-removal pass to keep that change scoped;
+  net effect meanwhile is unchanged: prompt `system_prompt` text is readable without auth by
+  anyone who can reach the API. Acceptable for the pilot's threat model (no sensitive data in
+  prompt text today) but worth closing before this becomes a general-purpose multi-tenant
+  product.
 - **NavBar's "Admin" tab visibility is presence-only, not live-revalidated** — accepted residual
   gap from Piece C2 (2026-09-16). It checks `getAdminToken()` presence in `sessionStorage`, not
   a real backend check, for performance/simplicity (a live check would mean an extra request on
@@ -335,11 +378,12 @@ strategy implies it should:
   path** (11/11 against "the objective path" per §4) — the *other* closure trigger, session
   time-over, is untested by the automated harness and only ever hit incidentally during manual
   Chrome runs. A time-over closure regression would not be caught by `make smoke`.
-- **No harness mechanism to catch a recurrence of the open `course-session-core`/
-  `course-session-closure` quality regressions** (both flagged above, still unresolved). Once
-  either gets a tuning/review pass, neither B(i) nor B(ii) as currently scoped is designed to
-  assert on interaction quality specifically — `make smoke` asserts on *shape*, not content
-  quality (per §4), so a fixed regression could silently reappear with nothing catching it.
+- **No automated harness catches a recurrence of the `course-session-core`/`course-session-closure`
+  quality regression fixed 2026-09-17** (see the shipped entries above). Neither B(i) nor B(ii) as
+  currently scoped is designed to assert on interaction quality specifically — `make smoke` asserts
+  on *shape*, not content quality (per §4). `docs/tutor-behavior-checklist.md` is a manual spec to
+  check future prompt/model changes against, not an automated regression gate — a fixed regression
+  could still silently reappear with nothing catching it automatically.
 
 ### Infra & ops backlog (rescued from `RISKS-AND-IMPROVEMENTS.md`, 2026-08-07)
 

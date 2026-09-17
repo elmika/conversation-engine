@@ -10,6 +10,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
+    AdminConversationRequest,
+    AdminInitSessionRequest,
     ConversationListResponse,
     ConversationRenameRequest,
     CompleteSetupResponse,
@@ -81,6 +83,16 @@ def require_admin(request: Request, settings: Settings = Depends(get_settings)) 
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
     if not secrets.compare_digest(token, settings.admin_token):
         raise HTTPException(status_code=401, detail="Invalid admin token")
+
+
+# Admin-scoped, user-prefixed router — mirrors specific user_router conversation
+# routes that need to accept an explicit prompt_slug/model_slug override, for
+# internal test/comparison tooling (e.g. scripts/compare_outline_models.py) that
+# must drive the real flow with a candidate model. require_admin on every route
+# registered here, so a learner can never reach these regardless of what the
+# frontend sends — the ordinary /u/{user_id}/... routes don't accept these
+# fields at all (see ConversationRequest's docstring).
+admin_user_router = APIRouter(prefix="/admin/u/{user_id}", dependencies=[Depends(require_admin)])
 
 
 def get_uow_factory(db=Depends(get_session)):
@@ -231,9 +243,7 @@ async def create_conversation_stream(
         try:
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
-                    return service.create_and_stream(
-                        messages, body.prompt_slug, body.model_slug
-                    )
+                    return service.create_and_stream(messages, None, None)
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
                         active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
@@ -329,10 +339,16 @@ async def init_session_stream(
       - chunk: incremental text delta
       - done: final assistant message + timings
     """
+    # Which flow opens (setup vs. course session) is derived from profile state,
+    # never client input (see InitSessionRequest's docstring) — a learner-supplied
+    # prompt_slug here could otherwise force-start an arbitrary prompt instead of
+    # the app's actual onboarding/lesson flow.
+    resolver = FileSlotResolver(settings.sections_dir, user_id)
+    has_profile = await asyncio.to_thread(resolver.exists, "user")
+    requested_slug = "course-session-init" if has_profile else "user-profile-collection"
     # Resolve conversation name from course content (L2 concern, lives here until L2 layer exists).
     # Skip for setup conversations — the user has no course file yet.
-    requested_slug = body.prompt_slug or "course-session-init"
-    course_content = FileSlotResolver(settings.sections_dir, user_id).resolve("course")
+    course_content = resolver.resolve("course") if has_profile else None
     conv_name = _parse_md_h1(course_content) if course_content else None
 
     async def event_generator() -> AsyncIterator[str]:
@@ -340,7 +356,7 @@ async def init_session_stream(
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.create_and_stream_init(
-                        requested_slug, body.model_slug, name=conv_name
+                        requested_slug, None, name=conv_name
                     )
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
@@ -431,8 +447,8 @@ async def create_conversation(
         conversation_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(
             service.create_and_chat,
             messages,
-            body.prompt_slug,
-            body.model_slug,
+            None,
+            None,
         )
     except ValueError as e:
         if str(e).startswith("active_conversation_exists"):
@@ -495,9 +511,7 @@ async def append_conversation_turn(
 
     def _run() -> tuple[str, str, str, int, int]:
         try:
-            return service.append_and_chat(
-                conversation_id, messages, body.prompt_slug, body.model_slug
-            )
+            return service.append_and_chat(conversation_id, messages, None, None)
         except PromptTemplateError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except ValueError as e:
@@ -539,9 +553,7 @@ async def append_conversation_turn_stream(
         try:
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
-                    return service.append_and_stream(
-                        conversation_id, messages, body.prompt_slug, body.model_slug
-                    )
+                    return service.append_and_stream(conversation_id, messages, None, None)
                 except PromptTemplateError as e:
                     raise HTTPException(status_code=400, detail=str(e))
                 except ValueError as e:
@@ -652,11 +664,7 @@ async def rewind_conversation_stream(
             def _rewind_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.rewind_and_stream(
-                        conversation_id,
-                        body.message_id,
-                        body.content,
-                        body.prompt_slug,
-                        body.model_slug,
+                        conversation_id, body.message_id, body.content, None, None
                     )
                 except PromptTemplateError as e:
                     raise HTTPException(status_code=400, detail=str(e))
@@ -1097,6 +1105,288 @@ async def admin_get_conversation_messages(
         prompt_slug=conv["prompt_slug"] if conv else None,
         messages=[MessageSchema(id=m["id"], role=m["role"], content=m["content"], created_at=m["created_at"]) for m in msgs],
     )
+
+
+# --- Admin conversation-turn routes -----------------------------------------
+# Mirror the /u/{user_id}/conversations/... routes above, but accept an explicit
+# prompt_slug/model_slug override (AdminConversationRequest / AdminInitSessionRequest)
+# and require the admin bearer token (admin_user_router's dependency). Exist
+# solely for internal test/comparison tooling that needs to drive the real flow
+# against a specific prompt or candidate model — e.g. scripts/compare_outline_models.py,
+# scripts/smoke_lesson_lifecycle.py, and tests that exercise template/flow wiring
+# through the real endpoint rather than re-implementing it. A learner can never
+# reach these: the ordinary routes don't accept these fields at all.
+
+
+@admin_user_router.post(
+    "/conversations", name="admin_create_conversation", response_model=ConversationResponse
+)
+async def admin_create_conversation(
+    user_id: str,
+    body: AdminConversationRequest,
+    settings: Settings = Depends(get_settings),
+    service: ConversationService = Depends(get_conversation_service),
+) -> ConversationResponse:
+    """Create a new conversation and handle the first turn (non-streaming, admin-only)."""
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    _check_input_length(messages, settings.max_input_chars)
+
+    try:
+        conversation_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(
+            service.create_and_chat,
+            messages,
+            body.prompt_slug,
+            body.model_slug,
+        )
+    except ValueError as e:
+        if str(e).startswith("active_conversation_exists"):
+            active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
+            raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return ConversationResponse(
+        conversation_id=conversation_id,
+        assistant_message=assistant_message,
+        model=model,
+        timings=TimingsSchema(ttfb_ms=ttfb_ms, total_ms=total_ms),
+    )
+
+
+@admin_user_router.post("/conversations/init-stream", name="admin_init_session_stream")
+async def admin_init_session_stream(
+    user_id: str,
+    body: AdminInitSessionRequest = Body(default_factory=AdminInitSessionRequest),
+    service: ConversationService = Depends(get_conversation_service),
+    settings: Settings = Depends(get_settings),
+) -> StreamingResponse:
+    """Create a new conversation and stream an AI-initiated opening message (admin-only).
+
+    Unlike the learner-facing init-stream, this honors an explicit prompt_slug —
+    needed to drive e.g. the setup flow (`user-profile-collection`) directly for
+    testing, rather than always deriving it from profile state.
+
+    Registered before admin_append_conversation_turn below: this static path
+    ("init-stream") must be matched before that route's dynamic
+    {conversation_id} segment, or FastAPI/Starlette's registration-order
+    matching would treat "init-stream" as a literal conversation_id instead.
+    """
+    requested_slug = body.prompt_slug or "course-session-init"
+    course_content = FileSlotResolver(settings.sections_dir, user_id).resolve("course")
+    conv_name = _parse_md_h1(course_content) if course_content else None
+
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
+                try:
+                    return service.create_and_stream_init(
+                        requested_slug, body.model_slug, name=conv_name
+                    )
+                except ValueError as e:
+                    if str(e).startswith("active_conversation_exists"):
+                        active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
+                        raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
+                    raise HTTPException(status_code=400, detail=str(e))
+
+            conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
+                _stream_setup
+            )
+
+            yield _sse_event("meta", {
+                "conversation_id": conv_id,
+                "model": resolved_model,
+                "prompt_slug": used_prompt_slug,
+            })
+
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = resolved_model
+
+            async for ev in _iter_in_thread(events):
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
+                    )
+                    yield _sse_event("done", {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    })
+                elif ev.get("type") == "error":
+                    yield _sse_event("done", {"error": {
+                        "type": ev.get("error_type", "stream_error"),
+                        "message": ev.get("error_message", "Stream error"),
+                    }})
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
+        except HTTPException as exc:
+            yield _sse_http_error(exc)
+        except Exception:
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred"}})
+            raise
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@admin_user_router.post(
+    "/conversations/{conversation_id}",
+    name="admin_append_conversation_turn",
+    response_model=ConversationResponse,
+)
+async def admin_append_conversation_turn(
+    conversation_id: str,
+    user_id: str,
+    body: AdminConversationRequest,
+    settings: Settings = Depends(get_settings),
+    service: ConversationService = Depends(get_conversation_service),
+) -> ConversationResponse:
+    """Append a new turn to an existing conversation (non-streaming, admin-only)."""
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    _check_input_length(messages, settings.max_input_chars)
+
+    def _run() -> tuple[str, str, str, int, int]:
+        try:
+            return service.append_and_chat(
+                conversation_id, messages, body.prompt_slug, body.model_slug
+            )
+        except PromptTemplateError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError as e:
+            if str(e) == "conversation_ended":
+                raise HTTPException(status_code=409, detail="Conversation has ended")
+            raise HTTPException(status_code=404, detail=str(e))
+
+    conv_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(_run)
+    return ConversationResponse(
+        conversation_id=conv_id,
+        assistant_message=assistant_message,
+        model=model,
+        timings=TimingsSchema(ttfb_ms=ttfb_ms, total_ms=total_ms),
+    )
+
+
+@admin_user_router.post(
+    "/conversations/{conversation_id}/stream", name="admin_append_conversation_turn_stream"
+)
+async def admin_append_conversation_turn_stream(
+    conversation_id: str,
+    user_id: str,
+    body: AdminConversationRequest,
+    settings: Settings = Depends(get_settings),
+    service: ConversationService = Depends(get_conversation_service),
+) -> StreamingResponse:
+    """Append a new turn to an existing conversation with streaming SSE output (admin-only)."""
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    _check_input_length(messages, settings.max_input_chars)
+
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
+                try:
+                    return service.append_and_stream(
+                        conversation_id, messages, body.prompt_slug, body.model_slug
+                    )
+                except PromptTemplateError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+                except ValueError as e:
+                    if str(e) == "conversation_ended":
+                        raise HTTPException(status_code=409, detail="Conversation has ended")
+                    raise HTTPException(status_code=404, detail=str(e))
+
+            conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
+                _stream_setup
+            )
+
+            meta = {
+                "conversation_id": conv_id,
+                "model": resolved_model,
+                "prompt_slug": used_prompt_slug,
+            }
+            yield _sse_event("meta", meta)
+
+            assistant_text_parts: list[str] = []
+            ttfb_ms = 0
+            total_ms = 0
+            model = resolved_model
+
+            async for ev in _iter_in_thread(events):
+                if ev.get("type") == "delta":
+                    delta = ev.get("delta", "")
+                    if not delta:
+                        continue
+                    assistant_text_parts.append(delta)
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+                    yield _sse_event("chunk", {"delta": delta})
+                elif ev.get("type") == "final":
+                    full_text = ev.get("text", "") or "".join(assistant_text_parts)
+                    if ev.get("model"):
+                        model = ev["model"]
+                    if ev.get("ttfb_ms"):
+                        ttfb_ms = ev["ttfb_ms"]
+                    if ev.get("total_ms"):
+                        total_ms = ev["total_ms"]
+
+                    await asyncio.to_thread(
+                        service.persist_stream_result,
+                        uow,
+                        conv_id,
+                        full_text,
+                        used_prompt_slug,
+                        model,
+                        ttfb_ms,
+                        total_ms,
+                        ev.get("input_tokens", 0),
+                        ev.get("output_tokens", 0),
+                    )
+                    done_payload = {
+                        "conversation_id": conv_id,
+                        "assistant_message": full_text,
+                        "model": model,
+                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                    }
+                    yield _sse_event("done", done_payload)
+        except CapExceeded as exc:
+            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
+        except HTTPException as exc:
+            yield _sse_http_error(exc)
+        except Exception:
+            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
+            raise
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.get("/prompts/{slug}/render", response_model=PromptRenderResponse)
