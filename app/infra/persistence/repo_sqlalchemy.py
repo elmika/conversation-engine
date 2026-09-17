@@ -175,6 +175,7 @@ class SQLAlchemyConversationRepo(ConversationRepo):
             "prompt_slug": row.prompt_slug,
             "session_length_minutes": row.session_length_minutes,
             "objective_met": bool(row.objective_met),
+            "framing_turns_required": row.framing_turns_required,
         }
 
     def list_all_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
@@ -253,6 +254,12 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         row = self._session.get(Conversation, conversation_id)
         if row and row.user_id == user_id:
             row.objective_met = False
+
+    def set_framing_turns_required(self, conversation_id: str, user_id: str, turns: int) -> None:
+        """Set the setup flow's required framing-turn count for a conversation owned by user_id."""
+        row = self._session.get(Conversation, conversation_id)
+        if row and row.user_id == user_id:
+            row.framing_turns_required = turns
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:
         """Return the created_at timestamp of the conversation, or None if not found."""

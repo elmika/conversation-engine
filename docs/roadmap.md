@@ -270,13 +270,24 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
   the initial setup/outline-proposal turn. Surfaced 2026-09-17 alongside the opening-message
   trim — needs its own design (a "View full outline" link/modal? a course detail page?), not
   bundled with the prompt trim itself.
-- **Bug, not yet root-caused: `course-session-init` sometimes doesn't pick up the learner's
-  actual stated session length.** Observed 2026-09-17 during live dogfooding — the opening
-  message's length-confirmation line didn't match what the learner had specified during setup.
-  Scripted re-test the same day with a seeded `## Session length` profile section parsed
-  correctly (`app/learning/session_length.py::parse_session_length_minutes`), so this didn't
-  reproduce on the first attempt — needs a repro from an actual affected session (exact profile
-  text / phrasing used during setup) before investigating further. Mika to provide more detail.
+- **Bug: setup framing sometimes never asks the session-length question at all —
+  ✅ Shipped 2026-09-17.** Root cause: `setup_flow.py::setup_phase_for_turn` counted raw
+  learner turns assuming a strict 1:1 mapping to the fixed 4-question sequence (name, work,
+  motivation, session length). A learner's clarifying question back to the tutor ("What skill
+  are you talking about?") consumed a turn slot without answering anything, so their *next*
+  reply (the real answer) landed on turn 4 — the threshold — and the flow jumped straight to
+  the outline, having silently skipped session length. This is also what the
+  "`course-session-init` doesn't pick up the desired session length" report from earlier the
+  same day actually was — the question was never asked, not mis-parsed. Reproduced exactly
+  from Mika's shared transcript. Fix: `app/learning/framing_answer_check.py` (new, cheap-model
+  YES/NO check, same shape as the session-length/closure-continuation extractors) runs after
+  each framing turn; on NO, bumps a new per-conversation `framing_turns_required` counter
+  (`conversations.framing_turns_required`, migration in `app/infra/migrations.py`) so the flow
+  needs one more real answer before it can advance — `setup_phase_for_turn` now takes this as
+  a parameter instead of hardcoding `FRAMING_TURNS`. Verified: `tests/test_framing_extension.py`
+  (including the exact reported sequence), full backend suite (276), `make smoke` (11/11), and
+  a live API repro of Mika's transcript end to end (clarifying question → session-length
+  question now correctly asked → outline only fires after it's answered).
 - **Idea to evaluate (not for the 2026-09-18 demo): fill-in-the-blank / sentence-completion
   questioning** — posing a check-understanding question as an incomplete sentence for the
   student to finish, instead of an open "what do you think?". Surfaced 2026-09-17 alongside the

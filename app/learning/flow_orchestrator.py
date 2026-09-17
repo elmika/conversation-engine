@@ -19,6 +19,7 @@ from app.learning.closure_continuation import (
     mentions_continue_intent,
     parse_continue_result,
 )
+from app.learning.framing_answer_check import parse_framing_answer_result
 from app.learning.lesson_flow import (
     LessonPhase,
     is_lesson_flow,
@@ -33,6 +34,8 @@ from app.learning.session_length import (
     parse_session_length_minutes,
 )
 from app.learning.setup_flow import (
+    FRAMING_TURNS,
+    SetupPhase,
     is_setup_flow,
     resolve_setup_phase_prompt,
     setup_phase_for_turn,
@@ -89,7 +92,9 @@ class LearningFlowOrchestrator:
         if flow_slug and is_setup_flow(flow_slug):
             total_user_turns = sum(1 for m in (history or []) if m["role"] == "user")
             total_user_turns += sum(1 for m in (pending_messages or []) if m["role"] == "user")
-            return resolve_setup_phase_prompt(flow_slug, setup_phase_for_turn(total_user_turns))
+            framing_required = (conv_meta or {}).get("framing_turns_required") or FRAMING_TURNS
+            phase = setup_phase_for_turn(total_user_turns, framing_required)
+            return resolve_setup_phase_prompt(flow_slug, phase)
 
         return flow_slug
 
@@ -264,6 +269,62 @@ class LearningFlowOrchestrator:
         """Minutes elapsed since the conversation (session) started."""
         start = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
         return max(0.0, (datetime.now(timezone.utc) - start).total_seconds() / 60.0)
+
+    def maybe_extend_framing_turns(self, conversation_id: str) -> None:
+        """After a setup-flow turn, check whether the reply actually answered the
+        pending framing question; if not, buy one more real framing turn.
+
+        Best-effort and advisory, mirroring maybe_update_session_length:
+          1. skip non-setup-flow conversations;
+          2. skip once framing is already complete for this turn (recompute the
+             SAME deterministic phase decision the turn used) — nothing to
+             correct once OUTLINE has already fired for this conversation;
+          3. cheap-model check over the pending question + the learner's reply
+             → YES (answered) / NO (wasn't an answer);
+          4. on NO, bump framing_turns_required by 1, so the flow needs one
+             more real framing turn before it can advance to OUTLINE.
+        Never raises — a failure leaves the framing turn count unchanged.
+        """
+        try:
+            with self._uow_factory() as uow:
+                conv = uow.repo.get_conversation(conversation_id, self._user_id)
+                if not conv:
+                    return
+                flow_slug = conv.get("prompt_slug")
+                if not flow_slug or not is_setup_flow(flow_slug):
+                    return
+                messages = uow.repo.get_messages(conversation_id, self._user_id)
+
+            total_user_turns = sum(1 for m in messages if m["role"] == "user")
+            required = conv.get("framing_turns_required") or FRAMING_TURNS
+            if setup_phase_for_turn(total_user_turns, required) != SetupPhase.FRAMING:
+                return  # already at/past the outline phase — too late to correct here
+
+            question, answer = self._last_exchange(messages)
+            record = self._prompt_repo.get_prompt("framing-answer-check")
+            if record is None:
+                return
+            exchange = [
+                {"role": "assistant", "content": question},
+                {"role": "user", "content": answer},
+            ]
+            result = self._llm.complete(
+                record["system_prompt"], exchange, model=record.get("model")
+            )
+            if parse_framing_answer_result(result["text"]):
+                return  # answered normally — nothing to correct
+
+            new_required = required + 1
+            with self._uow_factory() as uow:
+                uow.repo.set_framing_turns_required(conversation_id, self._user_id, new_required)
+                uow.commit()
+            logger.info(
+                "Learner reply for %s didn't answer the pending framing question — "
+                "framing now requires %d turns",
+                conversation_id, new_required,
+            )
+        except Exception:
+            logger.exception("Framing-answer check failed; leaving framing turn count unchanged")
 
     @staticmethod
     def _last_exchange(messages: list[dict]) -> tuple[str, str]:
