@@ -56,3 +56,16 @@ class TestSetupPhaseForTurn:
     def test_beyond_framing_turns_stays_outline(self):
         # Follow-up refinement turns ("make it shorter") stay on the outline prompt.
         assert setup_phase_for_turn(FRAMING_TURNS + 5) is SetupPhase.OUTLINE
+
+
+class TestSetupPhaseForTurnWithExtendedRequirement:
+    """framing_turns_required raises the bar — see app.learning.framing_answer_check."""
+
+    def test_defaults_to_the_fixed_constant(self):
+        assert setup_phase_for_turn(FRAMING_TURNS) is SetupPhase.OUTLINE  # default param
+
+    def test_stays_framing_below_an_extended_requirement(self):
+        assert setup_phase_for_turn(FRAMING_TURNS, framing_turns_required=FRAMING_TURNS + 1) is SetupPhase.FRAMING
+
+    def test_switches_to_outline_once_the_extended_requirement_is_met(self):
+        assert setup_phase_for_turn(FRAMING_TURNS + 1, framing_turns_required=FRAMING_TURNS + 1) is SetupPhase.OUTLINE

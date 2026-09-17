@@ -613,6 +613,8 @@ async def append_conversation_turn_stream(
             # met (latching closure for the next turn).
             await asyncio.to_thread(service.maybe_update_session_length, conv_id)
             await asyncio.to_thread(service.maybe_flag_objective_complete, conv_id)
+            await asyncio.to_thread(service.maybe_resume_from_closure, conv_id)
+            await asyncio.to_thread(service.maybe_extend_framing_turns, conv_id)
         except CapExceeded as exc:
             yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
         except HTTPException as exc:

@@ -63,7 +63,9 @@ def resolve_setup_phase_prompt(flow_slug: str, phase: SetupPhase) -> str:
     return flow[phase]
 
 
-def setup_phase_for_turn(total_user_turns: int) -> SetupPhase:
+def setup_phase_for_turn(
+    total_user_turns: int, framing_turns_required: int = FRAMING_TURNS
+) -> SetupPhase:
     """Map a deterministic user-turn count to a setup phase.
 
     `total_user_turns` counts every user reply so far INCLUDING the one being
@@ -71,5 +73,13 @@ def setup_phase_for_turn(total_user_turns: int) -> SetupPhase:
     has answered all framing questions, this turn and every one after it
     resolves to OUTLINE — including follow-up refinement turns ("make module
     3 more advanced"), which should stay on the outline-quality model too.
+
+    `framing_turns_required` defaults to FRAMING_TURNS but can be higher: raw
+    turn count assumes each reply answers the pending question 1:1, which
+    breaks if the learner asks a clarifying question instead of answering
+    (their next reply then lands on the wrong slot and the flow can advance
+    to OUTLINE having silently skipped a framing question, e.g. session
+    length). app.learning.framing_answer_check bumps this per-conversation
+    when that happens — see LearningFlowOrchestrator.maybe_extend_framing_turns.
     """
-    return SetupPhase.OUTLINE if total_user_turns >= FRAMING_TURNS else SetupPhase.FRAMING
+    return SetupPhase.OUTLINE if total_user_turns >= framing_turns_required else SetupPhase.FRAMING

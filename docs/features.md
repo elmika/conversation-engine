@@ -76,11 +76,14 @@ After each complete response, a small badge shows the time-to-first-byte (TTFB) 
 ### 2.10 Course session pacing (open → teach → wind down)
 A course session moves through three moments automatically, driven by the platform (not the model guessing):
 - **Opening** — the AI's first message presents the module list and where to pick up, and confirms the learner's usual session length, offering to adjust it for today.
-- **Teaching** — subsequent turns are a focused coaching exchange.
+- **Teaching** — short, question-led exchanges: the tutor reacts to what the learner said, adds one thing, and hands back with exactly one question, rather than lecturing. How long the tutor waits before it may judge a module "done" (see 2.10) scales with the learner's planned session length, so a 30-minute session isn't held to the same turn count as a 10-minute one.
 - **Wind-down** — the AI shifts to wrapping up once **either** the session's time is up **or** the current module's objective has been met: it summarises what was covered, names what's next, and invites the learner to **End Session** (it won't start new material).
 
 ### 2.11 Adjustable session length
 Each learner has a default session length (from their profile). In the opening message the AI offers to adapt it for the current session; if the learner asks for more or less time in chat ("let's do 30 today"), that length is captured and used to time the wind-down for this session. Unclear or implausible values are ignored, leaving the default in place.
+
+### 2.12 Continue past wind-down
+Wind-down is a suggestion, not a cutoff. If the learner's reply during wind-down clearly asks to keep learning ("actually can we keep going?"), the tutor acknowledges warmly and the *next* turn continues teaching normally — the session gets more time automatically, and it's no longer treated as having met the module's objective. Agreeing to stop, or asking one quick clarifying question, keeps the session in wind-down (answered briefly, then wrapping up as before). Ending the session is still always a deliberate action — the **End Session** button.
 
 ---
 

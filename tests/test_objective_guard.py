@@ -11,7 +11,11 @@ from sqlalchemy.pool import StaticPool
 from app.application.ports import LLMResult
 from app.application.services import ConversationService
 from app.learning.flow_orchestrator import LearningFlowOrchestrator
-from app.learning.objective_guard import OBJECTIVE_GUARD_MIN_TURNS, parse_objective_result
+from app.learning.objective_guard import (
+    OBJECTIVE_GUARD_MIN_TURNS,
+    objective_guard_min_turns,
+    parse_objective_result,
+)
 from app.infra.persistence.db import Base
 from app.infra.persistence.models import Conversation, Message, Run  # noqa: F401 - register models
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -86,7 +90,10 @@ def _service(uow_factory, llm):
     )
 
 
-def _seed(uow_factory, *, user_turns: int, session_length=30) -> None:
+def _seed(uow_factory, *, user_turns: int, session_length=8) -> None:
+    # session_length=8 keeps objective_guard_min_turns() at the OBJECTIVE_GUARD_MIN_TURNS
+    # floor (8 // MINUTES_PER_EXCHANGE(2) == 4), so existing fixed-turn-count tests below
+    # don't need to know about the dynamic scaling — see TestObjectiveGuardMinTurns for that.
     with uow_factory() as uow:
         uow.repo.create_conversation_with_id(
             CID, user_id=TEST_USER, prompt_slug="course-session-init", session_length_minutes=session_length
@@ -132,3 +139,47 @@ def test_guard_skipped_for_non_lesson_conversation(uow_factory):
     llm = RecordingLLM("YES")
     _service(uow_factory, llm).maybe_flag_objective_complete(CID)
     assert llm.calls == []
+
+
+class TestObjectiveGuardMinTurns:
+    """A 30-minute session shouldn't be eligible for closure at the same turn
+    count as a 10-minute one — the floor scales with the planned length."""
+
+    def test_floors_at_the_fixed_minimum_for_short_or_default_sessions(self):
+        assert objective_guard_min_turns(None) == OBJECTIVE_GUARD_MIN_TURNS
+        assert objective_guard_min_turns(4) == OBJECTIVE_GUARD_MIN_TURNS  # below floor
+
+    def test_scales_with_session_length(self):
+        assert objective_guard_min_turns(30) == 15
+        assert objective_guard_min_turns(60) == 30
+
+
+def _seed_with_id(uow_factory, cid: str, *, user_turns: int, session_length: int) -> None:
+    with uow_factory() as uow:
+        uow.repo.create_conversation_with_id(
+            cid, user_id=TEST_USER, prompt_slug="course-session-init", session_length_minutes=session_length
+        )
+        uow.repo.append_message(cid, "assistant", "opening")
+        for i in range(user_turns):
+            uow.repo.append_message(cid, "user", f"turn {i}")
+            uow.repo.append_message(cid, "assistant", f"reply {i}")
+        uow.commit()
+
+
+def test_guard_skipped_before_scaled_min_turns_on_longer_session(uow_factory):
+    # 30-minute session -> min_turns == 15; 4 turns (the old fixed floor) is still too early.
+    cid = "1a1a1a1a-1111-4111-8111-111111111111"
+    _seed_with_id(uow_factory, cid, user_turns=OBJECTIVE_GUARD_MIN_TURNS, session_length=30)
+    llm = RecordingLLM("YES")
+    _service(uow_factory, llm).maybe_flag_objective_complete(cid)
+    assert llm.calls == []
+
+
+def test_guard_fires_once_scaled_min_turns_reached_on_longer_session(uow_factory):
+    cid = "2b2b2b2b-2222-4222-8222-222222222222"
+    _seed_with_id(uow_factory, cid, user_turns=15, session_length=30)
+    llm = RecordingLLM("YES")
+    _service(uow_factory, llm).maybe_flag_objective_complete(cid)
+    assert len(llm.calls) == 1
+    with uow_factory() as uow:
+        assert uow.repo.get_conversation(cid, TEST_USER)["objective_met"] is True

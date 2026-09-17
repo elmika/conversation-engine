@@ -16,6 +16,7 @@ def run_migrations(engine: Engine) -> None:
         _add_column_if_missing(conn, "conversations", "prompt_slug", "VARCHAR(128)")
         _add_column_if_missing(conn, "conversations", "session_length_minutes", "INTEGER")
         _add_column_if_missing(conn, "conversations", "objective_met", "BOOLEAN NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "conversations", "framing_turns_required", "INTEGER")
 
 
 def _add_ended_at_and_mark_existing(conn) -> None:

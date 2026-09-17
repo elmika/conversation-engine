@@ -597,6 +597,14 @@ class ConversationService:
         """Best-effort background hook after a turn; delegates to the Layer 2 flow port."""
         self._flow.maybe_flag_objective_complete(conversation_id)
 
+    def maybe_resume_from_closure(self, conversation_id: str) -> None:
+        """Best-effort background hook after a turn; delegates to the Layer 2 flow port."""
+        self._flow.maybe_resume_from_closure(conversation_id)
+
+    def maybe_extend_framing_turns(self, conversation_id: str) -> None:
+        """Best-effort background hook after a turn; delegates to the Layer 2 flow port."""
+        self._flow.maybe_extend_framing_turns(conversation_id)
+
     def persist_stream_result(
         self,
         uow: UnitOfWork,

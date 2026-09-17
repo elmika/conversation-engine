@@ -251,11 +251,53 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 - Admin panel, conversation download, multi-user/user-switching, and "Start next session"
   continuation were not exercised in the 2026-08-03 smoke test — worth a follow-up pass.
-- `course-session-core` (the lesson's Core moment) has an open interaction-quality regression —
-  needs tuning. Carried over from before the init/core/closure split (`docs/architecture-decisions.md`
-  §3), never resolved.
-- `course-session-closure` (the lesson's Closure moment) needs a review pass against its current
-  spec — same carry-over, not yet done.
+- `course-session-core` (the lesson's Core moment) interaction-quality regression —
+  **✅ Shipped 2026-09-17** (`docs/socratic-tutor-plan.md` Step 1): short ask→answer→
+  acknowledge-and-extend exchanges (avg 297→47 words/turn on gpt-4.1), plus a dynamic
+  objective-guard min-turns and a softened, continuable closure
+  (`app/learning/closure_continuation.py`). Live-dogfooded 2026-09-17, quality confirmed good
+  without any model-tier change. See `docs/tutor-behavior-checklist.md` for the behavior spec
+  this should be checked against on future prompt/model changes.
+- `course-session-init` (the lesson's opening message) was overwhelming — the full per-module
+  outline (every module's description, not just the current one) plus two redundant
+  "pick up here" / "do this now" lines buried the actually-good explanatory paragraph.
+  **✅ Shipped 2026-09-17**: module list now shows the description only for the current (→)
+  module; the two redundant one-liners are gone — straight from the paragraph to the
+  session-length question. Feedback from Mika's live dogfooding session, same day as the
+  `course-session-core` ship above.
+- **Idea, not yet built: a place to read the full course outline.** Trimming the opening
+  message (above) means the full per-module descriptions are no longer shown anywhere after
+  the initial setup/outline-proposal turn. Surfaced 2026-09-17 alongside the opening-message
+  trim — needs its own design (a "View full outline" link/modal? a course detail page?), not
+  bundled with the prompt trim itself.
+- **Bug: setup framing sometimes never asks the session-length question at all —
+  ✅ Shipped 2026-09-17.** Root cause: `setup_flow.py::setup_phase_for_turn` counted raw
+  learner turns assuming a strict 1:1 mapping to the fixed 4-question sequence (name, work,
+  motivation, session length). A learner's clarifying question back to the tutor ("What skill
+  are you talking about?") consumed a turn slot without answering anything, so their *next*
+  reply (the real answer) landed on turn 4 — the threshold — and the flow jumped straight to
+  the outline, having silently skipped session length. This is also what the
+  "`course-session-init` doesn't pick up the desired session length" report from earlier the
+  same day actually was — the question was never asked, not mis-parsed. Reproduced exactly
+  from Mika's shared transcript. Fix: `app/learning/framing_answer_check.py` (new, cheap-model
+  YES/NO check, same shape as the session-length/closure-continuation extractors) runs after
+  each framing turn; on NO, bumps a new per-conversation `framing_turns_required` counter
+  (`conversations.framing_turns_required`, migration in `app/infra/migrations.py`) so the flow
+  needs one more real answer before it can advance — `setup_phase_for_turn` now takes this as
+  a parameter instead of hardcoding `FRAMING_TURNS`. Verified: `tests/test_framing_extension.py`
+  (including the exact reported sequence), full backend suite (276), `make smoke` (11/11), and
+  a live API repro of Mika's transcript end to end (clarifying question → session-length
+  question now correctly asked → outline only fires after it's answered).
+- **Idea to evaluate (not for the 2026-09-18 demo): fill-in-the-blank / sentence-completion
+  questioning** — posing a check-understanding question as an incomplete sentence for the
+  student to finish, instead of an open "what do you think?". Surfaced 2026-09-17 alongside the
+  ask→answer→extend pattern above but deliberately not bundled with it — needs its own dogfooding
+  before it's trusted in a live session; too easy to make sound gimmicky or force an answer shape
+  that doesn't fit the actual concept being checked.
+- `course-session-closure` (the lesson's Closure moment) — **✅ Shipped 2026-09-17** alongside the
+  `course-session-core` rewrite above: closure is now a suggestion rather than a cutoff (learner
+  saying "let's keep going" resumes core instead of getting stuck in a repeating wrap-up), see
+  `app/learning/closure_continuation.py`.
 - **`GET /prompts` (list) stays unauthenticated** — accepted residual gap from Piece C's admin
   auth (2026-09-16). `frontend/components/chat/PromptSelector.tsx` (learner-facing persona
   dropdown) depends on it, so gating it behind `require_admin` would break the ordinary chat

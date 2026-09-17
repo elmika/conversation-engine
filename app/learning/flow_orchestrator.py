@@ -14,13 +14,19 @@ from typing import Optional
 
 from app.application.ports import LLMPort, PromptRepo, SlotResolver, UnitOfWork
 from app.domain.prompt_template import render_instructions
+from app.learning.closure_continuation import (
+    CONTINUE_EXTENSION_MINUTES,
+    mentions_continue_intent,
+    parse_continue_result,
+)
+from app.learning.framing_answer_check import parse_framing_answer_result
 from app.learning.lesson_flow import (
     LessonPhase,
     is_lesson_flow,
     phase_for_turn,
     resolve_phase_prompt,
 )
-from app.learning.objective_guard import OBJECTIVE_GUARD_MIN_TURNS, parse_objective_result
+from app.learning.objective_guard import objective_guard_min_turns, parse_objective_result
 from app.learning.session_length import (
     is_time_over,
     mentions_duration,
@@ -28,6 +34,8 @@ from app.learning.session_length import (
     parse_session_length_minutes,
 )
 from app.learning.setup_flow import (
+    FRAMING_TURNS,
+    SetupPhase,
     is_setup_flow,
     resolve_setup_phase_prompt,
     setup_phase_for_turn,
@@ -84,7 +92,9 @@ class LearningFlowOrchestrator:
         if flow_slug and is_setup_flow(flow_slug):
             total_user_turns = sum(1 for m in (history or []) if m["role"] == "user")
             total_user_turns += sum(1 for m in (pending_messages or []) if m["role"] == "user")
-            return resolve_setup_phase_prompt(flow_slug, setup_phase_for_turn(total_user_turns))
+            framing_required = (conv_meta or {}).get("framing_turns_required") or FRAMING_TURNS
+            phase = setup_phase_for_turn(total_user_turns, framing_required)
+            return resolve_setup_phase_prompt(flow_slug, phase)
 
         return flow_slug
 
@@ -149,7 +159,7 @@ class LearningFlowOrchestrator:
 
         Best-effort and advisory, mirroring maybe_update_session_length:
           1. skip non-lesson conversations and ones already latched;
-          2. skip while still early (< OBJECTIVE_GUARD_MIN_TURNS) — no premature close;
+          2. skip while still early (< objective_guard_min_turns(session_len)) — no premature close;
           3. skip if the session's time is already up (closure fires on time anyway);
           4. cheap-model guard over course + progress + recent transcript → YES/NO;
           5. on YES, latch objective_met so the next turn resolves to CLOSURE.
@@ -168,7 +178,8 @@ class LearningFlowOrchestrator:
                 self._elapsed_minutes(created_at), session_len
             ):
                 return  # already closing on time — don't spend the guard call
-            if sum(1 for m in messages if m["role"] == "user") < OBJECTIVE_GUARD_MIN_TURNS:
+            min_turns = objective_guard_min_turns(session_len)
+            if sum(1 for m in messages if m["role"] == "user") < min_turns:
                 return
 
             record = self._prompt_repo.get_prompt("lesson-objective-complete")
@@ -188,11 +199,132 @@ class LearningFlowOrchestrator:
         except Exception:
             logger.exception("Objective guard failed; treating objective as not met")
 
+    def maybe_resume_from_closure(self, conversation_id: str) -> None:
+        """After a turn, check whether the learner asked to keep going past closure.
+
+        Closure is a suggestion, not a cutoff (prompts/course-session-closure.md).
+        Best-effort and advisory, mirroring maybe_update_session_length:
+          1. skip non-lesson conversations;
+          2. skip unless the turn that just ran was actually CLOSURE (time-over
+             or objective-met) — nothing to resume from otherwise;
+          3. cheap regex pre-filter on the learner's reply;
+          4. cheap-model extraction over the closure invite + learner reply → YES/NO;
+          5. on YES: un-latch objective_met and add CONTINUE_EXTENSION_MINUTES to
+             the session length, so the *next* turn resolves back to CORE.
+        Never raises — a failure leaves the conversation in CLOSURE.
+        """
+        try:
+            with self._uow_factory() as uow:
+                conv = uow.repo.get_conversation(conversation_id, self._user_id)
+                if not conv or conv.get("session_length_minutes") is None:
+                    return
+                created_at = uow.repo.get_conversation_created_at(conversation_id)
+                messages = uow.repo.get_messages(conversation_id, self._user_id)
+
+            session_len = conv.get("session_length_minutes")
+            time_over = bool(
+                created_at and session_len
+                and is_time_over(self._elapsed_minutes(created_at), session_len)
+            )
+            if not (time_over or conv.get("objective_met")):
+                return  # the turn that just ran wasn't closure — nothing to resume from
+
+            question, answer = self._last_exchange(messages)
+            if not mentions_continue_intent(answer):
+                return
+
+            record = self._prompt_repo.get_prompt("closure-continue-extraction")
+            if record is None:
+                return
+            exchange = [
+                {"role": "assistant", "content": question},
+                {"role": "user", "content": answer},
+            ]
+            result = self._llm.complete(
+                record["system_prompt"], exchange, model=record.get("model")
+            )
+            if not parse_continue_result(result["text"]):
+                return
+
+            # Anchor the extension to elapsed time, not just the old target: if the
+            # learner took a while to reply while time was already up, session_len
+            # + CONTINUE_EXTENSION_MINUTES could still be in the past and re-close
+            # on the very next turn.
+            elapsed = self._elapsed_minutes(created_at) if created_at else session_len
+            new_length = int(max(session_len, elapsed) + CONTINUE_EXTENSION_MINUTES)
+
+            with self._uow_factory() as uow:
+                uow.repo.clear_objective_met(conversation_id, self._user_id)
+                uow.repo.update_session_length(conversation_id, self._user_id, new_length)
+                uow.commit()
+            logger.info(
+                "Learner asked to continue past closure for %s — resuming core, length %s -> %s",
+                conversation_id, session_len, new_length,
+            )
+        except Exception:
+            logger.exception("Closure-continuation check failed; staying in closure")
+
     @staticmethod
     def _elapsed_minutes(created_at: datetime) -> float:
         """Minutes elapsed since the conversation (session) started."""
         start = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
         return max(0.0, (datetime.now(timezone.utc) - start).total_seconds() / 60.0)
+
+    def maybe_extend_framing_turns(self, conversation_id: str) -> None:
+        """After a setup-flow turn, check whether the reply actually answered the
+        pending framing question; if not, buy one more real framing turn.
+
+        Best-effort and advisory, mirroring maybe_update_session_length:
+          1. skip non-setup-flow conversations;
+          2. skip once framing is already complete for this turn (recompute the
+             SAME deterministic phase decision the turn used) — nothing to
+             correct once OUTLINE has already fired for this conversation;
+          3. cheap-model check over the pending question + the learner's reply
+             → YES (answered) / NO (wasn't an answer);
+          4. on NO, bump framing_turns_required by 1, so the flow needs one
+             more real framing turn before it can advance to OUTLINE.
+        Never raises — a failure leaves the framing turn count unchanged.
+        """
+        try:
+            with self._uow_factory() as uow:
+                conv = uow.repo.get_conversation(conversation_id, self._user_id)
+                if not conv:
+                    return
+                flow_slug = conv.get("prompt_slug")
+                if not flow_slug or not is_setup_flow(flow_slug):
+                    return
+                messages = uow.repo.get_messages(conversation_id, self._user_id)
+
+            total_user_turns = sum(1 for m in messages if m["role"] == "user")
+            required = conv.get("framing_turns_required") or FRAMING_TURNS
+            if setup_phase_for_turn(total_user_turns, required) != SetupPhase.FRAMING:
+                return  # already at/past the outline phase — too late to correct here
+
+            question, answer = self._last_exchange(messages)
+            record = self._prompt_repo.get_prompt("framing-answer-check")
+            if record is None:
+                return
+            exchange = [
+                {"role": "assistant", "content": question},
+                {"role": "user", "content": answer},
+            ]
+            result = self._llm.complete(
+                record["system_prompt"], exchange, model=record.get("model")
+            )
+            if parse_framing_answer_result(result["text"]):
+                return  # answered normally — nothing to correct
+
+            new_required = required + 1
+            with self._uow_factory() as uow:
+                uow.repo.set_framing_turns_required(conversation_id, self._user_id, new_required)
+                uow.commit()
+            logger.info(
+                "Learner reply for %s didn't answer the pending framing question — "
+                "framing now requires %d turns",
+                conversation_id, new_required,
+            )
+        except Exception:
+            logger.exception("Framing-answer check failed; leaving framing turn count unchanged")
 
     @staticmethod
     def _last_exchange(messages: list[dict]) -> tuple[str, str]:

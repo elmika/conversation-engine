@@ -56,6 +56,14 @@ class LearningFlowPort(Protocol):
         """Best-effort background hook; must never raise."""
         ...
 
+    def maybe_resume_from_closure(self, conversation_id: str) -> None:
+        """Best-effort background hook; must never raise."""
+        ...
+
+    def maybe_extend_framing_turns(self, conversation_id: str) -> None:
+        """Best-effort background hook; must never raise."""
+        ...
+
 
 class NullLearningFlow:
     """Default LearningFlowPort: every conversation is treated as a flat, phase-less prompt.
@@ -81,6 +89,12 @@ class NullLearningFlow:
         return None
 
     def maybe_flag_objective_complete(self, conversation_id: str) -> None:
+        return None
+
+    def maybe_resume_from_closure(self, conversation_id: str) -> None:
+        return None
+
+    def maybe_extend_framing_turns(self, conversation_id: str) -> None:
         return None
 
 
@@ -208,7 +222,8 @@ class ConversationRepo(Protocol):
         ...
 
     def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes}, or None if not found or not owned by user_id."""
+        """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes,
+        objective_met, framing_turns_required}, or None if not found or not owned by user_id."""
         ...
 
     def list_all_conversations(self, page: int, page_size: int) -> tuple[list[dict], int]:
@@ -231,6 +246,14 @@ class ConversationRepo(Protocol):
 
     def set_objective_met(self, conversation_id: str, user_id: str) -> None:
         """Latch the objective-met flag for a conversation owned by user_id."""
+        ...
+
+    def clear_objective_met(self, conversation_id: str, user_id: str) -> None:
+        """Un-latch the objective-met flag (learner asked to keep going past closure)."""
+        ...
+
+    def set_framing_turns_required(self, conversation_id: str, user_id: str, turns: int) -> None:
+        """Set the setup flow's required framing-turn count for a conversation owned by user_id."""
         ...
 
     def get_conversation_created_at(self, conversation_id: str) -> Optional[datetime]:

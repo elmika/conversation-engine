@@ -46,6 +46,13 @@ class Conversation(Base):
     # Latched once the objective guard judges the current module's objective met;
     # makes subsequent turns resolve to the closure phase. Code-owned lesson state.
     objective_met: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # How many raw learner turns the setup flow's framing phase requires before
+    # advancing to the outline phase. Starts at FRAMING_TURNS (app/learning/
+    # setup_flow.py) and is bumped by 1 whenever a learner's reply doesn't
+    # actually answer the pending framing question (a clarifying question,
+    # off-topic aside) — see app/learning/framing_answer_check.py. Nullable:
+    # NULL means "use the default", same convention as session_length_minutes.
+    framing_turns_required: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     messages: Mapped[list[Message]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
