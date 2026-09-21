@@ -848,6 +848,7 @@ async def end_session(
     service: ConversationService = Depends(get_conversation_service),
     settings: Settings = Depends(get_settings),
     llm: LLMPort = Depends(get_llm),
+    prompt_repo: PromptRepo = Depends(get_prompt_repo),
 ) -> EndSessionResponse:
     """
     End a conversation session.
@@ -871,6 +872,7 @@ async def end_session(
         messages,
         FileSlotResolver(settings.sections_dir, user_id),
         llm,
+        prompt_repo,
         settings.sections_dir,
         settings.wrap_up_model,
         user_id,
