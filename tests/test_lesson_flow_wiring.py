@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.application.ports import LLMResult
 from app.main import app as main_app
-from tests.conftest import TEST_USER
+from tests.conftest import ADMIN_HEADERS, TEST_USER
 
 
 @pytest.fixture
@@ -57,13 +57,15 @@ def client_with_sections(mock_llm, sections_dir):
 def test_opening_uses_init_prompt_subsequent_uses_core_prompt(
     client_with_sections, mock_llm
 ) -> None:
-    # Turn 1: create the conversation with the course flow.
+    # Turn 1: create the conversation with the course flow. prompt_slug is
+    # admin-only (see ConversationRequest's docstring) — use the admin route.
     r1 = client_with_sections.post(
-        f"/u/{TEST_USER}/conversations",
+        f"/admin/u/{TEST_USER}/conversations",
         json={
             "messages": [{"role": "user", "content": "start"}],
             "prompt_slug": "course-session-init",
         },
+        headers=ADMIN_HEADERS,
     )
     assert r1.status_code == 200, r1.json()
     cid = r1.json()["conversation_id"]

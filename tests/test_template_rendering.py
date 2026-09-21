@@ -76,10 +76,14 @@ def test_template_tags_rendered_before_llm_call(client_with_mock_llm, mock_llm) 
     """{{time:current}} must be replaced with a real datetime before the LLM receives it."""
     _create_template_prompt(client_with_mock_llm, "current-time-test", "Now: {{time:current}}.")
 
-    r = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
-        "messages": [{"role": "user", "content": "What time is it?"}],
-        "prompt_slug": "current-time-test",
-    })
+    r = client_with_mock_llm.post(
+        f"/admin/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "What time is it?"}],
+            "prompt_slug": "current-time-test",
+        },
+        headers=ADMIN_HEADERS,
+    )
     assert r.status_code == 200
 
     instructions = mock_llm.complete.call_args[0][0]
@@ -98,17 +102,25 @@ def test_conversation_start_consistent_across_turns(client_with_mock_llm, mock_l
     )
     mock_llm.complete.side_effect = [_make_llm_result("first reply"), _make_llm_result("second reply")]
 
-    r1 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
-        "messages": [{"role": "user", "content": "hello"}],
-        "prompt_slug": "start-time-test",
-    })
+    r1 = client_with_mock_llm.post(
+        f"/admin/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "hello"}],
+            "prompt_slug": "start-time-test",
+        },
+        headers=ADMIN_HEADERS,
+    )
     assert r1.status_code == 200
     cid = r1.json()["conversation_id"]
 
-    r2 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations/{cid}", json={
-        "messages": [{"role": "user", "content": "hello again"}],
-        "prompt_slug": "start-time-test",
-    })
+    r2 = client_with_mock_llm.post(
+        f"/admin/u/{TEST_USER}/conversations/{cid}",
+        json={
+            "messages": [{"role": "user", "content": "hello again"}],
+            "prompt_slug": "start-time-test",
+        },
+        headers=ADMIN_HEADERS,
+    )
     assert r2.status_code == 200
 
     instructions_1 = mock_llm.complete.call_args_list[0][0][0]
@@ -243,10 +255,14 @@ def test_file_section_resolved_before_llm_call(client_with_sections, mock_llm, s
     (sections_dir / "course" / f"{TEST_USER}.md").write_text("Docker for CI/CD")
     _create_template_prompt(client_with_sections, "section-test", "Context: {{course}}")
 
-    r = client_with_sections.post(f"/u/{TEST_USER}/conversations", json={
-        "messages": [{"role": "user", "content": "hi"}],
-        "prompt_slug": "section-test",
-    })
+    r = client_with_sections.post(
+        f"/admin/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "hi"}],
+            "prompt_slug": "section-test",
+        },
+        headers=ADMIN_HEADERS,
+    )
     assert r.status_code == 200
 
     instructions = mock_llm.complete.call_args[0][0]
@@ -260,10 +276,14 @@ def test_missing_section_file_returns_400(client_with_sections, sections_dir) ->
     (sections_dir / "course" / f"{TEST_USER}.md").unlink()
     _create_template_prompt(client_with_sections, "missing-section", "{{course}}")
 
-    r = client_with_sections.post(f"/u/{TEST_USER}/conversations", json={
-        "messages": [{"role": "user", "content": "hi"}],
-        "prompt_slug": "missing-section",
-    })
+    r = client_with_sections.post(
+        f"/admin/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "hi"}],
+            "prompt_slug": "missing-section",
+        },
+        headers=ADMIN_HEADERS,
+    )
     assert r.status_code == 400
     assert "Section file not found" in r.json()["detail"]
 
@@ -275,10 +295,14 @@ def test_section_containing_time_tag_resolved_end_to_end(
     (sections_dir / "user" / f"{TEST_USER}.md").write_text("Time: {{time:current}}")
     _create_template_prompt(client_with_sections, "time-in-section", "{{user}}")
 
-    r = client_with_sections.post(f"/u/{TEST_USER}/conversations", json={
-        "messages": [{"role": "user", "content": "hi"}],
-        "prompt_slug": "time-in-section",
-    })
+    r = client_with_sections.post(
+        f"/admin/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "hi"}],
+            "prompt_slug": "time-in-section",
+        },
+        headers=ADMIN_HEADERS,
+    )
     assert r.status_code == 200
 
     instructions = mock_llm.complete.call_args[0][0]

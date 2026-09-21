@@ -16,7 +16,11 @@ Legacy bare routes (`/chat`, `/history`) and a bare `/u/{userId}` (no `/chat` or
 All of a learner's conversations, history, and profile are scoped to their UUID. Bookmarking the `/u/{userId}/…` URL is how a learner returns to their session on the same browser. A conversation is only visible to the UUID that created it — requests under a different UUID are treated as non-existent (not enumerable across users).
 
 ### 1.3 Setup flow (new learner)
-A learner with no profile is routed into a guided **setup conversation** instead of a normal chat. This conversation (the `user-profile-collection` assistant) collects the learner's background and goal and proposes a course outline. The course/prompt selector is not used during setup.
+A learner with no profile is routed into a guided **setup conversation** instead of a normal chat. This conversation (the `user-profile-collection` assistant) collects the learner's background and goal and proposes a course outline. The framing Q&A asks name, work, "what would you like to learn with me", and session length, one per turn, in that order — the opening message itself is the name question, so the assistant never re-asks a question the learner has already answered.
+
+If a learner's reply to the framing question that would otherwise complete the Q&A is itself a clarifying question rather than an answer (e.g. "what skill are you referring to?"), the flow stays in the framing phase for one more turn instead of jumping straight to the outline off an unanswered question — checked synchronously on that exact turn, since it's too late to correct on any later turn.
+
+Once an outline is proposed, the assistant asks the learner to confirm it looks right or say what to change, rather than prompting them to click "Let's start" — the outline can be refined any number of times (each refinement re-asks for confirmation), and moving on to the course is always the learner's own action via the button (§1.5), never something the assistant announces or ushers them toward.
 
 ### 1.4 AI opens first
 Per the design principle *"the AI always opens — no blank input ever"*, the assistant sends the first message automatically when a fresh chat is opened, for both audiences:
@@ -161,8 +165,8 @@ The currently open conversation is highlighted in the sidebar.
 ### 6.1 Multiple assistants
 The application supports multiple AI personas, each with a distinct system prompt. Assistants are defined as Markdown files in a `prompts/` directory and stored in the database on startup.
 
-### 6.2 Assistant selector (locked per conversation)
-A **dropdown** in the top bar lets the user pick an assistant/course **before** starting a conversation. The choice is **locked at conversation creation** and cannot change mid-session — the course was chosen up front and applies for the life of that conversation. While a conversation is open, the selector is shown as a static, read-only label of the locked assistant rather than an editable dropdown.
+### 6.2 Which assistant drives a conversation (code-owned, not learner-chosen)
+Removed 2026-09-17: the chat header used to show a prompt/course dropdown (open before a conversation started, locked to a read-only label once active). It's gone — which prompt opens a conversation is now derived entirely server-side from the learner's profile state (setup vs. their course), the same "code owns deterministic state, never client input" principle the lesson/setup phase orchestrators already follow. This also closed a real gap: the underlying request field the dropdown wrote to had no server-side authorization check, so any caller (not just the UI) could previously force an arbitrary prompt. Internal test/comparison tooling that legitimately needs to pick a specific prompt uses the admin-only `/admin/u/{userId}/...` routes instead (`docs/model-decisions.md`, `docs/prompts.md` "Model presets").
 
 ### 6.3 Persisted prompt library
 Prompts are stored in the database and served via `GET /prompts`. New assistants can be added by dropping a `.md` file into the `prompts/` directory and restarting the service — no code changes required.
@@ -178,7 +182,7 @@ Prompts are stored in the database and served via `GET /prompts`. New assistants
 Each assistant can declare a preferred OpenAI model via a `model:` field in its `.md` frontmatter (e.g. `model: gpt-4o-mini`). When set, that model is used for all conversations with that assistant unless overridden per-request.
 
 ### 6.5 Active / disabled state
-Prompts have an `is_active` flag. Disabled prompts are soft-deleted: they no longer appear in the conversation selector or in `GET /prompts`, but their data is preserved so existing conversation history remains intact. Disabled prompts can be re-enabled at any time. Prompts that have never been used in a conversation can be fully hard-deleted.
+Prompts have an `is_active` flag. Disabled prompts are soft-deleted: they no longer appear in `GET /prompts`, but their data is preserved so existing conversation history remains intact. Disabled prompts can be re-enabled at any time. Prompts that have never been used in a conversation can be fully hard-deleted.
 
 ### 6.6 Template variables in system prompts
 System prompts support template variables that are resolved at the moment each LLM call is made. Resolution happens in two passes: file section tags are expanded first, then time tags are resolved on the assembled text.
@@ -209,29 +213,13 @@ A **Preview** button (scan icon) on each prompt card in the Admin panel opens a 
 ## 7. Model Selection
 
 ### 7.1 Model registry
-A static registry of 14 supported OpenAI models is served via `GET /models`. Each entry has a `slug` (the OpenAI model ID), a human-readable `name`, and a `description`. The default model is `gpt-4.1`.
+A static registry of supported OpenAI models (`app/domain/model_registry.py`) is served via `GET /models`. Each entry has a `slug` (the OpenAI model ID), a human-readable `name`, and a `description`. The default model is `gpt-4.1`. Which model each task (each prompt) actually uses is tracked in `docs/model-decisions.md`, not reproduced here — that list changes as models are compared/switched and would drift out of sync with this file otherwise.
 
-**Available models** (learner-facing selector — excludes `gpt-5-mini`/`gpt-5-nano`, which have no
-price-table entry and are not offered):
-- **GPT-4.1** (`gpt-4.1`) — Smartest non-reasoning model
-- **GPT-5** (`gpt-5`) — Previous intelligent reasoning model for coding and agentic tasks with configurable reasoning effort
-- **GPT-5 Codex** (`gpt-5-codex`) — A version of GPT-5 optimized for agentic coding in Codex
-- **GPT-5.1 Codex** (`gpt-5.1-codex`) — A version of GPT-5.1 optimized for agentic coding in Codex
-- **GPT-5.1 Codex Max** (`gpt-5.1-codex-max`) — A version of GPT-5.1-codex optimized for long running tasks
-- **GPT-5.1 Codex mini** (`gpt-5.1-codex-mini`) — Smaller, more cost-effective, less-capable version of GPT-5.1-Codex
-- **GPT-5.2 Codex** (`gpt-5.2-codex`) — Our most intelligent coding model optimized for long-horizon, agentic coding tasks
-- **GPT-5.3 Codex** (`gpt-5.3-codex`) — The most capable agentic coding model to date
-- **GPT-5.4** (`gpt-5.4`) — Best intelligence at scale for agentic, coding, and professional workflows
-- **GPT-5.4 pro** (`gpt-5.4-pro`) — Version of GPT-5.4 that produces smarter and more precise responses
-- **GPT-5.4 mini** (`gpt-5.4-mini`) — Our strongest mini model yet for coding, computer use, and subagents
-- **GPT-5.4 nano** (`gpt-5.4-nano`) — Our cheapest GPT-5.4-class model for simple high-volume tasks
-- **GPT-5.6 Luna** (`gpt-5.6-luna`) — High-volume/low-cost GPT-5.6 tier; used by `course-outline-proposal` and `wrap_up_model` as of 2026-08-07 (`docs/architecture-decisions.md` §5)
-
-### 7.2 Model selector UI
-A **dropdown** in the chat header (next to the assistant selector) lets the user pick a model for their messages. The first option is **Default (auto)**, which defers to the prompt's preferred model or the global default (`gpt-4.1`). Model descriptions are shown as tooltips on each option.
+### 7.2 Which model answers a turn (code-owned, not learner-chosen)
+Removed 2026-09-17: the chat header used to show a model dropdown (default "Default (auto)", model descriptions as tooltips) letting a learner pick any registered model for their messages. It's gone, for the same reason as the prompt selector (6.2) — and the same real gap: the request field it wrote to had no server-side authorization check, so any caller could pick an expensive model tier for every turn regardless of what the UI showed. Which model runs is now purely `prompt.model` (the assistant's declared preference, `docs/model-decisions.md`) falling back to the global default — never client input on the learner-facing routes. Internal comparison tooling that needs to override a model uses the admin-only routes (see 6.2).
 
 ### 7.3 Model badge
-After each streaming response, the timings badge shows the model that was actually used (e.g., `gpt-5.4-mini · TTFB: 120ms · Total: 800ms`). This reflects the resolved model from the backend, which may differ from the selected option if a prompt overrides it.
+After each streaming response, the timings badge shows the model that was actually used (e.g., `gpt-5.4-mini · TTFB: 120ms · Total: 800ms`) — the resolved model from the backend (the prompt's declared preference, or the global default).
 
 ### 7.4 Per-request model override
 API callers can pass `model_slug` in any conversation request body to override the model for that specific request. Resolution priority (highest → lowest):
@@ -263,7 +251,7 @@ A **New Prompt** button (top-right) opens a dialog with fields for slug, name, s
 An **Edit** button (pencil icon) on each active prompt card opens the same dialog pre-filled. The slug is read-only when editing. Changes take effect immediately.
 
 ### 8.4 Disable / enable prompt
-An **eye-off** button on each active card soft-deletes the prompt (sets `is_active=false`). Disabled cards are grayed out with a **Disabled** badge and show an **eye** button to re-enable. Disabled prompts no longer appear in the conversation selector.
+An **eye-off** button on each active card soft-deletes the prompt (sets `is_active=false`). Disabled cards are grayed out with a **Disabled** badge and show an **eye** button to re-enable. Disabled prompts no longer appear in `GET /prompts`.
 
 ### 8.5 Show disabled prompts
 A **Show disabled** checkbox at the top of the admin panel toggles display of disabled prompt cards alongside active ones.

@@ -8,6 +8,8 @@ which never touches the network. Run it by hand after changes to the lesson flow
 Prerequisites:
   - stack running:           make up
   - real OPENAI_API_KEY in:  .env
+  - real ADMIN_TOKEN in:     .env (step 1's init-stream call needs an explicit
+    prompt_slug, which is admin-only — see ConversationRequest's docstring)
 
 Usage:
   python3 scripts/smoke_lesson_lifecycle.py [--base-url URL] [--db PATH]
@@ -32,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -43,11 +46,29 @@ from pathlib import Path
 PROFILE_MINUTES = 15  # must match the "## Session length" written below
 
 
+def _load_admin_token() -> str:
+    """Read ADMIN_TOKEN from the environment, falling back to .env (no python-dotenv
+    dependency — this script deliberately stays stdlib-only, see CLAUDE.md)."""
+    if os.environ.get("ADMIN_TOKEN"):
+        return os.environ["ADMIN_TOKEN"]
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.startswith("ADMIN_TOKEN="):
+                return line.split("=", 1)[1].strip()
+    return ""
+
+
+ADMIN_TOKEN = _load_admin_token()
+
+
 def _req(method: str, url: str, body: dict | None = None, timeout: int = 90) -> str:
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
         req.add_header("Content-Type", "application/json")
+    if ADMIN_TOKEN:
+        req.add_header("Authorization", f"Bearer {ADMIN_TOKEN}")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode()
 
@@ -148,7 +169,7 @@ class Smoke:
 
         # 1. init -> intro prompt, length seeded from profile
         slug, self.cid, _ = _post_sse(
-            f"{self.base}/u/{self.uid}/conversations/init-stream",
+            f"{self.base}/admin/u/{self.uid}/conversations/init-stream",
             {"prompt_slug": "course-session-init"},
         )
         self.check(slug == "course-session-init", f"init uses course-session-init (got {slug})")
@@ -213,6 +234,10 @@ def main() -> int:
     ap.add_argument("--db", default="data/chat.db", help="path to the SQLite DB (host side)")
     ap.add_argument("--sections", default="sections", help="path to the sections/ dir (host side)")
     args = ap.parse_args()
+    if not ADMIN_TOKEN:
+        print("No ADMIN_TOKEN found (checked env and .env). Step 1's init-stream call needs "
+              "the admin-only /admin/u/{user_id}/... route and will fail with 401 without it.")
+        return 2
 
     try:
         health = _req("GET", f"{args.base_url}/healthz", timeout=5)

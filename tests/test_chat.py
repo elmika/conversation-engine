@@ -9,7 +9,7 @@ from sqlalchemy import text
 from app.application.ports import LLMResult
 from app.main import app
 from app.settings import Settings
-from tests.conftest import TEST_USER
+from tests.conftest import ADMIN_HEADERS, TEST_USER
 
 
 def _make_llm_result(
@@ -70,13 +70,18 @@ def test_conversations_create_returns_envelope(client_with_mock_llm, mock_llm) -
 
 
 def test_conversations_create_uses_prompt_slug(client_with_mock_llm, mock_llm) -> None:
-    """POST /u/{user_id}/conversations with prompt_slug uses that prompt's system_prompt."""
+    """POST /admin/u/{user_id}/conversations with prompt_slug uses that prompt's system_prompt.
+
+    prompt_slug is admin-only (see ConversationRequest's docstring) — the learner-facing
+    route doesn't accept it at all.
+    """
     response = client_with_mock_llm.post(
-        f"/u/{TEST_USER}/conversations",
+        f"/admin/u/{TEST_USER}/conversations",
         json={
             "prompt_slug": "conflict-coach-v1",
             "messages": [{"role": "user", "content": "A colleague disagrees."}],
         },
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 200
     call_args = mock_llm.complete.call_args

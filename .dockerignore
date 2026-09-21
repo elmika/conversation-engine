@@ -9,3 +9,11 @@ __pycache__
 .egg-info
 .mypy_cache
 .ruff_cache
+
+# The backend Dockerfile only ever COPYs app/, tests/, and prompts/ — none of
+# these belong in its build context (frontend/ alone is ~1.5GB of
+# node_modules + .next, uploaded on every deploy even though it's never used).
+frontend/
+data/
+sections/
+docs/

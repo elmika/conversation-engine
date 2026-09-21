@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pathlib import Path
 
 from app.api.middleware import RequestIdAndTimingMiddleware
-from app.api.routes import router, user_router
+from app.api.routes import admin_user_router, router, user_router
 from app.infra.llm_openai import OpenAILLMAdapter
 from app.infra.logging import setup_logging
 import app.infra.persistence.db as _db
@@ -74,6 +74,7 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIdAndTimingMiddleware)
     app.include_router(router, tags=["api"])
     app.include_router(user_router, tags=["conversations"])
+    app.include_router(admin_user_router, tags=["admin"])
     return app
 
 

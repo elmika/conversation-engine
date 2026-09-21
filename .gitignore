@@ -14,3 +14,9 @@ __pycache__/
 .pytest_cache/
 dist/
 build/
+
+# AI development files
+docs/deploy-plan.md
+docs/pilot-readiness-build-plan.md
+docs/socratic-tutor-plan.md
+docs/diagrams/

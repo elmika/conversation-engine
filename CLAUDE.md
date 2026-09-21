@@ -16,6 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Section-file invariant:** Prompts may embed `{{course}}`, `{{user}}`, `{{progress}}` tags, which the resolver expands from `sections/<tag>/<user_id>.md`. A **missing** section file raises (surfaced as HTTP 400 / a `done` error event) — this strictness is deliberate, to catch misconfigured prompts. Therefore: any prompt that adds a section tag must guarantee that file exists for **all** learner states, especially the first session (a new learner has no `progress` file until a session ends). Setup completion seeds all three files for exactly this reason — see `app/learning/setup_completion.py`.
 
+`sections/` itself is gitignored and only ever exists on the persistent volume, populated at runtime — never put a static, shared prompt template there. A file that's the same for every learner (a system prompt, even one used only for a background/end-of-session action) belongs in `prompts/`, seeded into the DB like every other prompt. Learned the hard way (2026-09-18): `sections/progress/progress-wrap-up.md` held the wrap-up instructions for post-session progress synthesis, but a fresh Fly volume never had it — `synthesise_progress()`'s best-effort error handling silently swallowed the resulting `FileNotFoundError`, and every learner's progress stayed frozen on its seeded placeholder forever. Fixed by moving it to `prompts/progress-wrap-up.md`.
+
 ## Commands
 
 > **No local Python or Node.js required** — everything runs in Docker.
@@ -97,6 +99,7 @@ A change to a user-facing flow is **not "done" and never "ready to merge" until 
 - `docs/qa-test-suite.md` is the browser-level counterpart to `make smoke` — numbered UI scripts (exact action → exact expected result) for course setup and the first learning session, runnable identically by a human or an AI agent driving Chrome. Use it as the concrete checklist when this gate calls for exercising the actual UI, and extend it whenever a new user-facing flow needs the same treatment.
 - In your summary, state explicitly **what was exercised and what was not** (e.g. "API + BFF verified via curl; browser UI not clicked through").
 - Do not describe a branch as "ready to merge." Report status and leave the merge decision to the user.
+- `fly deploy` builds from the working tree, not git — deploying an uncommitted fix leaves prod running code that git history shows nothing about. Commit before (or immediately after) deploying, so the deployed state is always reproducible from `git log`.
 
 ## Feature List Gate
 
@@ -245,6 +248,8 @@ L3 concept would follow this exact shape: a new port in `ports.py`, a concrete a
 **History trimming:** Before each LLM call on existing conversations, `domain/history.py::trim_history()` caps history by `max_history_turns` and `max_history_tokens` (configured in `Settings`). This prevents context overflow and cost explosion.
 
 **Sync SQLAlchemy with async HTTP:** The HTTP layer is async, but SQLAlchemy uses a sync engine. DB work runs in worker threads via `asyncio.to_thread()` in routes to avoid blocking the event loop.
+
+**Never nest `uow_factory()`:** a `LearningFlowPort` method (or anything else that might run inside an already-open `ConversationService` transaction) must accept and reuse the caller's `uow` rather than opening a fresh one via `self._uow_factory()`. A second `BEGIN` on the same connection can deadlock — confirmed against the test suite's shared `StaticPool` connection (2026-09-17), where it silently hung the entire pytest run rather than failing fast.
 
 **Synchronous endpoints by default:** Backend endpoints must be synchronous by default — they complete their work and return the final result (200/201/204) before closing the connection. Async patterns (`BackgroundTasks`, task queues, `202 Accepted` with deferred processing) are only acceptable when there is an explicit use case that requires it (e.g. SSE streaming for LLM responses). Never introduce an async workflow speculatively or for performance reasons alone — the added complexity must be justified by a concrete requirement.
 

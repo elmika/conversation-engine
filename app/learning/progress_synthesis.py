@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from app.application.ports import LLMPort, SlotResolver
+from app.application.ports import LLMPort, PromptRepo, SlotResolver
 from app.domain.prompt_template import resolve_file_sections
 
 logger = logging.getLogger(__name__)
@@ -24,22 +24,28 @@ def synthesise_progress(
     messages: list[dict],
     slot_resolver: SlotResolver,
     llm: LLMPort,
+    prompt_repo: PromptRepo,
     sections_dir: str,
     wrap_up_model: str,
     user_id: str = "default",
 ) -> None:
     """Call the LLM to produce an updated progress snapshot and write it to disk.
 
-    Reads the wrap-up prompt from sections/progress/progress-wrap-up.md, renders
-    slot tags via the SlotResolver, calls the LLM, and atomically replaces
+    Reads the wrap-up prompt from the "progress-wrap-up" prompt slug (seeded from
+    prompts/progress-wrap-up.md like every other prompt — NOT a per-user section
+    file, since it's a static system prompt, not learner data), renders slot tags
+    via the SlotResolver, calls the LLM, and atomically replaces
     sections/progress/<user_id>.md (archiving the previous version as
     <user_id>-<timestamp>.md in the same directory).
 
     Errors are logged but not re-raised — a failing synthesis never blocks the learner.
     """
     try:
-        wrap_up_path = Path(sections_dir) / "progress" / "progress-wrap-up.md"
-        raw_instructions = wrap_up_path.read_text(encoding="utf-8")
+        record = prompt_repo.get_prompt("progress-wrap-up")
+        if record is None:
+            logger.error("progress-wrap-up prompt not found — progress file not updated")
+            return
+        raw_instructions = record["system_prompt"]
         instructions = resolve_file_sections(raw_instructions, slot_resolver.resolve)
 
         result = llm.complete(instructions, messages, model=wrap_up_model)

@@ -13,6 +13,9 @@ two paid models on the same expensive-tier turn). NOT part of the pytest suite.
 Prerequisites:
   - stack running:           make up
   - real OPENAI_API_KEY in:  .env
+  - real ADMIN_TOKEN in:     .env (this script drives prompt/model overrides through
+    the admin-only /admin/u/{user_id}/... routes — see docs/model-decisions.md /
+    ConversationRequest's docstring for why the override isn't on the learner routes)
   - candidate models registered in app/domain/model_registry.py (validate_model_slug
     rejects anything not listed there)
 
@@ -28,11 +31,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
+
+
+def _load_admin_token() -> str:
+    """Read ADMIN_TOKEN from the environment, falling back to .env (no python-dotenv
+    dependency — this script deliberately stays stdlib-only, see CLAUDE.md)."""
+    if os.environ.get("ADMIN_TOKEN"):
+        return os.environ["ADMIN_TOKEN"]
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.startswith("ADMIN_TOKEN="):
+                return line.split("=", 1)[1].strip()
+    return ""
+
+
+ADMIN_TOKEN = _load_admin_token()
 
 DEFAULT_MODELS = ["gpt-5.4-pro", "gpt-5.6-luna"]
 
@@ -132,6 +153,8 @@ def _req(method: str, url: str, body: dict | None = None, timeout: int = 180) ->
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
         req.add_header("Content-Type", "application/json")
+    if ADMIN_TOKEN:
+        req.add_header("Authorization", f"Bearer {ADMIN_TOKEN}")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode()
 
@@ -166,18 +189,21 @@ def run_profile(base: str, profile: dict, model: str) -> dict:
     cid: str | None = None
     try:
         init = _post_sse(
-            f"{base}/u/{uid}/conversations/init-stream",
+            f"{base}/admin/u/{uid}/conversations/init-stream",
             {"prompt_slug": "user-profile-collection"},
         )
         cid = init.get("conversation_id")
 
         answers = profile["answers"]
         for answer in answers[:-1]:
-            _post_sse(f"{base}/u/{uid}/conversations/{cid}/stream", {"messages": [{"role": "user", "content": answer}]})
+            _post_sse(
+                f"{base}/admin/u/{uid}/conversations/{cid}/stream",
+                {"messages": [{"role": "user", "content": answer}]},
+            )
 
         t0 = time.monotonic()
         outline_turn = _post_sse(
-            f"{base}/u/{uid}/conversations/{cid}/stream",
+            f"{base}/admin/u/{uid}/conversations/{cid}/stream",
             {"messages": [{"role": "user", "content": answers[-1]}], "model_slug": model},
         )
         wall_s = time.monotonic() - t0
@@ -208,6 +234,10 @@ def main() -> int:
         "--profiles", default=None, help="comma-separated profile labels to run (default: all)"
     )
     args = ap.parse_args()
+    if not ADMIN_TOKEN:
+        print("No ADMIN_TOKEN found (checked env and .env). This script drives the admin-only "
+              "/admin/u/{user_id}/... routes and will fail with 401 without it.")
+        return 2
     models = [m.strip() for m in args.models.split(",") if m.strip()]
     if args.profiles:
         wanted = {p.strip() for p in args.profiles.split(",") if p.strip()}

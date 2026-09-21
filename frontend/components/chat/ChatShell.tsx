@@ -8,8 +8,6 @@ import { Separator } from "@/components/ui/separator";
 import { CornerDownLeft, Download, Loader2, LogOut, PanelLeft, Plus, Sparkles, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
-import { ModelSelector } from "./ModelSelector";
-import { PromptSelector } from "./PromptSelector";
 import { SessionSummaryCard } from "./SessionSummaryCard";
 import { ConversationList } from "@/components/history/ConversationList";
 import { useChatStore } from "@/hooks/useChatStore";
@@ -32,7 +30,7 @@ interface ChatShellProps {
 
 export function ChatShell({ userId, conversationId }: ChatShellProps) {
   const router = useRouter();
-  const { isSidebarOpen, toggleSidebar, selectedPromptSlug, selectedModelSlug, enterToSend, toggleEnterToSend } = useChatStore();
+  const { isSidebarOpen, toggleSidebar, enterToSend, toggleEnterToSend } = useChatStore();
   const { status, partialText, timings, model, promptSlug: streamedPromptSlug, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat(userId);
 
@@ -94,11 +92,11 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   // regular course list.
   const SETUP_PROMPT_SLUG = "user-profile-collection";
   const COURSE_INIT_PROMPT_SLUG = "course-session-init";
-  const effectivePromptSlug = !hasProfile
-    ? SETUP_PROMPT_SLUG
-    : selectedPromptSlug === "default"
-      ? COURSE_INIT_PROMPT_SLUG
-      : selectedPromptSlug;
+  // No learner-facing prompt choice anymore (see ConversationRequest's docstring
+  // backend-side) — which flow opens is purely a function of profile state. Still
+  // computed client-side for the auto-open effect below, but the backend derives
+  // this itself server-side on init-stream regardless of what's sent here.
+  const effectivePromptSlug = !hasProfile ? SETUP_PROMPT_SLUG : COURSE_INIT_PROMPT_SLUG;
 
   // When sendMessage creates a new conversation (no initSession path — e.g. new users
   // without a profile), update the URL so the conversation is addressable and survives
@@ -135,7 +133,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   // Auto-open the AI's first message on a fresh chat — per the design principle
   // "AI always opens, no blank input ever". Covers both audiences:
   //   - new users  → the setup flow (effectivePromptSlug = SETUP_PROMPT_SLUG)
-  //   - profiled users → their selected course (effectivePromptSlug = selectedPromptSlug)
+  //   - profiled users → their course session (effectivePromptSlug = COURSE_INIT_PROMPT_SLUG)
   // Only fires when:
   //   - userStatus has resolved (so effectivePromptSlug points at the right prompt)
   //   - there's no URL conversationId (not resuming an existing conversation)
@@ -145,7 +143,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
   useEffect(() => {
     if (!conversationId && !autoFiredRef.current && status === "idle" && userStatus !== undefined) {
       autoFiredRef.current = true;
-      initSession(effectivePromptSlug, selectedModelSlug, (activeId) => {
+      initSession(effectivePromptSlug, null, (activeId) => {
         router.push(`/u/${userId}/chat/${activeId}`);
       });
     }
@@ -185,7 +183,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
       reset();
       setLocalMessages([]);
       setSummaryVisible(true);
-      initSession(COURSE_INIT_PROMPT_SLUG, selectedModelSlug, (activeId) => {
+      initSession(COURSE_INIT_PROMPT_SLUG, null, (activeId) => {
         router.push(`/u/${userId}/chat/${activeId}`);
       });
     },
@@ -202,7 +200,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     // The course/prompt is whichever is currently selected in the selector — locked in
     // for the life of this conversation.
     if (hasProfile) {
-      initSession(effectivePromptSlug, selectedModelSlug, (activeId) => {
+      initSession(effectivePromptSlug, null, (activeId) => {
         router.push(`/u/${userId}/chat/${activeId}`);
       });
     } else {
@@ -248,7 +246,7 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     ]);
 
     sendMessage(
-      { messages: [{ role: "user", content: text }], prompt_slug: effectivePromptSlug, model_slug: selectedModelSlug },
+      { messages: [{ role: "user", content: text }] },
       activeConversationId
     );
   };
@@ -316,8 +314,6 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
           >
             <SquarePen className="h-4 w-4" />
           </Button>
-          <PromptSelector lockedSlug={lockedPromptSlug} />
-          <ModelSelector />
           <div className="ml-auto flex items-center gap-2">
             {activeConversationId && !isStreaming && !isEnded && isSetupConversation && setupOutlineReady && (
               <Button

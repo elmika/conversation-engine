@@ -249,6 +249,111 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ## Not yet triaged
 
+- **GDPR: no consent gate before a learner's personal data is collected (surfaced
+  2026-09-17, priority: high — the 2026-09-18 ICW demo QR sends real strangers straight in).**
+  Current flow (`frontend/app/page.tsx` → `getOrCreateUserId()`) silently mints a UUID and
+  redirects straight into chat, no screen of any kind. From the first framing question on, the
+  platform collects the learner's **name, role/industry, stated goal**, and the **full
+  conversation transcript** of every session, later synthesized into progress notes. All of it
+  is admin-visible per learner — `AdminConversationsTable` shows name + full message content,
+  one row per conversation. Today none of this is disclosed anywhere before it happens.
+
+  **Decided with Mika (2026-09-17): minimal consent gate before tomorrow's demo**, not a full
+  GDPR pass (that's a separate, later item — data export, deletion-on-request flow, formal
+  retention policy, DPA language for OpenAI as processor).
+
+  Minimal scope for tomorrow:
+  1. **A consent screen inserted before the UUID→chat redirect** — short disclosure + a
+     checkbox, "Continue" disabled until checked. Suggested copy (Mika should review/edit
+     before it ships, this is a draft, not final legal text):
+
+     > Before we start: SkillForge is a live pilot, not a finished product. To personalise
+     > your course we'll ask your name, role, and what you want to learn — and everything you
+     > write in a session is saved so the tutor can pick up where you left off next time. As
+     > the person running this pilot, I can see your name and messages to build and improve
+     > the product; nobody else does. Your messages are sent to OpenAI to generate the
+     > tutor's replies, same as any AI chat tool. Nothing is sold or shared beyond that. This
+     > pilot is provided as-is, with no guarantee of availability, and I may end it at any time
+     > without needing to justify why. It's expected to run for around two weeks — enough time
+     > to complete one course. After the pilot, I may keep an anonymized version of session
+     > content to improve the product. You can ask for your data to be deleted at any time —
+     > mikael.baron@squaredpoint.com.
+     >
+     > ☐ I understand and agree to this.
+
+     Notes:
+     - The "around two weeks" line doubles as the retention-period disclosure flagged as
+       missing below — a concrete criterion (pilot duration / one course's length) rather than
+       an open-ended "we keep it forever."
+     - **"Anonymized" is disclosed honestly here, but its real strength is limited — say so
+       plainly, don't let the word imply more protection than it delivers.** For a small
+       in-person pilot (ICW attendees Mika knows personally), stripping the name field doesn't
+       make a transcript unlinkable: 1-2 lines about someone's actual job/role is often enough
+       to re-identify them anyway, on top of Mika knowing who was in the room. This is
+       pseudonymization at best, not true anonymization — GDPR treats those very differently
+       (pseudonymized data is still personal data). Considered and explicitly rejected: asking
+       "what should I call you?" (nickname) instead of "what's your name?" — doesn't reduce
+       what's collected (most people give their real name anyway) and doesn't change the
+       re-identification risk above; dropped as a non-fix, not worth prompt-wording changes.
+     - Still doesn't cover the full rights list (access, portability, objection, withdrawal,
+       complaint to a supervisory authority) — those remain deferred to the full GDPR pass.
+
+  2. **Record consent server-side, timestamped, tied to `user_id`** — not just a `localStorage`
+     flag. A `localStorage`-only record can't be produced as evidence that consent was actually
+     given if ever asked. Exact schema (new table vs. a column) is an implementation call for
+     whoever builds this — just needs to be queryable later ("did user X consent, and when").
+  3. **Ideal but not a blocker for tomorrow:** have the backend reject conversation creation for
+     a `user_id` with no recorded consent, not just hide the UI. Defense in depth against
+     someone hitting the API directly, bypassing the frontend gate. If time-constrained before
+     the demo, ship the frontend gate + server-side record first; add backend enforcement after
+     if there isn't time tonight.
+
+  **Not in this pass** (full GDPR item, later): data export/download for a learner, a real
+  deletion-on-request flow (today "ask for deletion" has no implementation behind it — the
+  draft copy above promises something that doesn't exist yet), retention period decision,
+  whether OpenAI's data-processing terms need a formal DPA reference in the copy. Data
+  residency note for whenever the full pass happens: the Fly backend runs in `cdg` (Paris) —
+  worth confirming as an EU-residency fact in the eventual real privacy policy, not asserting
+  it without re-checking `fly status -a learning-platform` at that time.
+
+- **✅ Shipped 2026-09-17 — Learner-facing prompt/model override removed (security gap).**
+  Mika noticed the chat header still showed prompt and model selector dropdowns and asked
+  to plan what to do with them — turned out to be a real gap, not just clutter: the
+  underlying request fields (`prompt_slug`/`model_slug` on `ConversationRequest`,
+  `InitSessionRequest`, `ConversationRewindRequest`) had no server-side authorization check,
+  so any caller (not just the UI) could force an arbitrary prompt or an expensive model tier
+  on every turn. Fixed by removing these fields from the learner-facing schemas entirely
+  (not just ignoring them) and deriving the setup-vs-course-session choice server-side from
+  profile state on `init-stream`. Internal test/comparison tooling that legitimately needs to
+  override either (`scripts/compare_outline_models.py`, `scripts/smoke_lesson_lifecycle.py`,
+  several pytest integration tests) now goes through a mirrored `/admin/u/{userId}/...` route
+  set gated by the existing admin bearer token. Frontend: `ModelSelector`/`PromptSelector`
+  components and their Zustand store fields removed from the chat header entirely — matches
+  the "code owns deterministic state, never client input" principle the lesson/setup phase
+  orchestrators already follow, and removes the dead UI clutter Mika flagged.
+  Verified: full backend suite (280, incl. 4 new regression tests specifically covering the
+  gap and its fix), frontend suite (43), `make smoke` (11/11), live browser check (no
+  selectors, zero console errors, normal turns unaffected), and a live run of both scripts
+  against the new admin routes. `docs/openapi.yml` and `docs/postman_collection.json` updated
+  (new `AdminConversationRequest`/`AdminInitSessionRequest` schemas + 4 new admin paths).
+  Not done in this pass: `GET /prompts`/`GET /models` are still unauthenticated (pre-existing,
+  separately-tracked gap below) — nothing in the learner UI calls them anymore, but the admin
+  panel's own prompt/model management pages still do, so gating them needs those pages' fetch
+  calls updated to attach the admin token first; deferred to avoid breaking the admin panel
+  in this same pass.
+
+- **Naming: usage-ceiling "session" scope should be "conversation" (surfaced 2026-09-17).**
+  Confirmed while discussing spend-cap margin with Mika: the `session` cap scope
+  (`app/domain/usage_ceiling.py`, `Settings.session_spend_cap_usd`, `get_session_spend_usd`,
+  `session_cap_usd`/`session_spend_usd` params in `services.py`/`routes.py`) is keyed on
+  `conversation_id`, and each class sitting (and setup) gets its own fresh conversation — so the
+  cap already behaves as "per class," matching what Mika meant by "per session." The code name is
+  the confusing part: "session" reads as ambiguous against a login/HTTP session to anyone new to
+  the codebase. Mika asked to rename the scope/identifiers to `conversation` (`CapScope` literal,
+  `Settings.conversation_spend_cap_usd`, `get_conversation_spend_usd`, etc.) for semantic clarity —
+  pure rename, no behavior change. **Leave learner-facing copy in `CAP_MESSAGES` saying "session"**
+  — that's correct from the learner's point of view (they call a class a session); only the
+  internal code identifiers are the confusion risk.
 - **Model-tier review starting 2026-09-17** — full current configuration, rationale per task,
   and the test-by-test history (what was compared, why, and the decision) now live in
   `docs/model-decisions.md`, not here. Summary: `app/domain/pricing.py` and
@@ -307,12 +412,17 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
   saying "let's keep going" resumes core instead of getting stuck in a repeating wrap-up), see
   `app/learning/closure_continuation.py`.
 - **`GET /prompts` (list) stays unauthenticated** — accepted residual gap from Piece C's admin
-  auth (2026-09-16). `frontend/components/chat/PromptSelector.tsx` (learner-facing persona
-  dropdown) depends on it, so gating it behind `require_admin` would break the ordinary chat
-  flow. Net effect: prompt `system_prompt` text is readable without auth by anyone who can reach
-  the API. Acceptable for the pilot's threat model (no sensitive data in prompt text today) but
-  worth a real fix (e.g. a separate unauthenticated summary endpoint that omits `system_prompt`)
-  before this becomes a general-purpose multi-tenant product.
+  auth (2026-09-16). Originally blocked on `frontend/components/chat/PromptSelector.tsx` (the
+  learner-facing persona dropdown) depending on it — **that dropdown is gone as of 2026-09-17**
+  (see the prompt/model override fix above), so the only remaining caller is the admin panel's
+  own prompt-management pages (`app/admin/page.tsx`, `PromptDialog.tsx`'s model dropdown via
+  `GET /models`). Gating both behind `require_admin` is now realistic — it just needs those
+  admin-panel fetch calls updated to attach the admin token first (they currently don't, since
+  the endpoints are open). Not done in the override-removal pass to keep that change scoped;
+  net effect meanwhile is unchanged: prompt `system_prompt` text is readable without auth by
+  anyone who can reach the API. Acceptable for the pilot's threat model (no sensitive data in
+  prompt text today) but worth closing before this becomes a general-purpose multi-tenant
+  product.
 - **NavBar's "Admin" tab visibility is presence-only, not live-revalidated** — accepted residual
   gap from Piece C2 (2026-09-16). It checks `getAdminToken()` presence in `sessionStorage`, not
   a real backend check, for performance/simplicity (a live check would mean an extra request on
@@ -335,11 +445,12 @@ strategy implies it should:
   path** (11/11 against "the objective path" per §4) — the *other* closure trigger, session
   time-over, is untested by the automated harness and only ever hit incidentally during manual
   Chrome runs. A time-over closure regression would not be caught by `make smoke`.
-- **No harness mechanism to catch a recurrence of the open `course-session-core`/
-  `course-session-closure` quality regressions** (both flagged above, still unresolved). Once
-  either gets a tuning/review pass, neither B(i) nor B(ii) as currently scoped is designed to
-  assert on interaction quality specifically — `make smoke` asserts on *shape*, not content
-  quality (per §4), so a fixed regression could silently reappear with nothing catching it.
+- **No automated harness catches a recurrence of the `course-session-core`/`course-session-closure`
+  quality regression fixed 2026-09-17** (see the shipped entries above). Neither B(i) nor B(ii) as
+  currently scoped is designed to assert on interaction quality specifically — `make smoke` asserts
+  on *shape*, not content quality (per §4). `docs/tutor-behavior-checklist.md` is a manual spec to
+  check future prompt/model changes against, not an automated regression gate — a fixed regression
+  could still silently reappear with nothing catching it automatically.
 
 ### Infra & ops backlog (rescued from `RISKS-AND-IMPROVEMENTS.md`, 2026-08-07)
 

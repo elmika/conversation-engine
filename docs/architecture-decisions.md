@@ -159,4 +159,24 @@ section for current usage.
 
 ---
 
+## 6. Admin cross-user endpoints — routing convention
+
+**Decision:** admin-only endpoints that read/aggregate across all users (e.g.
+`GET /admin/usage/today`, `GET /admin/conversations`) live under `/admin/*` on the root
+router, gated by `require_admin` — never as an authenticated variant of a `/u/{userId}/...`
+route.
+
+**Why:** `/u/{userId}/...` is deliberately unauthenticated and single-owner-scoped (§2) —
+learners need zero friction. Bolting an admin-only cross-user mode onto that same router
+(e.g. a query param that flips auth on) would hide an easily-forgotten auth branch inside an
+otherwise-open router, and "all users" has no natural single owner for that URL shape anyway.
+`/admin/*` keeps every admin-gated route in one scannable namespace.
+
+**Applies to:** any future admin-only endpoint that isn't scoped to one learner.
+
+*Added: 2026-09-16, established by `GET /admin/usage/today` (Piece B) and confirmed with
+`GET /admin/conversations*` (Piece C2).*
+
+---
+
 *Created: 2026-04-21*
