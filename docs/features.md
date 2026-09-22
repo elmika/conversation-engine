@@ -146,7 +146,7 @@ The pencil icon in the history table allows renaming directly without navigating
 The trash icon in the history table opens a confirmation modal and deletes the conversation.
 
 ### 4.5 Mobile history layout
-Below the `md` breakpoint (768px), the five-column table (§4.1) doesn't fit a phone's width without clipping. Instead, `/u/{userId}/history` renders a stacked card list — the same compact row component used by the sidebar's conversation list (§5.1) — showing name, an "Active" badge for unfinished sessions, and inline rename/delete, with pagination (§4.2) unchanged. The "First message" preview column is dropped in this view for space.
+Below the `md` breakpoint (768px), the five-column table (§4.1) doesn't fit a phone's width without clipping. Instead, `/u/{userId}/history` renders a stacked card list — the same compact row component used by the sidebar's conversation list (§5.1) — showing name, an "Active" badge for unfinished sessions, and inline rename/delete, with pagination (§4.2) unchanged. The "First message" preview column is dropped in this view for space. On this card list, the rename/delete icon buttons use a 36×36px touch target (matching the app's standard icon-button size) rather than the sidebar's compact hover-revealed icons, since this is a touch-first surface with no hover state.
 
 ---
 
