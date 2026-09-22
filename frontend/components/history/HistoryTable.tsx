@@ -15,6 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Pagination } from "@/components/Pagination";
+import { ConversationListItem } from "@/components/history/ConversationListItem";
 import { useConversationList } from "@/hooks/useConversationList";
 import { useRenameConversation } from "@/hooks/useRenameConversation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
@@ -192,7 +193,11 @@ export function HistoryTable({ userId }: HistoryTableProps) {
 
   return (
     <div>
-      <div className="rounded-lg border overflow-hidden">
+      {/* Dense table — comfortably fits Name/First message/Created/Last activity
+          columns on tablet+ widths. Below md, a narrow screen can't fit all five
+          columns without clipping, so a stacked card list (mirroring the sidebar's
+          ConversationListItem) takes over instead. */}
+      <div className="hidden rounded-lg border overflow-hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -209,6 +214,12 @@ export function HistoryTable({ userId }: HistoryTableProps) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="flex flex-col gap-1 md:hidden">
+        {conversations.map((c) => (
+          <ConversationListItem key={c.id} userId={userId} conversation={c} showDelete />
+        ))}
       </div>
 
       <div className="flex items-center justify-between pt-4 text-sm text-muted-foreground">

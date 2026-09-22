@@ -145,6 +145,9 @@ The pencil icon in the history table allows renaming directly without navigating
 ### 4.4 Delete from history
 The trash icon in the history table opens a confirmation modal and deletes the conversation.
 
+### 4.5 Mobile history layout
+Below the `md` breakpoint (768px), the five-column table (§4.1) doesn't fit a phone's width without clipping. Instead, `/u/{userId}/history` renders a stacked card list — the same compact row component used by the sidebar's conversation list (§5.1) — showing name, an "Active" badge for unfinished sessions, and inline rename/delete, with pagination (§4.2) unchanged. The "First message" preview column is dropped in this view for space.
+
 ---
 
 ## 5. Sidebar
