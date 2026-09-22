@@ -275,8 +275,9 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     <div className="flex h-full overflow-hidden bg-background">
       {/* Sidebar */}
       <aside
+        aria-hidden={!isSidebarOpen}
         className={cn(
-          "flex flex-col border-r bg-muted/30 transition-all duration-200",
+          "hidden flex-col border-r bg-muted/30 transition-all duration-200 md:flex",
           isSidebarOpen ? "w-64" : "w-0 overflow-hidden"
         )}
       >
@@ -302,7 +303,15 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex items-center gap-2 border-b px-4 py-2">
-          <Button variant="ghost" size="icon" onClick={toggleSidebar} title="Toggle sidebar">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            title="Toggle sidebar"
+            aria-label="Toggle sidebar"
+            aria-expanded={isSidebarOpen}
+            className="hidden md:inline-flex"
+          >
             <PanelLeft className="h-4 w-4" />
           </Button>
           <Button

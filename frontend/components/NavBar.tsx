@@ -8,7 +8,9 @@ import { cn } from "@/lib/utils";
 import { getOrCreateUserId } from "@/lib/user-id";
 import { getAdminToken, ADMIN_TOKEN_EVENT } from "@/lib/adminToken";
 
-export function NavBar() {
+// Shared by the top NavBar (desktop) and BottomNav (mobile) so both surfaces
+// stay in sync on labels/hrefs/icons/active-state logic.
+export function useNavTabs() {
   const pathname = usePathname();
 
   // Prefer the userId already in the URL (instant, no flash). Only bare/legacy
@@ -37,32 +39,41 @@ export function NavBar() {
     return () => window.removeEventListener(ADMIN_TOKEN_EVENT, onTokenChange);
   }, []);
 
-  const TABS = [
+  const tabs = [
     { label: "Chat", href: userId ? `/u/${userId}/chat` : "/", icon: MessageSquare },
     { label: "History", href: userId ? `/u/${userId}/history` : "/", icon: History },
     ...(hasAdminToken ? [{ label: "Admin", href: "/admin", icon: Settings }] : []),
   ];
 
+  return {
+    tabs: tabs.map((tab) => ({
+      ...tab,
+      isActive: pathname === tab.href || pathname.startsWith(tab.href + "/"),
+    })),
+  };
+}
+
+export function NavBar() {
+  const { tabs } = useNavTabs();
+
   return (
-    <nav className="flex border-b bg-background">
-      {TABS.map(({ label, href, icon: Icon }) => {
-        const isActive = pathname === href || pathname.startsWith(href + "/");
-        return (
-          <Link
-            key={label}
-            href={href}
-            className={cn(
-              "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors hover:text-foreground",
-              isActive
-                ? "border-b-2 border-primary text-foreground"
-                : "text-muted-foreground"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </Link>
-        );
-      })}
+    <nav className="hidden border-b bg-background md:flex">
+      {tabs.map(({ label, href, icon: Icon, isActive }) => (
+        <Link
+          key={label}
+          href={href}
+          aria-current={isActive ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors hover:text-foreground",
+            isActive
+              ? "border-b-2 border-primary text-foreground"
+              : "text-muted-foreground"
+          )}
+        >
+          <Icon className="h-4 w-4" />
+          {label}
+        </Link>
+      ))}
     </nav>
   );
 }

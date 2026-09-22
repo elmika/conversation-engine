@@ -150,13 +150,16 @@ The trash icon in the history table opens a confirmation modal and deletes the c
 ## 5. Sidebar
 
 ### 5.1 Conversation list
-A collapsible sidebar lists recent conversations, ordered by most recently created. Clicking a conversation navigates to it.
+A collapsible sidebar lists recent conversations, ordered by most recently created. Clicking a conversation navigates to it. Visible on tablet/desktop widths (`md` breakpoint, 768px) and above only — see §5.4.
 
 ### 5.2 Toggle sidebar
-A **panel icon** in the top bar shows or hides the sidebar.
+A **panel icon** in the top bar shows or hides the sidebar. Desktop/tablet only (see §5.4); the icon is hidden on mobile since there is nothing to toggle there.
 
 ### 5.3 Active conversation highlight
 The currently open conversation is highlighted in the sidebar.
+
+### 5.4 Mobile navigation
+Below the `md` breakpoint (768px), the inline sidebar is replaced by a fixed bottom tab bar (Chat / History / Admin, mirroring the top nav's tabs) so a narrow phone screen isn't dominated by a 256px-wide panel. The **History** tab routes to the existing `/u/{userId}/history` table (§4.1) as the mobile equivalent of the sidebar's conversation list — the sidebar's own "New conversation" button is not needed there, since the top bar's pencil-icon "New conversation" button (§3.1) already provides that entry point on both mobile and desktop. Each bottom-nav item marks itself `aria-current="page"` when active.
 
 ---
 
