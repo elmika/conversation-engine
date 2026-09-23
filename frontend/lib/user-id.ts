@@ -38,3 +38,14 @@ export function getStoredUserId(): string | null {
 export function setCurrentUserId(userId: string): void {
   localStorage.setItem(USER_ID_KEY, userId);
 }
+
+/**
+ * Force a brand-new learner identity, discarding whatever was stored before —
+ * unlike getOrCreateUserId, never reuses an existing id. Used by /new to
+ * start over during testing/demos without clearing browser storage by hand.
+ */
+export function mintNewUserId(): string {
+  const id = crypto.randomUUID();
+  localStorage.setItem(USER_ID_KEY, id);
+  return id;
+}
