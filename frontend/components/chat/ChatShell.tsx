@@ -31,8 +31,19 @@ interface ChatShellProps {
 export function ChatShell({ userId, conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, enterToSend, toggleEnterToSend } = useChatStore();
-  const { status, partialText, promptSlug: streamedPromptSlug, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
+  const { status, partialText, promptSlug: streamedPromptSlug, errorMessage, errorStatus, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat(userId);
+
+  // A learner whose browser tab/URL predates the consent gate (or who's
+  // deep-linked straight to /chat) never passes through "/" to see the
+  // consent screen — require_consent's 403 is their first and only signal.
+  // Bounce them to "/", which re-checks consent status and shows the gate;
+  // completing it redirects straight back into chat.
+  useEffect(() => {
+    if (status === "error" && errorStatus === 403) {
+      router.push("/");
+    }
+  }, [status, errorStatus, router]);
 
   // After the first turn the hook captures the server-assigned ID; use it for
   // follow-up turns when there is no URL-based conversationId.

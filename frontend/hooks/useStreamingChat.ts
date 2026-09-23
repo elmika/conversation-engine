@@ -28,6 +28,12 @@ export interface StreamingChatState {
   promptSlug: string | null;
   /** Set when status === "error". */
   errorMessage: string | null;
+  /** HTTP status of the error, when it came from an ApiError (e.g. 403 from
+   * require_consent, raised before the route body runs — never surfaced as
+   * an SSE done-error event, only as a thrown ApiError). Lets callers branch
+   * on specific status codes (see ChatShell's 403 → consent-gate redirect)
+   * without string-matching errorMessage. */
+  errorStatus: number | null;
 }
 
 const INITIAL_STATE: StreamingChatState = {
@@ -36,6 +42,7 @@ const INITIAL_STATE: StreamingChatState = {
   conversationId: null,
   promptSlug: null,
   errorMessage: null,
+  errorStatus: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -60,6 +67,7 @@ export function useStreamingChat(userId: string) {
         conversationId: existingConversationId ?? null,
         promptSlug: null,
         errorMessage: null,
+        errorStatus: null,
       });
 
       try {
@@ -96,6 +104,7 @@ export function useStreamingChat(userId: string) {
                 conversationId: finalConversationId,
                 promptSlug: finalPromptSlug,
                 errorMessage: String(event.data.error.message ?? "Stream error"),
+                errorStatus: event.data.error.status_code ?? null,
               });
               return;
             }
@@ -113,6 +122,7 @@ export function useStreamingChat(userId: string) {
           conversationId: finalConversationId,
           promptSlug: finalPromptSlug,
           errorMessage: null,
+          errorStatus: null,
         });
 
         // Invalidate so history sidebar + message list reflect the new turn
@@ -132,7 +142,8 @@ export function useStreamingChat(userId: string) {
         }
         const message =
           err instanceof Error ? err.message : "An unexpected error occurred.";
-        setState((s) => ({ ...s, status: "error", errorMessage: message }));
+        const status = err instanceof ApiError ? err.status : null;
+        setState((s) => ({ ...s, status: "error", errorMessage: message, errorStatus: status }));
       }
     },
     [queryClient, userId]
@@ -155,6 +166,7 @@ export function useStreamingChat(userId: string) {
         conversationId,
         promptSlug: null,
         errorMessage: null,
+        errorStatus: null,
       });
 
       try {
@@ -188,6 +200,7 @@ export function useStreamingChat(userId: string) {
                 conversationId,
                 promptSlug: finalPromptSlug,
                 errorMessage: String(event.data.error.message ?? "Stream error"),
+                errorStatus: event.data.error.status_code ?? null,
               });
               return;
             }
@@ -205,6 +218,7 @@ export function useStreamingChat(userId: string) {
           conversationId,
           promptSlug: finalPromptSlug,
           errorMessage: null,
+          errorStatus: null,
         });
 
         queryClient.invalidateQueries({ queryKey: ["messages", userId, conversationId] });
@@ -215,7 +229,8 @@ export function useStreamingChat(userId: string) {
         }
         const message =
           err instanceof Error ? err.message : "An unexpected error occurred.";
-        setState((s) => ({ ...s, status: "error", errorMessage: message }));
+        const status = err instanceof ApiError ? err.status : null;
+        setState((s) => ({ ...s, status: "error", errorMessage: message, errorStatus: status }));
       }
     },
     [queryClient, userId]
@@ -237,6 +252,7 @@ export function useStreamingChat(userId: string) {
         conversationId: null,
         promptSlug: null,
         errorMessage: null,
+        errorStatus: null,
       });
 
       try {
@@ -283,6 +299,7 @@ export function useStreamingChat(userId: string) {
                 conversationId: finalConversationId,
                 promptSlug: finalPromptSlug,
                 errorMessage: String(event.data.error.message ?? "Failed to open session"),
+                errorStatus: event.data.error.status_code ?? null,
               });
               return;
             }
@@ -300,6 +317,7 @@ export function useStreamingChat(userId: string) {
           conversationId: finalConversationId,
           promptSlug: finalPromptSlug,
           errorMessage: null,
+          errorStatus: null,
         });
 
         if (finalConversationId) {
@@ -321,7 +339,8 @@ export function useStreamingChat(userId: string) {
           }
         }
         const message = err instanceof Error ? err.message : "An unexpected error occurred.";
-        setState((s) => ({ ...s, status: "error", errorMessage: message }));
+        const status = err instanceof ApiError ? err.status : null;
+        setState((s) => ({ ...s, status: "error", errorMessage: message, errorStatus: status }));
       }
     },
     [queryClient, userId]
