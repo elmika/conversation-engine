@@ -404,8 +404,11 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
           onRewind={activeConversationId && !isStreaming && !isFetching ? handleRewind : undefined}
         />
 
-        {/* Error banner */}
-        {status === "error" && errorMessage && (
+        {/* Error banner — suppressed for 403 (consent required): that state is
+            transient, immediately redirecting to "/" (see the effect above),
+            so flashing the raw error first would be a jarring blip rather
+            than a clean handoff to the consent screen. */}
+        {status === "error" && errorMessage && errorStatus !== 403 && (
           <div className="mx-4 mb-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {errorMessage}
           </div>
