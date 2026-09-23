@@ -21,7 +21,6 @@ describe("MessageList rewind guard", () => {
         isLoading={false}
         streamStatus="idle"
         partialText=""
-        timings={null}
         onRewind={vi.fn()}
       />
     );
@@ -35,7 +34,6 @@ describe("MessageList rewind guard", () => {
         isLoading={false}
         streamStatus="idle"
         partialText=""
-        timings={null}
         onRewind={undefined}
       />
     );
@@ -52,7 +50,6 @@ describe("MessageList rewind guard", () => {
         isLoading={false}
         streamStatus="idle"
         partialText=""
-        timings={null}
         onRewind={vi.fn()}
       />
     );
@@ -68,7 +65,6 @@ describe("MessageList rewind guard", () => {
         isLoading={false}
         streamStatus="streaming"
         partialText="partial…"
-        timings={null}
         onRewind={undefined}
       />
     );

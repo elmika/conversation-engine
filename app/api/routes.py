@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
     AdminConversationRequest,
+    AdminConversationResponse,
     AdminInitSessionRequest,
     ConsentRecordResponse,
     ConsentStatusResponse,
@@ -290,9 +291,9 @@ async def create_conversation_stream(
     Create a new conversation and stream the first turn as SSE.
 
     Emits SSE events:
-      - meta: conversation_id, model, prompt_slug
+      - meta: conversation_id, prompt_slug
       - chunk: incremental text delta
-      - done: final assistant message + timings
+      - done: final assistant message
     """
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     _check_input_length(messages, settings.max_input_chars)
@@ -314,7 +315,6 @@ async def create_conversation_stream(
 
             meta = {
                 "conversation_id": conv_id,
-                "model": resolved_model,
                 "prompt_slug": used_prompt_slug,
             }
             yield _sse_event("meta", meta)
@@ -346,6 +346,9 @@ async def create_conversation_stream(
                     if ev.get("total_ms"):
                         total_ms = ev["total_ms"]
 
+                    # model/ttfb_ms/total_ms are still recorded server-side (the
+                    # `runs` table) below — just not included in the SSE payload
+                    # sent to the learner-facing client (platform-internal detail).
                     await asyncio.to_thread(
                         service.persist_stream_result,
                         uow,
@@ -361,8 +364,6 @@ async def create_conversation_stream(
                     done_payload = {
                         "conversation_id": conv_id,
                         "assistant_message": full_text,
-                        "model": model,
-                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     }
                     yield _sse_event("done", done_payload)
         except CapExceeded as exc:
@@ -394,9 +395,9 @@ async def init_session_stream(
     No user message is stored — only the assistant's opening message lands in the conversation.
 
     Emits SSE events:
-      - meta: conversation_id, model, prompt_slug
+      - meta: conversation_id, prompt_slug
       - chunk: incremental text delta
-      - done: final assistant message + timings
+      - done: final assistant message
     """
     # Which flow opens (setup vs. course session) is derived from profile state,
     # never client input (see InitSessionRequest's docstring) — a learner-supplied
@@ -429,7 +430,6 @@ async def init_session_stream(
 
             yield _sse_event("meta", {
                 "conversation_id": conv_id,
-                "model": resolved_model,
                 "prompt_slug": used_prompt_slug,
             })
 
@@ -458,6 +458,9 @@ async def init_session_stream(
                     if ev.get("total_ms"):
                         total_ms = ev["total_ms"]
 
+                    # model/ttfb_ms/total_ms are still recorded server-side (the
+                    # `runs` table) below — just not included in the SSE payload
+                    # sent to the learner-facing client (platform-internal detail).
                     await asyncio.to_thread(
                         service.persist_stream_result,
                         uow,
@@ -473,8 +476,6 @@ async def init_session_stream(
                     yield _sse_event("done", {
                         "conversation_id": conv_id,
                         "assistant_message": full_text,
-                        "model": model,
-                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     })
                 elif ev.get("type") == "error":
                     yield _sse_event("done", {"error": {
@@ -516,11 +517,12 @@ async def create_conversation(
             raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
         raise HTTPException(status_code=400, detail=str(e))
 
+    # model/ttfb_ms/total_ms are still recorded server-side (the `runs` table,
+    # inside create_and_chat's own transaction) — just not returned to the
+    # learner-facing client (platform-internal detail).
     return ConversationResponse(
         conversation_id=conversation_id,
         assistant_message=assistant_message,
-        model=model,
-        timings=TimingsSchema(ttfb_ms=ttfb_ms, total_ms=total_ms),
     )
 
 
@@ -579,12 +581,13 @@ async def append_conversation_turn(
                 raise HTTPException(status_code=409, detail="Conversation has ended")
             raise HTTPException(status_code=404, detail=str(e))
 
+    # model/ttfb_ms/total_ms are still recorded server-side (the `runs` table,
+    # inside append_and_chat's own transaction) — just not returned to the
+    # learner-facing client (platform-internal detail).
     conv_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(_run)
     return ConversationResponse(
         conversation_id=conv_id,
         assistant_message=assistant_message,
-        model=model,
-        timings=TimingsSchema(ttfb_ms=ttfb_ms, total_ms=total_ms),
     )
 
 
@@ -602,9 +605,9 @@ async def append_conversation_turn_stream(
     Append a new turn to an existing conversation with streaming SSE output.
 
     Emits SSE events:
-      - meta: conversation_id, model, prompt_slug
+      - meta: conversation_id, prompt_slug
       - chunk: incremental text delta
-      - done: final assistant message + timings
+      - done: final assistant message
     """
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     _check_input_length(messages, settings.max_input_chars)
@@ -627,7 +630,6 @@ async def append_conversation_turn_stream(
 
             meta = {
                 "conversation_id": conv_id,
-                "model": resolved_model,
                 "prompt_slug": used_prompt_slug,
             }
             yield _sse_event("meta", meta)
@@ -659,6 +661,9 @@ async def append_conversation_turn_stream(
                     if ev.get("total_ms"):
                         total_ms = ev["total_ms"]
 
+                    # model/ttfb_ms/total_ms are still recorded server-side (the
+                    # `runs` table) below — just not included in the SSE payload
+                    # sent to the learner-facing client (platform-internal detail).
                     await asyncio.to_thread(
                         service.persist_stream_result,
                         uow,
@@ -674,8 +679,6 @@ async def append_conversation_turn_stream(
                     done_payload = {
                         "conversation_id": conv_id,
                         "assistant_message": full_text,
-                        "model": model,
-                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     }
                     yield _sse_event("done", done_payload)
 
@@ -715,9 +718,9 @@ async def rewind_conversation_stream(
     message, then streams the assistant response as SSE.
 
     Emits SSE events:
-      - meta: conversation_id, model, prompt_slug
+      - meta: conversation_id, prompt_slug
       - chunk: incremental text delta
-      - done: final assistant message + timings
+      - done: final assistant message
     """
     async def event_generator() -> AsyncIterator[str]:
         try:
@@ -739,7 +742,6 @@ async def rewind_conversation_stream(
 
             meta = {
                 "conversation_id": conv_id,
-                "model": resolved_model,
                 "prompt_slug": used_prompt_slug,
             }
             yield _sse_event("meta", meta)
@@ -771,6 +773,9 @@ async def rewind_conversation_stream(
                     if ev.get("total_ms"):
                         total_ms = ev["total_ms"]
 
+                    # model/ttfb_ms/total_ms are still recorded server-side (the
+                    # `runs` table) below — just not included in the SSE payload
+                    # sent to the learner-facing client (platform-internal detail).
                     await asyncio.to_thread(
                         service.persist_stream_result,
                         uow,
@@ -786,8 +791,6 @@ async def rewind_conversation_stream(
                     done_payload = {
                         "conversation_id": conv_id,
                         "assistant_message": full_text,
-                        "model": model,
-                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
                     }
                     yield _sse_event("done", done_payload)
         except CapExceeded as exc:
@@ -1181,14 +1184,14 @@ async def admin_get_conversation_messages(
 
 
 @admin_user_router.post(
-    "/conversations", name="admin_create_conversation", response_model=ConversationResponse
+    "/conversations", name="admin_create_conversation", response_model=AdminConversationResponse
 )
 async def admin_create_conversation(
     user_id: str,
     body: AdminConversationRequest,
     settings: Settings = Depends(get_settings),
     service: ConversationService = Depends(get_conversation_service),
-) -> ConversationResponse:
+) -> AdminConversationResponse:
     """Create a new conversation and handle the first turn (non-streaming, admin-only)."""
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     _check_input_length(messages, settings.max_input_chars)
@@ -1206,7 +1209,7 @@ async def admin_create_conversation(
             raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
         raise HTTPException(status_code=400, detail=str(e))
 
-    return ConversationResponse(
+    return AdminConversationResponse(
         conversation_id=conversation_id,
         assistant_message=assistant_message,
         model=model,
@@ -1321,7 +1324,7 @@ async def admin_init_session_stream(
 @admin_user_router.post(
     "/conversations/{conversation_id}",
     name="admin_append_conversation_turn",
-    response_model=ConversationResponse,
+    response_model=AdminConversationResponse,
 )
 async def admin_append_conversation_turn(
     conversation_id: str,
@@ -1329,7 +1332,7 @@ async def admin_append_conversation_turn(
     body: AdminConversationRequest,
     settings: Settings = Depends(get_settings),
     service: ConversationService = Depends(get_conversation_service),
-) -> ConversationResponse:
+) -> AdminConversationResponse:
     """Append a new turn to an existing conversation (non-streaming, admin-only)."""
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     _check_input_length(messages, settings.max_input_chars)
@@ -1347,7 +1350,7 @@ async def admin_append_conversation_turn(
             raise HTTPException(status_code=404, detail=str(e))
 
     conv_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(_run)
-    return ConversationResponse(
+    return AdminConversationResponse(
         conversation_id=conv_id,
         assistant_message=assistant_message,
         model=model,

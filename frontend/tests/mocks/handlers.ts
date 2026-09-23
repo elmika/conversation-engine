@@ -119,13 +119,12 @@ export const handlers = [
   // User-scoped conversation routes (/api/u/:userId/...)
   http.get("/api/u/:userId/conversations", () => HttpResponse.json(CONVERSATIONS_FIXTURE)),
 
-  // Create conversation (non-streaming)
+  // Create conversation (non-streaming) — no model/timings: platform-internal
+  // detail, not returned to the learner-facing client.
   http.post("/api/u/:userId/conversations", () =>
     HttpResponse.json({
       conversation_id: CONVERSATION_ID,
       assistant_message: "Hello!",
-      model: "gpt-4.1-mini",
-      timings: { ttfb_ms: 50, total_ms: 200 },
     })
   ),
 
@@ -134,8 +133,6 @@ export const handlers = [
     HttpResponse.json({
       conversation_id: CONVERSATION_ID,
       assistant_message: "Follow-up reply.",
-      model: "gpt-4.1-mini",
-      timings: { ttfb_ms: 40, total_ms: 150 },
     })
   ),
 
@@ -147,19 +144,19 @@ export const handlers = [
   // Create conversation stream
   http.post("/api/u/:userId/conversations/stream", () =>
     sseStream([
-      { event: "meta", data: { conversation_id: CONVERSATION_ID, model: "gpt-4.1-mini", prompt_slug: "default" } },
+      { event: "meta", data: { conversation_id: CONVERSATION_ID, prompt_slug: "default" } },
       { event: "chunk", data: { delta: "Hello" } },
       { event: "chunk", data: { delta: " world" } },
-      { event: "done", data: { conversation_id: CONVERSATION_ID, assistant_message: "Hello world", model: "gpt-4.1-mini", timings: { ttfb_ms: 50, total_ms: 200 } } },
+      { event: "done", data: { conversation_id: CONVERSATION_ID, assistant_message: "Hello world" } },
     ])
   ),
 
   // Append turn stream
   http.post("/api/u/:userId/conversations/:conversationId/stream", () =>
     sseStream([
-      { event: "meta", data: { conversation_id: CONVERSATION_ID, model: "gpt-4.1-mini", prompt_slug: "default" } },
+      { event: "meta", data: { conversation_id: CONVERSATION_ID, prompt_slug: "default" } },
       { event: "chunk", data: { delta: "Follow-up" } },
-      { event: "done", data: { conversation_id: CONVERSATION_ID, assistant_message: "Follow-up", model: "gpt-4.1-mini", timings: { ttfb_ms: 30, total_ms: 120 } } },
+      { event: "done", data: { conversation_id: CONVERSATION_ID, assistant_message: "Follow-up" } },
     ])
   ),
 

@@ -79,10 +79,26 @@ def test_conversation_stream_sends_meta_chunk_done(
     assert '"delta": "Hel"' in body or '"delta":"Hel"' in body
     assert '"delta": "lo"' in body or '"delta":"lo"' in body
 
-    # Done payload should include timings and assistant_message.
+    # Done payload should include assistant_message but NOT model/timings —
+    # that's platform-internal detail, not a learner-facing field (see
+    # ConversationResponse's docstring). It's still recorded server-side in
+    # the runs table regardless — checked below.
     assert '"assistant_message": "Hello"' in body or '"assistant_message":"Hello"' in body
-    assert '"ttfb_ms": 10' in body
-    assert '"total_ms": 20' in body
+    assert '"ttfb_ms"' not in body
+    assert '"model"' not in body
+
+    from app.infra.persistence.db import get_engine
+    from sqlalchemy import text as sql_text
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            sql_text("SELECT model, ttfb_ms, total_ms FROM runs WHERE conversation_id = :cid"),
+            {"cid": cid},
+        ).fetchall()[-1]
+    assert row[0] == "gpt-4.1"
+    assert row[1] == 10
+    assert row[2] == 20
 
     # LLM stream call should see prior user + assistant messages as history.
     assert mock_llm_streaming.stream.call_count == 1

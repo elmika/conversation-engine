@@ -4,8 +4,7 @@ import { useEffect, useRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageBubble } from "./MessageBubble";
 import { StreamingMessage } from "./StreamingMessage";
-import { TimingsBadge } from "./TimingsBadge";
-import type { Message, Timings } from "@/lib/types";
+import type { Message } from "@/lib/types";
 import type { StreamStatus } from "@/hooks/useStreamingChat";
 
 interface MessageListProps {
@@ -13,8 +12,6 @@ interface MessageListProps {
   isLoading: boolean;
   streamStatus: StreamStatus;
   partialText: string;
-  timings: Timings | null;
-  model?: string | null;
   promptSlug?: string | null;
   onRewind?: (messageId: number, newContent: string) => void;
 }
@@ -26,8 +23,6 @@ export function MessageList({
   isLoading,
   streamStatus,
   partialText,
-  timings,
-  model,
   promptSlug,
   onRewind,
 }: MessageListProps) {
@@ -130,12 +125,6 @@ export function MessageList({
         ))}
 
         {isStreaming && <StreamingMessage partialText={partialText} promptSlug={promptSlug} />}
-
-        {streamStatus === "done" && timings && (
-          <div className="flex justify-start pl-1">
-            <TimingsBadge timings={timings} model={model} />
-          </div>
-        )}
 
         <div ref={bottomRef} />
       </div>

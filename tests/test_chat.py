@@ -49,7 +49,13 @@ def client_with_mock_llm(mock_llm):
 
 
 def test_conversations_create_returns_envelope(client_with_mock_llm, mock_llm) -> None:
-    """POST /u/{user_id}/conversations returns conversation_id, assistant_message, model, timings."""
+    """POST /u/{user_id}/conversations returns only conversation_id + assistant_message.
+
+    Deliberately does NOT include model/timings — that's platform-internal
+    detail, not something to leak to a learner-facing endpoint (see
+    ConversationResponse's docstring). It's still recorded server-side in the
+    runs table regardless — see test_conversations_create_does_not_leak_model_or_timings.
+    """
     response = client_with_mock_llm.post(
         f"/u/{TEST_USER}/conversations",
         json={
@@ -60,13 +66,40 @@ def test_conversations_create_returns_envelope(client_with_mock_llm, mock_llm) -
     data = response.json()
     assert "conversation_id" in data
     assert data["assistant_message"] == "Hi there"
-    assert data["model"] == "gpt-4.1"
-    assert data["timings"]["ttfb_ms"] == 50
-    assert data["timings"]["total_ms"] == 100
+    assert "model" not in data
+    assert "timings" not in data
     mock_llm.complete.assert_called_once()
     call_args = mock_llm.complete.call_args
     assert "You are a concise and precise assistant." in (call_args[0][0] or "")
     assert call_args[0][1] == [{"role": "user", "content": "Hello"}]
+
+
+def test_conversations_create_does_not_leak_model_or_timings(client_with_mock_llm) -> None:
+    """model/ttfb_ms/total_ms are still recorded in the runs table even though
+    they're no longer returned in the learner-facing HTTP response."""
+    response = client_with_mock_llm.post(
+        f"/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "Hello"}],
+        },
+    )
+    assert response.status_code == 200
+    assert "model" not in response.json()
+    assert "timings" not in response.json()
+    cid = response.json()["conversation_id"]
+
+    from app.infra.persistence.db import get_engine
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT model, ttfb_ms, total_ms FROM runs WHERE conversation_id = :cid"),
+            {"cid": cid},
+        ).fetchone()
+    assert row is not None
+    assert row[0] == "gpt-4.1"
+    assert row[1] == 50
+    assert row[2] == 100
 
 
 def test_conversations_create_uses_prompt_slug(client_with_mock_llm, mock_llm) -> None:

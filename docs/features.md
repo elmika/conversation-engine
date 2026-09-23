@@ -77,8 +77,8 @@ Each assistant message has a **Copy** button (visible on hover) that copies the 
 ### 2.8 Edit and resend (message rewind)
 Any past user message can be edited and resent. Hovering over a user message reveals a **pencil icon**. Clicking it opens an inline editor pre-filled with the original message. The user can modify the text and click **Resend** (or `Ctrl+Enter`). This truncates the conversation from that point onward and streams a new response — effectively branching the conversation from the edited message.
 
-### 2.9 Response timings
-After each complete response, a small badge shows the time-to-first-byte (TTFB) and total response time in milliseconds.
+### 2.9 ~~Response timings~~ (removed)
+Previously: after each complete response, a small badge showed TTFB and total response time. Removed — this leaked platform-internal detail (model name, latency) to the learner-facing UI/API response. The data is still recorded server-side (the `runs` table) for every turn; it's just no longer returned to or rendered for the learner. Section number kept stable (not renumbered) since `.notes/product-design.md` cross-references §2.10–§2.12 below.
 
 ### 2.10 Course session pacing (open → teach → wind down)
 A course session moves through three moments automatically, driven by the platform (not the model guessing):

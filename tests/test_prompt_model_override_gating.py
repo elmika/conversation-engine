@@ -53,9 +53,12 @@ def test_learner_route_ignores_client_supplied_model_slug(client, mock_llm):
         },
     )
     assert r.status_code == 200, r.json()
-    # The resolved model in the response is whatever the (mocked) default
+    # model isn't in the learner-facing response at all (platform-internal
+    # detail — see ConversationResponse's docstring), so assert against what
+    # the LLM was actually called with instead: whatever the (mocked) default
     # resolution produced, never the attempted override.
-    assert r.json()["model"] != "gpt-6-astra"
+    assert "model" not in r.json()
+    assert mock_llm.complete.call_args.kwargs["model"] != "gpt-6-astra"
 
 
 def test_learner_route_ignores_client_supplied_prompt_slug(client, mock_llm):

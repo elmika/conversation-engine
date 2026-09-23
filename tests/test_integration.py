@@ -53,7 +53,7 @@ def test_integration_create_then_append_turn(client_with_mock_llm, mock_llm) -> 
     data1 = r1.json()
     cid = data1["conversation_id"]
     assert data1["assistant_message"] == "Hello back!"
-    assert "timings" in data1
+    assert "timings" not in data1  # platform-internal detail, not a learner-facing field
 
     # Append second turn
     r2 = client_with_mock_llm.post(
@@ -150,7 +150,7 @@ def test_create_then_append_turn_reproduces_mika_flow(
     data2 = r2.json()
     assert data2["conversation_id"] == cid
     assert data2["assistant_message"] == "Your name is Mika."
-    assert "timings" in data2
+    assert "timings" not in data2  # platform-internal detail, not a learner-facing field
 
     assert mock_client.responses.create.call_count == 2
 

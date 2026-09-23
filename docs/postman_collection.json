@@ -310,7 +310,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Hello Mika! How can I help you today?\",\n  \"model\": \"gpt-4.1\",\n  \"timings\": {\n    \"ttfb_ms\": 320,\n    \"total_ms\": 980\n  }\n}",
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Hello Mika! How can I help you today?\"\n}",
               "_postman_previewlanguage": "json"
             },
             {
@@ -389,7 +389,7 @@
                   "value": "text/event-stream"
                 }
               ],
-              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Once upon\"}\n\nevent: chunk\ndata: {\"delta\": \" a time...\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Once upon a time...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 120, \"total_ms\": 800}}\n\n",
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Once upon\"}\n\nevent: chunk\ndata: {\"delta\": \" a time...\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Once upon a time...\"}\n\n",
               "_postman_previewlanguage": "text"
             }
           ]
@@ -438,7 +438,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Your name is Mika.\",\n  \"model\": \"gpt-4.1\",\n  \"timings\": {\n    \"ttfb_ms\": 290,\n    \"total_ms\": 740\n  }\n}",
+              "body": "{\n  \"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"assistant_message\": \"Your name is Mika.\"\n}",
               "_postman_previewlanguage": "json"
             },
             {
@@ -505,7 +505,7 @@
                   "value": "text/event-stream"
                 }
               ],
-              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"The hero\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"The hero continued on...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 115, \"total_ms\": 620}}\n\n",
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"The hero\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"The hero continued on...\"}\n\n",
               "_postman_previewlanguage": "text"
             }
           ]
@@ -654,7 +654,7 @@
                   "value": "text/event-stream"
                 }
               ],
-              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"course-session-init\"}\n\nevent: chunk\ndata: {\"delta\": \"Welcome back!\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Welcome back! Last time we covered...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 130, \"total_ms\": 900}}\n\n",
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"prompt_slug\": \"course-session-init\"}\n\nevent: chunk\ndata: {\"delta\": \"Welcome back!\"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Welcome back! Last time we covered...\"}\n\n",
               "_postman_previewlanguage": "text"
             }
           ]
@@ -709,7 +709,7 @@
                   "value": "text/event-stream"
                 }
               ],
-              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"model\": \"gpt-4.1\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Sure — \"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Sure — here it is more simply...\", \"model\": \"gpt-4.1\", \"timings\": {\"ttfb_ms\": 110, \"total_ms\": 600}}\n\n",
+              "body": "event: meta\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"prompt_slug\": \"default\"}\n\nevent: chunk\ndata: {\"delta\": \"Sure — \"}\n\nevent: done\ndata: {\"conversation_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"assistant_message\": \"Sure — here it is more simply...\"}\n\n",
               "_postman_previewlanguage": "text"
             }
           ]
