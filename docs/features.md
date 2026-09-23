@@ -12,6 +12,10 @@ There is no sign-in or account. Each learner is identified by an opaque UUID tha
 
 Legacy bare routes (`/chat`, `/history`) and a bare `/u/{userId}` (no `/chat` or `/history` suffix) each redirect straight to their user-scoped equivalent — `/history` never passes through `/chat` on the way there, so simply loading or bookmarking one of these URLs can never silently start a new course session as a side effect. The top nav's Chat/History links are always built from the current UUID (from the URL if already present, otherwise from `localStorage`) for the same reason.
 
+Every `/u/{userId}/…` page is gated behind an identity check before it renders. A UUID matching what's already stored (the common case), or the first-ever visit under this browser with nothing stored yet, is trusted immediately — no check needed. A UUID naming a *different* id than the one already stored (e.g. following a direct link to another learner's session) is only trusted once confirmed to be a known learner (has a profile, or at least one conversation); once trusted, it's adopted as the browser's current identity in `localStorage`, overwriting whatever was stored before. This matters whenever something redirects through the root page (e.g. the consent gate) — without adopting first, that redirect would resolve against the old stored UUID instead of the one actually being viewed.
+
+A mistyped or otherwise unrecognized UUID is never adopted and never renders the page underneath — instead it shows a "We couldn't find that session" screen with a **Go to my session** link back to the learner's own space. `localStorage` is left completely untouched in this case, so a typo can't silently orphan the browser from its real session or spin up a phantom learner under a bogus id.
+
 ### 1.2 Personal space & bookmarking
 All of a learner's conversations, history, and profile are scoped to their UUID. Bookmarking the `/u/{userId}/…` URL is how a learner returns to their session on the same browser. A conversation is only visible to the UUID that created it — requests under a different UUID are treated as non-existent (not enumerable across users).
 
