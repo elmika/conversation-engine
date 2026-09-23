@@ -1,5 +1,6 @@
 """Request/response schemas for conversation API."""
 
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -134,6 +135,16 @@ class EndSessionResponse(BaseModel):
 
 class CompleteSetupResponse(BaseModel):
     status: str = "completed"
+
+
+class ConsentStatusResponse(BaseModel):
+    consented: bool
+    consented_at: Optional[datetime] = None
+
+
+class ConsentRecordResponse(BaseModel):
+    status: str = "recorded"
+    consented_at: datetime
 
 
 class PromptSchema(BaseModel):

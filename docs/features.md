@@ -40,6 +40,9 @@ Extraction and file writes happen **before** the conversation is ended, so if ex
 ### 1.6 Per-user isolation
 Conversation listing, messages, rename, delete, end-session, summary, and setup are all scoped to the learner's UUID. Reading or modifying another learner's conversation returns *not found* (404) or is a silent no-op (idempotent 204 on delete), so resources are never enumerable across learners.
 
+### 1.7 Consent gate
+Between minting/resolving the UUID (§1.1) and the redirect into chat, the root page checks whether this UUID has a recorded consent record. A fresh UUID has never consented, so a disclosure screen is shown instead of redirecting: what data is collected (name, role, goal, full session transcripts), who can see it, that messages go to OpenAI, the pilot's as-is/no-guarantee status and expected ~2-week duration, and how to request deletion. A checkbox ("I understand and agree to this") gates a **Continue** button, disabled until checked. Consent is recorded server-side, timestamped and keyed to the UUID — not a `localStorage`-only flag, so it's provable later, not just a client-side gate that vanishes if storage is cleared. A returning UUID with a recorded consent skips the screen entirely and redirects straight to chat as before. Conversation-creation endpoints independently reject any UUID with no recorded consent (403), as defense in depth against the frontend gate being bypassed (e.g. a direct API call).
+
 ---
 
 ## 2. Chat

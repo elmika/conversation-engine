@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse
 from app.api.schemas import (
     AdminConversationRequest,
     AdminInitSessionRequest,
+    ConsentRecordResponse,
+    ConsentStatusResponse,
     ConversationListResponse,
     ConversationRenameRequest,
     CompleteSetupResponse,
@@ -48,6 +50,7 @@ from app.domain.pricing import estimate_cost_usd
 from app.domain.prompt_template import PromptTemplateError, validate_template
 from app.domain.usage_ceiling import CapExceeded, cap_message
 from app.infra.persistence.db import get_session
+from app.infra.persistence.repo_consent import SQLAlchemyConsentRepo
 from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from app.settings import Settings
@@ -105,6 +108,27 @@ def get_uow_factory(db=Depends(get_session)):
 def get_prompt_repo(db=Depends(get_session)) -> PromptRepo:
     """Provide a PromptRepo for the current request session."""
     return SQLAlchemyPromptRepo(db)
+
+
+def get_consent_repo(db=Depends(get_session)) -> SQLAlchemyConsentRepo:
+    """Provide a consent repo for the current request session."""
+    return SQLAlchemyConsentRepo(db)
+
+
+def require_consent(
+    user_id: str, consent_repo: SQLAlchemyConsentRepo = Depends(get_consent_repo)
+) -> None:
+    """Gate conversation-creation routes behind a recorded consent record.
+
+    Defense in depth against the frontend gate being bypassed (e.g. a direct
+    API call) — the UI is expected to have already recorded consent via
+    POST /u/{user_id}/consent before ever reaching one of these routes.
+    """
+    if not consent_repo.has_consented(user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Consent required before starting a conversation",
+        )
 
 
 def get_preview_service(
@@ -219,6 +243,39 @@ async def get_user_status(
     return {"has_profile": has_profile}
 
 
+@user_router.get("/consent", response_model=ConsentStatusResponse)
+async def get_consent_status(
+    user_id: str,
+    consent_repo: SQLAlchemyConsentRepo = Depends(get_consent_repo),
+) -> ConsentStatusResponse:
+    """Return whether this learner has a recorded consent record.
+
+    Checked before the frontend's root redirect — a fresh UUID has never
+    consented, so the frontend shows the consent screen; a returning UUID with
+    a record skips straight to chat.
+    """
+    consented_at = await asyncio.to_thread(consent_repo.get_consented_at, user_id)
+    return ConsentStatusResponse(consented=consented_at is not None, consented_at=consented_at)
+
+
+@user_router.post("/consent", response_model=ConsentRecordResponse)
+async def record_consent(
+    user_id: str,
+    db=Depends(get_session),
+    consent_repo: SQLAlchemyConsentRepo = Depends(get_consent_repo),
+) -> ConsentRecordResponse:
+    """Record that this learner has agreed to the consent disclosure.
+
+    Idempotent: re-posting for an already-consented user_id is a no-op that
+    returns the original timestamp, not a new one.
+    """
+    await asyncio.to_thread(consent_repo.record, user_id)
+    await asyncio.to_thread(db.commit)
+    consented_at = await asyncio.to_thread(consent_repo.get_consented_at, user_id)
+    assert consented_at is not None  # just recorded (or already existed)
+    return ConsentRecordResponse(consented_at=consented_at)
+
+
 @user_router.post(
     "/conversations/stream",
     name="create_conversation_stream",
@@ -227,6 +284,7 @@ async def create_conversation_stream(
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
     service: ConversationService = Depends(get_conversation_service),
+    _consent: None = Depends(require_consent),
 ) -> StreamingResponse:
     """
     Create a new conversation and stream the first turn as SSE.
@@ -327,6 +385,7 @@ async def init_session_stream(
     body: InitSessionRequest = Body(default_factory=InitSessionRequest),
     service: ConversationService = Depends(get_conversation_service),
     settings: Settings = Depends(get_settings),
+    _consent: None = Depends(require_consent),
 ) -> StreamingResponse:
     """
     Create a new conversation and stream an AI-initiated opening message.
@@ -438,6 +497,7 @@ async def create_conversation(
     body: ConversationRequest,
     settings: Settings = Depends(get_settings),
     service: ConversationService = Depends(get_conversation_service),
+    _consent: None = Depends(require_consent),
 ) -> ConversationResponse:
     """Create a new conversation and handle the first turn (non-streaming)."""
     messages = [{"role": m.role, "content": m.content} for m in body.messages]

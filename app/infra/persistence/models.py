@@ -27,6 +27,17 @@ class Prompt(Base):
     )
 
 
+class ConsentRecord(Base):
+    __tablename__ = "consent_records"
+
+    # One row per learner — consent is a single yes/no fact, not a log of
+    # attempts. Recording is idempotent (see SQLAlchemyConsentRepo.record).
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    consented_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 

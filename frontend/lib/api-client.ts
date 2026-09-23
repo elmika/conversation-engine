@@ -10,6 +10,8 @@
 
 import { getAdminToken, clearAdminToken } from "./adminToken";
 import type {
+  ConsentRecordResponse,
+  ConsentStatus,
   ConversationListResponse,
   ConversationRequest,
   ConversationResponse,
@@ -203,6 +205,20 @@ export async function fetchAdminConversationMessages(
 
 export async function fetchUserStatus(userId: string): Promise<{ has_profile: boolean }> {
   const res = await fetch(`/api/u/${userId}/status`);
+  return handleResponse(res);
+}
+
+// ---------------------------------------------------------------------------
+// Consent
+// ---------------------------------------------------------------------------
+
+export async function fetchConsentStatus(userId: string): Promise<ConsentStatus> {
+  const res = await fetch(`/api/u/${userId}/consent`);
+  return handleResponse(res);
+}
+
+export async function recordConsent(userId: string): Promise<ConsentRecordResponse> {
+  const res = await fetch(`/api/u/${userId}/consent`, { method: "POST" });
   return handleResponse(res);
 }
 

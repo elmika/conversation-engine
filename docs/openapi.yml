@@ -121,6 +121,51 @@ paths:
               example:
                 has_profile: false
 
+  /u/{userId}/consent:
+    get:
+      operationId: getConsentStatus
+      summary: Get consent status
+      description: |
+        Returns whether this learner has a recorded consent record. Checked by the
+        frontend's root page before the UUID→chat redirect: a fresh UUID has never
+        consented, so the consent gate is shown; a returning UUID with a record
+        skips straight to chat. See the GDPR consent-gate entry in `docs/roadmap.md`
+        for the full disclosure copy and rollout context.
+      tags: [users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Consent status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentStatusResponse"
+              example:
+                consented: false
+                consented_at: null
+    post:
+      operationId: recordConsent
+      summary: Record consent
+      description: |
+        Records that this learner has agreed to the consent disclosure, timestamped
+        and keyed to `user_id` — not a localStorage-only flag, so it can be produced
+        as evidence later. Idempotent: re-posting for an already-consented user_id
+        is a no-op that returns the original timestamp.
+      tags: [users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Consent recorded (or already existed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRecordResponse"
+              example:
+                status: recorded
+                consented_at: "2026-09-23T08:51:40Z"
+
   /u/{userId}/conversations:
     get:
       operationId: listConversations
@@ -201,6 +246,8 @@ paths:
                   total_ms: 980
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/ConsentRequired"
         "409":
           $ref: "#/components/responses/ActiveConversationConflict"
         "502":
@@ -239,6 +286,8 @@ paths:
                 $ref: "#/components/schemas/SSEStream"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/ConsentRequired"
 
   /u/{userId}/conversations/init-stream:
     post:
@@ -269,6 +318,8 @@ paths:
             text/event-stream:
               schema:
                 $ref: "#/components/schemas/SSEStream"
+        "403":
+          $ref: "#/components/responses/ConsentRequired"
 
   /u/{userId}/conversations/{conversationId}:
     post:
@@ -1389,6 +1440,33 @@ components:
           type: boolean
           description: True when sections/user/{user_id}.md exists (learner has completed setup)
 
+    ConsentStatusResponse:
+      type: object
+      required: [consented]
+      properties:
+        consented:
+          type: boolean
+          description: True when a consent record exists for this user_id
+        consented_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When consent was recorded; null when consented is false
+
+    ConsentRecordResponse:
+      type: object
+      required: [status, consented_at]
+      properties:
+        status:
+          type: string
+          example: recorded
+        consented_at:
+          type: string
+          format: date-time
+          description: |
+            When consent was recorded. Recording is idempotent — re-posting for an
+            already-consented user_id returns the original timestamp, not a new one.
+
     SessionSummary:
       type: object
       properties:
@@ -1711,6 +1789,19 @@ components:
             $ref: "#/components/schemas/ErrorDetail"
           example:
             detail: "Total message content length (35000) exceeds max_input_chars (32000)"
+
+    ConsentRequired:
+      description: >-
+        No recorded consent for this user_id — defense in depth against the
+        frontend's consent gate (POST /u/{userId}/consent) being bypassed.
+        Raised before the route body runs, so streaming endpoints return this
+        as a plain JSON 403, not an SSE `done` error event.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: "Consent required before starting a conversation"
 
     Unauthorized:
       description: >-

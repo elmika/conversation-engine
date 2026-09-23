@@ -249,9 +249,38 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ## Not yet triaged
 
+- **Audit SkillForge's agent harness against the 8-component framework (surfaced 2026-09-22,
+  priority: low — a consolidation-pass item, not urgent).** Nikki Siapno's "8 Components of
+  Harness Engineering" (Context, Memory, Tools, Orchestration, Execution, Guardrails, Tracing,
+  Evals — full note: `Areas/AI-LLM-Explorer/research/harness-engineering-8-components-siapno-2026-09.md`
+  in the vault) is a clean checklist to map against what SkillForge's backend actually does today.
+  Mika wants to internalize this framework, not just file it — read it against something already
+  half-known rather than cold, so do this the next time SkillForge's architecture is being
+  consolidated or reviewed end-to-end: go component by component, note what exists
+  (`app/domain/model_registry.py`? the conversation/session layer? `docs/architecture-decisions.md`?),
+  what's missing, and what's implicit-but-undocumented. Not a redesign — a mapping exercise, to
+  turn a passive read into a working audit.
+
 - **GDPR: no consent gate before a learner's personal data is collected (surfaced
-  2026-09-17, priority: high — the 2026-09-18 ICW demo QR sends real strangers straight in).**
-  Current flow (`frontend/app/page.tsx` → `getOrCreateUserId()`) silently mints a UUID and
+  2026-09-17, priority: high — the 2026-09-18 ICW demo QR sends real strangers straight in). —
+  ✅ Shipped 2026-09-23.** All three items below landed, not just the frontend-gate minimum:
+  the consent screen (`frontend/components/ConsentScreen.tsx`, wired into
+  `frontend/app/page.tsx`) using the disclosure copy verbatim; a `consent_records` table
+  (`app/infra/persistence/models.py::ConsentRecord`, `app/infra/persistence/repo_consent.py`)
+  recording consent timestamped and keyed to `user_id` via `GET`/`POST /u/{user_id}/consent`;
+  and server-side enforcement (`require_consent` dependency in `app/api/routes.py`, wired into
+  all three conversation-creation routes) rejecting any `user_id` with no recorded consent
+  (403), independent of the frontend. `docs/openapi.yml`, `docs/postman_collection.json`, and
+  `docs/features.md` (§1.7) updated; `tests/test_consent.py` covers the gate directly, and
+  `tests/conftest.py` bypasses it by default for every other test via
+  `app.dependency_overrides` so existing conversation-creation tests didn't need touching.
+  Verified live: fresh-UUID click-through shows the gate and blocks progress until checked;
+  an already-consented UUID skips straight to chat on reload; direct `curl` against a
+  never-consented `user_id` confirms the 403. Still deferred, as scoped — see "Not in this
+  pass" below: data export, a real deletion flow, the full GDPR rights list, DPA language,
+  EU-residency confirmation.
+
+  Original flow (`frontend/app/page.tsx` → `getOrCreateUserId()`) silently minted a UUID and
   redirects straight into chat, no screen of any kind. From the first framing question on, the
   platform collects the learner's **name, role/industry, stated goal**, and the **full
   conversation transcript** of every session, later synthesized into progress notes. All of it

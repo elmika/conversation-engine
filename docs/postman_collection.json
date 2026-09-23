@@ -122,6 +122,85 @@
               "body": "{\n  \"has_profile\": true\n}"
             }
           ]
+        },
+        {
+          "name": "Get Consent Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/consent",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "consent"
+              ]
+            },
+            "description": "Returns whether this learner has a recorded consent record. Checked by the frontend's root page before the UUID→chat redirect."
+          },
+          "response": [
+            {
+              "name": "200 OK — not consented",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"consented\": false,\n  \"consented_at\": null\n}"
+            },
+            {
+              "name": "200 OK — consented",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"consented\": true,\n  \"consented_at\": \"2026-09-23T08:51:40Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Record Consent",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/u/{{user_id}}/consent",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "u",
+                "{{user_id}}",
+                "consent"
+              ]
+            },
+            "description": "Records that this learner has agreed to the consent disclosure, timestamped and keyed to user_id. Idempotent: re-posting for an already-consented user_id returns the original timestamp."
+          },
+          "response": [
+            {
+              "name": "200 OK — recorded",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"recorded\",\n  \"consented_at\": \"2026-09-23T08:51:40Z\"\n}"
+            }
+          ]
         }
       ]
     },

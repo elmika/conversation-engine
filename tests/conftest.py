@@ -66,7 +66,19 @@ def _no_real_llm_in_tests():
         yield
 
 
+from app.api.routes import require_consent
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def _bypass_consent_gate():
+    """Most tests aren't exercising the consent feature itself — bypass the
+    require_consent dependency by default so existing conversation-creation
+    tests don't all need to record consent first. tests/test_consent.py removes
+    this override to exercise the real gate."""
+    app.dependency_overrides[require_consent] = lambda: None
+    yield
+    app.dependency_overrides.pop(require_consent, None)
 
 
 @pytest.fixture(autouse=True)

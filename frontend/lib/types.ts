@@ -159,6 +159,16 @@ export interface EndSessionResponse {
   summary: SessionSummary | null;
 }
 
+export interface ConsentStatus {
+  consented: boolean;
+  consented_at: string | null;
+}
+
+export interface ConsentRecordResponse {
+  status: string;
+  consented_at: string;
+}
+
 /**
  * Payload of the terminal `done` event.
  * On success: conversation_id, assistant_message, model, timings are all present.
