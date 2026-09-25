@@ -31,6 +31,17 @@ export function MessageList({
   // When false, the user has taken control of the scroll and we stop
   // auto-following the streamed text until they return to the bottom.
   const stickToBottom = useRef(true);
+  // Once the *current* streaming reply has grown taller than the visible
+  // area, stop chasing the tail on every chunk — the reader is very likely
+  // reading from the top of a still-growing message, and repeatedly forcing
+  // the view down to the newest token yanks that text out from under them
+  // (reported: "the text moves up... then goes down again and hides the
+  // part I'm trying to read"). Resets for each new reply so a short answer
+  // still snaps into view immediately; re-armed if the reader scrolls back
+  // to the bottom themselves (see onScroll below), signaling they now want
+  // to follow along live.
+  const hasOverflowedThisMessage = useRef(false);
+  const wasStreaming = useRef(false);
   const isStreaming = streamStatus === "connecting" || streamStatus === "streaming";
 
   const isNearBottom = () => {
@@ -65,9 +76,14 @@ export function MessageList({
       if (y > lastTouchY) stickToBottom.current = false;
       lastTouchY = y;
     };
-    // Re-engage following the moment the user is back at the bottom.
+    // Re-engage following the moment the user is back at the bottom — also
+    // clears the overflow freeze, since scrolling to the bottom themselves
+    // is a deliberate signal they want to watch the rest stream in live.
     const onScroll = () => {
-      if (isNearBottom()) stickToBottom.current = true;
+      if (isNearBottom()) {
+        stickToBottom.current = true;
+        hasOverflowedThisMessage.current = false;
+      }
     };
 
     el.addEventListener("wheel", onWheel, { passive: true });
@@ -84,19 +100,37 @@ export function MessageList({
     };
   }, []);
 
-  // New user message: always scroll to bottom and re-engage following.
+  // New user message: always scroll to bottom and re-engage following. An
+  // instant jump (not smooth) — see the streaming-scroll rule below; a smooth
+  // scroll here can still be mid-animation when the first chunk arrives,
+  // fighting that effect's own instant jump.
   useEffect(() => {
     const last = messages[messages.length - 1];
     if (last?.role === "user") {
       stickToBottom.current = true;
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      hasOverflowedThisMessage.current = false;
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
     }
   }, [messages]);
 
-  // Streaming chunks: follow only while sticking to the bottom. Use an instant
-  // jump (not smooth) so the animation never competes with the reader's scroll.
+  // A new assistant reply starting gets a fresh chance to feel snappy before
+  // we decide whether it's grown past the viewport.
   useEffect(() => {
-    if (stickToBottom.current) {
+    if (isStreaming && !wasStreaming.current) {
+      hasOverflowedThisMessage.current = false;
+    }
+    wasStreaming.current = isStreaming;
+  }, [isStreaming]);
+
+  // Streaming chunks: follow only while sticking to the bottom AND the
+  // current reply hasn't yet outgrown the visible area. Use an instant jump
+  // (not smooth) so the animation never competes with the reader's scroll.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && el.scrollHeight > el.clientHeight) {
+      hasOverflowedThisMessage.current = true;
+    }
+    if (stickToBottom.current && !hasOverflowedThisMessage.current) {
       bottomRef.current?.scrollIntoView({ behavior: "auto" });
     }
   }, [partialText]);

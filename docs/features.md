@@ -58,7 +58,7 @@ Between minting/resolving the UUID (§1.1) and the redirect into chat, the root 
 The core interaction. The user types a message and receives a streaming response from the AI assistant. Responses render as formatted markdown (headings, lists, tables, code blocks).
 
 ### 2.2 Streaming responses
-The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading. The view auto-follows the streamed text, but the reader stays in control: scrolling up at any point (wheel, trackpad, touch, or keyboard) immediately stops the auto-follow so you can read earlier text while the response keeps streaming. Scrolling back to the bottom re-engages auto-follow.
+The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading. The view auto-follows the streamed text only until the reply grows taller than the visible area — at that point auto-follow stops for the rest of that reply, so a still-growing message doesn't repeatedly yank the view down and hide the part being read. Manually scrolling up at any point (wheel, trackpad, touch, or keyboard) stops auto-follow immediately too, for the same reason. Scrolling back to the bottom re-engages auto-follow, including for the remainder of the current reply.
 
 The course-outline-compile step during setup (§1.3) runs on a slower, higher-quality model and can take up to ~2 minutes — during that wait it shows a dedicated loading state ("Compiling your personalised course… This can take a minute or two.") with a live elapsed-seconds counter, instead of the generic typing indicator, so the wait reads as "still working" rather than "frozen."
 
