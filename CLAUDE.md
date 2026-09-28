@@ -100,6 +100,7 @@ A change to a user-facing flow is **not "done" and never "ready to merge" until 
 - In your summary, state explicitly **what was exercised and what was not** (e.g. "API + BFF verified via curl; browser UI not clicked through").
 - Do not describe a branch as "ready to merge." Report status and leave the merge decision to the user.
 - `fly deploy` builds from the working tree, not git — deploying an uncommitted fix leaves prod running code that git history shows nothing about. Commit before (or immediately after) deploying, so the deployed state is always reproducible from `git log`.
+- Fly apps that proxy or terminate a learner-facing SSE stream (e.g. the Next.js frontend) must have matching `auto_stop_machines`/`min_machines_running` settings to any backend they call end-to-end — an asymmetric setup (one app always-on, the other scaling to zero on idle) lets a cold start race an SSE connection and silently hang it with no error surfaced, easy to mistake for an app bug. Confirmed 2026-09-24: `skillforge-web`'s `min_machines_running=0` while `learning-platform`'s was `1` caused exactly this after a learner paused to read a course outline.
 
 ## Feature List Gate
 
@@ -169,7 +170,9 @@ frontend/
 
 **Mutation UX rule:** All user-triggered mutations (create, update, delete, enable, disable, rename…) must wait for the HTTP round-trip before updating the UI. Do **not** use optimistic updates. Instead, disable the triggering control and show a visible loading indicator (spinner or `isPending` prop) for the duration of the request. The UI updates only after the server confirms success. This prevents the confusion of controls that appear to do nothing, or records that disappear after a delay.
 
-**Streaming scroll rule:** When auto-scrolling during token streaming, always use `behavior: "auto"` (instant jump), never `behavior: "smooth"`. Smooth animations restart on every chunk and actively fight user scroll gestures — the animation outruns the `scroll` event, so intent-detection fires too late. Use proactive intent detection (`wheel`/`touchmove`/`keydown`) rather than position-threshold detection, and re-engage following only when the user returns to the bottom.
+**Streaming scroll rule:** When auto-scrolling during token streaming, always use `behavior: "auto"` (instant jump), never `behavior: "smooth"`. Smooth animations restart on every chunk and actively fight user scroll gestures — the animation outruns the `scroll` event, so intent-detection fires too late. Use proactive intent detection (`wheel`/`touchmove`/`keydown`) rather than position-threshold detection, and re-engage following only when the user returns to the bottom. Once the current message grows taller than the visible area, stop auto-following for the rest of that message even if the reader hasn't scrolled — continuing to chase the tail otherwise yanks the text they're reading (the start of the message) out of view on every chunk. Reset this freeze for each new message so short replies still snap into view immediately.
+
+**No dead ends rule:** Any error state a learner can reach during normal use (a 403 mid-session, an unrecognized URL, a failed mutation) must have a way back to a working screen — never just an error banner with no next step. When the recovery path is a redirect to another screen that already handles the situation (e.g. `/` re-showing the consent gate), suppress the raw error from ever rendering first; a screen that's about to navigate away shouldn't flash the technical failure message before it does.
 
 ## Backend Architecture
 
