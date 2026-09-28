@@ -25,16 +25,12 @@ export interface ConversationRequest {
 // Non-streaming response types
 // ---------------------------------------------------------------------------
 
-export interface Timings {
-  ttfb_ms: number;
-  total_ms: number;
-}
-
 export interface ConversationResponse {
+  // Deliberately no model/timings — platform-internal detail, not returned
+  // to the learner-facing client (see backend ConversationResponse's
+  // docstring). Still recorded server-side in the runs table regardless.
   conversation_id: string;
   assistant_message: string;
-  model: string;
-  timings: Timings;
 }
 
 export interface ConversationSummary {
@@ -126,7 +122,6 @@ export interface UsageTodayResponse {
 /** Payload of the first `meta` event on a streaming connection. */
 export interface SSEMetaData {
   conversation_id: string;
-  model: string;
   prompt_slug: string;
 }
 
@@ -159,16 +154,25 @@ export interface EndSessionResponse {
   summary: SessionSummary | null;
 }
 
+export interface ConsentStatus {
+  consented: boolean;
+  consented_at: string | null;
+}
+
+export interface ConsentRecordResponse {
+  status: string;
+  consented_at: string;
+}
+
 /**
  * Payload of the terminal `done` event.
- * On success: conversation_id, assistant_message, model, timings are all present.
- * On failure: only `error` is present.
+ * On success: conversation_id, assistant_message are present (no model/
+ * timings — platform-internal detail, not returned to the learner-facing
+ * client). On failure: only `error` is present.
  */
 export interface SSEDoneData {
   conversation_id?: string;
   assistant_message?: string;
-  model?: string;
-  timings?: Timings;
   error?: SSEErrorPayload;
 }
 

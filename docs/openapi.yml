@@ -44,13 +44,13 @@ info:
 
     ```
     event: meta
-    data: {"conversation_id": "...", "model": "...", "prompt_slug": "..."}
+    data: {"conversation_id": "...", "prompt_slug": "..."}
 
     event: chunk
     data: {"delta": "Hello"}
 
     event: done
-    data: {"conversation_id": "...", "assistant_message": "Hello world", "model": "...", "timings": {"ttfb_ms": 120, "total_ms": 800}}
+    data: {"conversation_id": "...", "assistant_message": "Hello world"}
     ```
 
     Three event types in order:
@@ -59,6 +59,12 @@ info:
     - **done** — always the final event; contains the full message or an `error` object on failure
 
     Clients must read until `done` is received to avoid hanging connections.
+
+    Deliberately no `model`/`timings` fields — that's platform-internal detail,
+    not something to leak to a learner-facing endpoint. It's still recorded
+    server-side (the `runs` table) regardless. The admin-only mirror routes
+    (`/admin/u/{userId}/...`) include `model` in `meta` and `model`/`timings`
+    in `done`, for internal comparison/QA tooling.
 
 servers:
   - url: http://localhost:8000
@@ -120,6 +126,51 @@ paths:
                 $ref: "#/components/schemas/UserStatusResponse"
               example:
                 has_profile: false
+
+  /u/{userId}/consent:
+    get:
+      operationId: getConsentStatus
+      summary: Get consent status
+      description: |
+        Returns whether this learner has a recorded consent record. Checked by the
+        frontend's root page before the UUID→chat redirect: a fresh UUID has never
+        consented, so the consent gate is shown; a returning UUID with a record
+        skips straight to chat. See the GDPR consent-gate entry in `docs/roadmap.md`
+        for the full disclosure copy and rollout context.
+      tags: [users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Consent status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentStatusResponse"
+              example:
+                consented: false
+                consented_at: null
+    post:
+      operationId: recordConsent
+      summary: Record consent
+      description: |
+        Records that this learner has agreed to the consent disclosure, timestamped
+        and keyed to `user_id` — not a localStorage-only flag, so it can be produced
+        as evidence later. Idempotent: re-posting for an already-consented user_id
+        is a no-op that returns the original timestamp.
+      tags: [users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Consent recorded (or already existed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRecordResponse"
+              example:
+                status: recorded
+                consented_at: "2026-09-23T08:51:40Z"
 
   /u/{userId}/conversations:
     get:
@@ -187,7 +238,7 @@ paths:
                   content: "Hello! My name is Mika."
       responses:
         "200":
-          description: Assistant reply with conversation ID and latency timings
+          description: Assistant reply with conversation ID
           content:
             application/json:
               schema:
@@ -195,12 +246,10 @@ paths:
               example:
                 conversation_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                 assistant_message: "Hello Mika! How can I help you today?"
-                model: gpt-4.1
-                timings:
-                  ttfb_ms: 320
-                  total_ms: 980
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/ConsentRequired"
         "409":
           $ref: "#/components/responses/ActiveConversationConflict"
         "502":
@@ -239,6 +288,8 @@ paths:
                 $ref: "#/components/schemas/SSEStream"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/ConsentRequired"
 
   /u/{userId}/conversations/init-stream:
     post:
@@ -269,6 +320,8 @@ paths:
             text/event-stream:
               schema:
                 $ref: "#/components/schemas/SSEStream"
+        "403":
+          $ref: "#/components/responses/ConsentRequired"
 
   /u/{userId}/conversations/{conversationId}:
     post:
@@ -778,7 +831,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ConversationResponse"
+                $ref: "#/components/schemas/AdminConversationResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -847,7 +900,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ConversationResponse"
+                $ref: "#/components/schemas/AdminConversationResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1279,19 +1332,36 @@ components:
 
     ConversationResponse:
       type: object
-      required: [conversation_id, assistant_message, model, timings]
+      description: |
+        Deliberately excludes model/timing info — that's platform-internal
+        detail, not something to leak to a learner-facing endpoint. It's still
+        recorded server-side (the `runs` table) regardless. See
+        AdminConversationResponse for the variant that includes it, used only
+        by admin/internal-tooling routes (/admin/u/{userId}/...).
+      required: [conversation_id, assistant_message]
       properties:
         conversation_id:
           type: string
           format: uuid
         assistant_message:
           type: string
-        model:
-          type: string
-          description: OpenAI model that generated the reply
-          example: gpt-4.1
-        timings:
-          $ref: "#/components/schemas/Timings"
+
+    AdminConversationResponse:
+      description: |
+        Admin-only variant of ConversationResponse: includes model + timing
+        info for internal comparison/QA tooling (e.g.
+        scripts/compare_outline_models.py).
+      allOf:
+        - $ref: "#/components/schemas/ConversationResponse"
+        - type: object
+          required: [model, timings]
+          properties:
+            model:
+              type: string
+              description: OpenAI model that generated the reply
+              example: gpt-4.1
+            timings:
+              $ref: "#/components/schemas/Timings"
 
     ConversationSummary:
       type: object
@@ -1388,6 +1458,33 @@ components:
         has_profile:
           type: boolean
           description: True when sections/user/{user_id}.md exists (learner has completed setup)
+
+    ConsentStatusResponse:
+      type: object
+      required: [consented]
+      properties:
+        consented:
+          type: boolean
+          description: True when a consent record exists for this user_id
+        consented_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When consent was recorded; null when consented is false
+
+    ConsentRecordResponse:
+      type: object
+      required: [status, consented_at]
+      properties:
+        status:
+          type: string
+          example: recorded
+        consented_at:
+          type: string
+          format: date-time
+          description: |
+            When consent was recorded. Recording is idempotent — re-posting for an
+            already-consented user_id returns the original timestamp, not a new one.
 
     SessionSummary:
       type: object
@@ -1588,15 +1685,16 @@ components:
 
     SSEMetaEventData:
       type: object
-      description: Payload of the `meta` SSE event
-      required: [conversation_id, model, prompt_slug]
+      description: >-
+        Payload of the `meta` SSE event. The admin-only mirror routes
+        (/admin/u/{userId}/...) additionally include a `model` field; omitted
+        here — platform-internal detail, not leaked to the learner-facing
+        client.
+      required: [conversation_id, prompt_slug]
       properties:
         conversation_id:
           type: string
           format: uuid
-        model:
-          type: string
-          example: gpt-4.1
         prompt_slug:
           type: string
           example: default
@@ -1614,8 +1712,11 @@ components:
       type: object
       description: |
         Payload of the terminal `done` SSE event.
-        On success all fields except `error` are present.
-        On failure only `error` is present.
+        On success, conversation_id + assistant_message are present. On
+        failure, only `error` is present. The admin-only mirror routes
+        (/admin/u/{userId}/...) additionally include `model`/`timings` on
+        success; omitted here — platform-internal detail, not leaked to the
+        learner-facing client.
       properties:
         conversation_id:
           type: string
@@ -1623,10 +1724,6 @@ components:
         assistant_message:
           type: string
           description: Full assembled assistant reply (success only)
-        model:
-          type: string
-        timings:
-          $ref: "#/components/schemas/Timings"
         error:
           type: object
           description: Present only on failure
@@ -1711,6 +1808,19 @@ components:
             $ref: "#/components/schemas/ErrorDetail"
           example:
             detail: "Total message content length (35000) exceeds max_input_chars (32000)"
+
+    ConsentRequired:
+      description: >-
+        No recorded consent for this user_id — defense in depth against the
+        frontend's consent gate (POST /u/{userId}/consent) being bypassed.
+        Raised before the route body runs, so streaming endpoints return this
+        as a plain JSON 403, not an SSE `done` error event.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: "Consent required before starting a conversation"
 
     Unauthorized:
       description: >-

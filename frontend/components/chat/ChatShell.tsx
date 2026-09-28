@@ -31,8 +31,19 @@ interface ChatShellProps {
 export function ChatShell({ userId, conversationId }: ChatShellProps) {
   const router = useRouter();
   const { isSidebarOpen, toggleSidebar, enterToSend, toggleEnterToSend } = useChatStore();
-  const { status, partialText, timings, model, promptSlug: streamedPromptSlug, errorMessage, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
+  const { status, partialText, promptSlug: streamedPromptSlug, errorMessage, errorStatus, sendMessage, initSession, rewindAndStream, cancel, reset, conversationId: streamedConversationId } =
     useStreamingChat(userId);
+
+  // A learner whose browser tab/URL predates the consent gate (or who's
+  // deep-linked straight to /chat) never passes through "/" to see the
+  // consent screen — require_consent's 403 is their first and only signal.
+  // Bounce them to "/", which re-checks consent status and shows the gate;
+  // completing it redirects straight back into chat.
+  useEffect(() => {
+    if (status === "error" && errorStatus === 403) {
+      router.push("/");
+    }
+  }, [status, errorStatus, router]);
 
   // After the first turn the hook captures the server-assigned ID; use it for
   // follow-up turns when there is no URL-based conversationId.
@@ -275,8 +286,9 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
     <div className="flex h-full overflow-hidden bg-background">
       {/* Sidebar */}
       <aside
+        aria-hidden={!isSidebarOpen}
         className={cn(
-          "flex flex-col border-r bg-muted/30 transition-all duration-200",
+          "hidden flex-col border-r bg-muted/30 transition-all duration-200 md:flex",
           isSidebarOpen ? "w-64" : "w-0 overflow-hidden"
         )}
       >
@@ -302,7 +314,15 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex items-center gap-2 border-b px-4 py-2">
-          <Button variant="ghost" size="icon" onClick={toggleSidebar} title="Toggle sidebar">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            title="Toggle sidebar"
+            aria-label="Toggle sidebar"
+            aria-expanded={isSidebarOpen}
+            className="hidden md:inline-flex"
+          >
             <PanelLeft className="h-4 w-4" />
           </Button>
           <Button
@@ -380,14 +400,15 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
           isLoading={isLoading}
           streamStatus={status}
           partialText={partialText}
-          timings={timings}
-          model={model}
           promptSlug={streamedPromptSlug}
           onRewind={activeConversationId && !isStreaming && !isFetching ? handleRewind : undefined}
         />
 
-        {/* Error banner */}
-        {status === "error" && errorMessage && (
+        {/* Error banner — suppressed for 403 (consent required): that state is
+            transient, immediately redirecting to "/" (see the effect above),
+            so flashing the raw error first would be a jarring blip rather
+            than a clean handoff to the consent screen. */}
+        {status === "error" && errorMessage && errorStatus !== 403 && (
           <div className="mx-4 mb-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {errorMessage}
           </div>

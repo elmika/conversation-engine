@@ -37,7 +37,7 @@ function makeSseStream(
 const STREAM_EVENTS = [
   {
     event: "meta",
-    data: { conversation_id: "test-conv-id-1", model: "gpt-4.1-mini", prompt_slug: "default" },
+    data: { conversation_id: "test-conv-id-1", prompt_slug: "default" },
   },
   { event: "chunk", data: { delta: "Hello" } },
   { event: "chunk", data: { delta: " world" } },
@@ -46,8 +46,6 @@ const STREAM_EVENTS = [
     data: {
       conversation_id: "test-conv-id-1",
       assistant_message: "Hello world",
-      model: "gpt-4.1-mini",
-      timings: { ttfb_ms: 50, total_ms: 200 },
     },
   },
 ];
@@ -115,7 +113,6 @@ describe("useStreamingChat", () => {
 
     expect(result.current.partialText).toBe("Hello world");
     expect(result.current.conversationId).toBe("test-conv-id-1");
-    expect(result.current.timings?.ttfb_ms).toBe(50);
   });
 
   it("accumulates partial text during streaming", async () => {

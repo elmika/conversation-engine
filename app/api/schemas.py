@@ -1,5 +1,6 @@
 """Request/response schemas for conversation API."""
 
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -66,10 +67,25 @@ class TimingsSchema(BaseModel):
 
 
 class ConversationResponse(BaseModel):
-    """Response envelope for a conversation turn."""
+    """Response envelope for a conversation turn.
+
+    Deliberately excludes model/timing info — that's platform-internal detail,
+    not something to leak to a learner-facing endpoint. It's still recorded
+    server-side in the `runs` table regardless (see
+    ConversationService.persist_stream_result); this just isn't returned over
+    the wire to the client. See AdminConversationResponse for the variant that
+    includes it, used only by admin/internal-tooling routes.
+    """
 
     conversation_id: str
     assistant_message: str
+
+
+class AdminConversationResponse(ConversationResponse):
+    """Admin-only variant of ConversationResponse: includes model + timing
+    info for internal comparison/QA tooling (e.g.
+    scripts/compare_outline_models.py)."""
+
     model: str
     timings: TimingsSchema
 
@@ -134,6 +150,16 @@ class EndSessionResponse(BaseModel):
 
 class CompleteSetupResponse(BaseModel):
     status: str = "completed"
+
+
+class ConsentStatusResponse(BaseModel):
+    consented: bool
+    consented_at: Optional[datetime] = None
+
+
+class ConsentRecordResponse(BaseModel):
+    status: str = "recorded"
+    consented_at: datetime
 
 
 class PromptSchema(BaseModel):

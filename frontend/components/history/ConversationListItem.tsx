@@ -78,9 +78,12 @@ export function ConversationListItem({
       {!editing && (
         <button
           onClick={startEditing}
+          aria-label="Rename conversation"
           className={cn(
-            "transition-opacity text-muted-foreground hover:text-foreground",
-            showDelete ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            "flex items-center justify-center rounded transition-opacity text-muted-foreground hover:text-foreground",
+            showDelete
+              ? "opacity-100 h-9 w-9"
+              : "opacity-0 group-hover:opacity-100"
           )}
           title="Rename"
         >
@@ -92,7 +95,8 @@ export function ConversationListItem({
           <AlertDialogTrigger asChild>
             <button
               onClick={(e) => e.stopPropagation()}
-              className="text-muted-foreground hover:text-destructive"
+              aria-label="Delete conversation"
+              className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:text-destructive"
               title="Delete"
             >
               <Trash2 className="h-3 w-3" />

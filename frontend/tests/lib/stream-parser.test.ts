@@ -34,22 +34,21 @@ async function collect(stream: ReadableStream<Uint8Array>): Promise<SSEEvent[]> 
 describe("parseSSEStream", () => {
   it("parses a complete meta → chunk → done sequence in one chunk", async () => {
     const raw =
-      'event: meta\ndata: {"conversation_id":"abc","model":"gpt-4.1-mini","prompt_slug":"default"}\n\n' +
+      'event: meta\ndata: {"conversation_id":"abc","prompt_slug":"default"}\n\n' +
       'event: chunk\ndata: {"delta":"Hello"}\n\n' +
-      'event: done\ndata: {"conversation_id":"abc","assistant_message":"Hello","model":"gpt-4.1-mini","timings":{"ttfb_ms":100,"total_ms":300}}\n\n';
+      'event: done\ndata: {"conversation_id":"abc","assistant_message":"Hello"}\n\n';
 
     const events = await collect(makeStream([raw]));
 
     expect(events).toHaveLength(3);
     expect(events[0]).toEqual({
       event: "meta",
-      data: { conversation_id: "abc", model: "gpt-4.1-mini", prompt_slug: "default" },
+      data: { conversation_id: "abc", prompt_slug: "default" },
     });
     expect(events[1]).toEqual({ event: "chunk", data: { delta: "Hello" } });
     expect(events[2].event).toBe("done");
     if (events[2].event === "done") {
       expect(events[2].data.assistant_message).toBe("Hello");
-      expect(events[2].data.timings?.ttfb_ms).toBe(100);
     }
   });
 
