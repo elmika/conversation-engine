@@ -32,9 +32,17 @@ def test_marks_modules_done_current_upcoming_from_progress_section(tmp_path) -> 
 
     assert summary["course_name"] == "Pandas for a Python Engineer"
     assert summary["modules"] == [
-        {"title": "Pandas for a Python Engineer", "status": "done"},
-        {"title": "Inspecting and Cleaning Real-World Fintech Data", "status": "current"},
-        {"title": "Filtering, Joining, and Aggregating Transactions", "status": "upcoming"},
+        {"title": "Pandas for a Python Engineer", "status": "done", "checklist": None},
+        {
+            "title": "Inspecting and Cleaning Real-World Fintech Data",
+            "status": "current",
+            "checklist": None,
+        },
+        {
+            "title": "Filtering, Joining, and Aggregating Transactions",
+            "status": "upcoming",
+            "checklist": None,
+        },
     ]
 
 
@@ -102,6 +110,91 @@ Module 2: Inspecting and Cleaning, starting with real fintech data.
 
     statuses = [m["status"] for m in summary["modules"]]
     assert statuses == ["done", "current", "upcoming"]
+
+
+def test_unchanged_checklist_after_a_session_with_no_new_sub_points(tmp_path) -> None:
+    """product/use-cases/courses/session-start.md + session-end.md, "Within-module
+    progress checklist" (2026-09-29): a module's 2-4 sub-points are persisted in
+    the progress file as a checklist. A session that covered nothing new (pure
+    meta-conversation) must render that checklist exactly as it was — 1 of 3,
+    same as last time — not a vague recap that implies progress that didn't
+    happen.
+    """
+    progress = """## Progress - Current state
+Next, we'll continue Module 1 by examining sample AI tools.
+
+## Module checklist
+
+Module 1
+- [x] What AI tools are
+- [ ] Where they're reliable
+- [ ] Finding fast wins
+"""
+    resolver = _resolver(tmp_path, course=COURSE, progress=progress)
+    summary = build_session_summary(resolver)
+
+    current = summary["modules"][0]
+    assert current["status"] == "current"
+    assert current["checklist"] == [
+        {"title": "What AI tools are", "done": True},
+        {"title": "Where they're reliable", "done": False},
+        {"title": "Finding fast wins", "done": False},
+    ]
+
+
+def test_checklist_shows_only_the_one_newly_covered_sub_point(tmp_path) -> None:
+    """A session that covered exactly one new sub-point must show only that one
+    newly checked — the others keep whatever state they already had.
+    """
+    progress = """## Progress - Current state
+Next, we'll continue Module 1 by examining where AI is and isn't reliable.
+
+## Module checklist
+
+Module 1
+- [x] What AI tools are
+- [x] Where they're reliable
+- [ ] Finding fast wins
+"""
+    resolver = _resolver(tmp_path, course=COURSE, progress=progress)
+    summary = build_session_summary(resolver)
+
+    current = summary["modules"][0]
+    assert current["checklist"] == [
+        {"title": "What AI tools are", "done": True},
+        {"title": "Where they're reliable", "done": True},
+        {"title": "Finding fast wins", "done": False},
+    ]
+
+
+def test_checklist_is_none_for_modules_other_than_the_checklisted_one(tmp_path) -> None:
+    progress = """## Progress - Current state
+Next, we'll continue Module 1.
+
+## Module checklist
+
+Module 1
+- [x] What AI tools are
+- [ ] Where they're reliable
+"""
+    resolver = _resolver(tmp_path, course=COURSE, progress=progress)
+    summary = build_session_summary(resolver)
+
+    assert summary["modules"][0]["checklist"] is not None
+    assert summary["modules"][1]["checklist"] is None
+    assert summary["modules"][2]["checklist"] is None
+
+
+def test_no_module_checklist_section_leaves_checklist_none(tmp_path) -> None:
+    """Progress files written before this feature (or before a module has been
+    introduced) have no "## Module checklist" section — must degrade cleanly."""
+    progress = """## Progress - Current state
+- Begin Module 1 from the course outline this session.
+"""
+    resolver = _resolver(tmp_path, course=COURSE, progress=progress)
+    summary = build_session_summary(resolver)
+
+    assert all(m["checklist"] is None for m in summary["modules"])
 
 
 def test_module_titles_keep_markdown_bold_for_frontend_rendering(tmp_path) -> None:

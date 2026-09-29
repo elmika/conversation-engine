@@ -46,8 +46,8 @@ describe("conversationToMarkdown", () => {
     const summary: SessionSummary = {
       course_name: "TypeScript Mentor",
       modules: [
-        { title: "Basics", status: "done" },
-        { title: "Generics", status: "current" },
+        { title: "Basics", status: "done", checklist: null },
+        { title: "Generics", status: "current", checklist: null },
       ],
       next_step: "Practice generic constraints.",
     };

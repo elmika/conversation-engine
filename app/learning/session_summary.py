@@ -11,12 +11,54 @@ from typing import Optional
 from app.application.ports import SlotResolver
 
 
+def parse_module_checklist(progress_content: str) -> Optional[dict]:
+    """Parse the "## Module checklist" section into {module_number, items}.
+
+    prompts/progress-wrap-up.md maintains exactly one module's checklist at a
+    time (the current module's — see "Within-module progress checklist",
+    product/use-cases/courses/session-start.md), as:
+
+        ## Module checklist
+
+        Module 1
+        - [x] What AI tools are
+        - [ ] Where they're reliable
+
+    Returns None if the section is absent (progress files predating this
+    feature, or a module that hasn't been introduced yet) or names no module.
+    """
+    m = re.search(
+        r"## Module checklist\s*\n(.*?)(?:\n##|\Z)",
+        progress_content,
+        re.DOTALL,
+    )
+    if not m:
+        return None
+    section = m.group(1)
+
+    module_match = re.search(r"Module\s+(\d+)", section)
+    if not module_match:
+        return None
+    module_number = int(module_match.group(1))
+
+    items = [
+        {"title": title.strip(), "done": mark.lower() == "x"}
+        for mark, title in re.findall(r"^[-*]\s+\[([ xX])\]\s+(.+)$", section, re.MULTILINE)
+    ]
+    if not items:
+        return None
+
+    return {"module_number": module_number, "items": items}
+
+
 def build_session_summary(slot_resolver: SlotResolver) -> dict:
     """Extract session summary from course and progress content.
 
-    Returns: {course_name: str|None, modules: list[{title, status}], next_step: str|None}
-    `status` is "done" | "current" | "upcoming" | None (None when the Progress
-    section names no module, e.g. a brand-new course with no session yet).
+    Returns: {course_name: str|None, modules: list[{title, status, checklist}],
+    next_step: str|None}. `status` is "done" | "current" | "upcoming" | None
+    (None when the Progress section names no module, e.g. a brand-new course
+    with no session yet). `checklist` is the module's sub-point list (see
+    parse_module_checklist) for the one module it's persisted for, else None.
     """
     course_name: Optional[str] = None
     titles: list[str] = []
@@ -80,6 +122,8 @@ def build_session_summary(slot_resolver: SlotResolver) -> dict:
                 if module_nums:
                     current_module = max(module_nums)
 
+    checklist = parse_module_checklist(progress_content) if progress_content else None
+
     modules: list[dict] = []
     for i, title in enumerate(titles, start=1):
         if current_module is None:
@@ -90,6 +134,9 @@ def build_session_summary(slot_resolver: SlotResolver) -> dict:
             status = "current"
         else:
             status = "upcoming"
-        modules.append({"title": title, "status": status})
+        module_checklist = (
+            checklist["items"] if checklist and checklist["module_number"] == i else None
+        )
+        modules.append({"title": title, "status": status, "checklist": module_checklist})
 
     return {"course_name": course_name, "modules": modules, "next_step": next_step}

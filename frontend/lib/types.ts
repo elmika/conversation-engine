@@ -138,9 +138,15 @@ export interface SSEErrorPayload {
   conversation_id?: string; // present on 409 active-conversation errors
 }
 
+export interface ChecklistItem {
+  title: string;
+  done: boolean;
+}
+
 export interface SessionSummaryModule {
   title: string;
   status: "done" | "current" | "upcoming" | null;
+  checklist: ChecklistItem[] | null;
 }
 
 export interface SessionSummary {

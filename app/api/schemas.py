@@ -132,9 +132,15 @@ class MessagesResponse(BaseModel):
     messages: list[MessageSchema]
 
 
+class ChecklistItemSchema(BaseModel):
+    title: str
+    done: bool
+
+
 class SessionSummaryModuleSchema(BaseModel):
     title: str
     status: Optional[Literal["done", "current", "upcoming"]] = None
+    checklist: Optional[list[ChecklistItemSchema]] = None
 
 
 class SessionSummarySchema(BaseModel):
