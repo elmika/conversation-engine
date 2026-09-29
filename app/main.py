@@ -11,7 +11,9 @@ from pathlib import Path
 
 from app.api.middleware import RequestIdAndTimingMiddleware
 from app.api.routes import admin_user_router, router, user_router
+from app.infra.llm_anthropic import AnthropicLLMAdapter
 from app.infra.llm_openai import OpenAILLMAdapter
+from app.infra.llm_router import RoutingLLMAdapter
 from app.infra.logging import setup_logging
 import app.infra.persistence.db as _db
 from app.infra.migrations import run_migrations
@@ -61,7 +63,9 @@ async def lifespan(app: FastAPI):
 
     # Inject infra so routes depend on app.state instead of constructing adapters.
     app.state.settings = settings
-    app.state.llm = OpenAILLMAdapter(settings)
+    app.state.llm = RoutingLLMAdapter(
+        OpenAILLMAdapter(settings), AnthropicLLMAdapter(settings), settings.default_model
+    )
 
     yield
     # teardown if any

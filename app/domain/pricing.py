@@ -21,12 +21,19 @@ PRICE_PER_MILLION_USD: dict[str, dict[str, float]] = {
     "gpt-5.6-terra": {"input": 2.00, "output": 12.00},
     "gpt-5.6-sol": {"input": 4.00, "output": 20.00},
     "gpt-6-astra": {"input": 10.00, "output": 50.00},
+
+    # Anthropic — https://www.anthropic.com/pricing, confirmed 2026-09-29.
+    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    "claude-opus-5": {"input": 5.00, "output": 25.00},
 }
 
 # The OpenAI API often echoes back a dated snapshot id (e.g. "gpt-4.1-2025-04-14")
-# in the response instead of the bare alias we requested. Strip that suffix before
-# a price-table lookup so a Run recording the snapshot id still prices correctly.
-_DATE_SNAPSHOT_SUFFIX = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+# in the response instead of the bare alias we requested; Anthropic does the same
+# with a different date format (e.g. "claude-haiku-4-5-20251001"). Strip either
+# suffix before a price-table lookup so a Run recording the snapshot id still
+# prices correctly.
+_DATE_SNAPSHOT_SUFFIX = re.compile(r"-\d{4}-\d{2}-\d{2}$|-\d{8}$")
 
 
 def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> Optional[float]:

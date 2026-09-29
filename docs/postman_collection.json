@@ -1613,7 +1613,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    },\n    {\n      \"slug\": \"gpt-5.4-nano\",\n      \"name\": \"GPT-5.4 nano\",\n      \"description\": \"Our cheapest GPT-5.4-class model for simple high-volume tasks\"\n    }\n  ]\n}",
+              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    },\n    {\n      \"slug\": \"gpt-5.4-nano\",\n      \"name\": \"GPT-5.4 nano\",\n      \"description\": \"Our cheapest GPT-5.4-class model for simple high-volume tasks\"\n    },\n    {\n      \"slug\": \"claude-sonnet-5\",\n      \"name\": \"Claude Sonnet 5\",\n      \"description\": \"Anthropic's balanced flagship model for everyday conversation and coding\"\n    },\n    {\n      \"slug\": \"claude-haiku-4-5\",\n      \"name\": \"Claude Haiku 4.5\",\n      \"description\": \"Anthropic's fastest, most cost-efficient current model\"\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
             }
           ]
