@@ -66,6 +66,44 @@ def test_progress_section_with_no_module_mention_leaves_status_none(tmp_path) ->
     assert all(m["status"] is None for m in summary["modules"])
 
 
+def test_forward_looking_module_mention_does_not_advance_current_module(tmp_path) -> None:
+    """Regression test for a real progress file (2026-09-29): the "Next, we'll
+    continue Module 1 ..." sentence is authoritative, but the same sentence
+    can also mention a *later* module in passing ("... before moving on to
+    Module 2"). A naive max()-of-all-mentions parse picked up that forward
+    reference and showed Module 2 as current/ready in the session summary,
+    while the next session (driven by the same progress text in-context)
+    correctly stayed on Module 1 — the summary overstated progress the
+    learner hadn't actually made.
+    """
+    progress = """## Progress - Current state
+This session clarified that the student considers the introductory Lesson 1
+material already covered and requested a summary of the remaining work, but
+no new Module 1 content was taught. Next, we'll continue Module 1 by
+examining sample AI tools for practical restaurant administration and
+clarifying what they can and cannot reliably do before moving on to Module 2.
+"""
+    resolver = _resolver(tmp_path, course=COURSE, progress=progress)
+    summary = build_session_summary(resolver)
+
+    statuses = [m["status"] for m in summary["modules"]]
+    assert statuses == ["current", "upcoming", "upcoming"]
+
+
+def test_move_on_to_sentence_advances_current_module(tmp_path) -> None:
+    """The authoritative "Next, we'll move on to Module N" phrasing (the prompt's
+    other allowed wording) should still be able to advance the current module."""
+    progress = """## Progress - Current state
+This session finished Module 1's practical examples. Next, we'll move on to
+Module 2: Inspecting and Cleaning, starting with real fintech data.
+"""
+    resolver = _resolver(tmp_path, course=COURSE, progress=progress)
+    summary = build_session_summary(resolver)
+
+    statuses = [m["status"] for m in summary["modules"]]
+    assert statuses == ["done", "current", "upcoming"]
+
+
 def test_module_titles_keep_markdown_bold_for_frontend_rendering(tmp_path) -> None:
     course = """# Course: Pandas
 

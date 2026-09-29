@@ -56,11 +56,29 @@ def build_session_summary(slot_resolver: SlotResolver) -> dict:
 
             # The Progress section is the sole source of truth for module status
             # (same rule the course-session-init prompt follows for the in-chat
-            # module list) — the highest module number it names is the one the
-            # student is currently on; anything below is done, above is upcoming.
-            module_nums = [int(n) for n in re.findall(r"Module\s+(\d+)", section)]
-            if module_nums:
-                current_module = max(module_nums)
+            # module list). prompts/progress-wrap-up.md contracts the second
+            # sentence to always read "Next, we'll continue Module N ..." or
+            # "Next, we'll move on to Module N ..." — that sentence is the
+            # authoritative signal for the current module, so match it first.
+            # Fall back to the highest "Module N" mention anywhere in the
+            # section only when that sentence isn't found (e.g. hand-written
+            # progress content in tests). Matching on "Module N" anywhere,
+            # unscoped, is unsafe: the same authoritative sentence may also
+            # name a *later* module in passing ("... before moving on to
+            # Module 2"), and a naive max() then reports that forward
+            # reference as current — overstating progress the learner hasn't
+            # actually made (regression, 2026-09-29).
+            next_sentence = re.search(
+                r"Next,\s+we'll\s+(?:continue|move on to)\s+Module\s+(\d+)",
+                section,
+                re.IGNORECASE,
+            )
+            if next_sentence:
+                current_module = int(next_sentence.group(1))
+            else:
+                module_nums = [int(n) for n in re.findall(r"Module\s+(\d+)", section)]
+                if module_nums:
+                    current_module = max(module_nums)
 
     modules: list[dict] = []
     for i, title in enumerate(titles, start=1):
