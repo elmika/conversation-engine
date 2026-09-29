@@ -37,6 +37,15 @@ def init_engine(database_url: str) -> None:
     poolclass = None
     if database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
+        # pysqlite's own default busy timeout (5s) is what most "database is
+        # locked" reports online blame — but writes here are trivial and fast,
+        # so 5s is plenty in theory. In practice, a burst of concurrent writers
+        # (e.g. the frontend's own retry/double-submit, or two browser tabs)
+        # can still exhaust it. Raised well past that as cheap insurance; see
+        # the WAL PRAGMA below for the actual fix (readers no longer block
+        # writers, so most of the contention this guards against shouldn't
+        # occur in the first place).
+        connect_args["timeout"] = 30
     if ":memory:" in database_url:
         poolclass = StaticPool
     elif database_url.startswith("sqlite"):
@@ -64,10 +73,41 @@ def init_engine(database_url: str) -> None:
         @event.listens_for(_engine, "connect")
         def _sqlite_disable_pysqlite_txn(dbapi_connection, _connection_record):
             dbapi_connection.isolation_level = None
+            if ":memory:" not in database_url:
+                # WAL lets readers proceed without blocking a concurrent
+                # writer (and vice versa) — SQLite's own recommended fix for
+                # "database is locked" under any real concurrent load, which
+                # the default rollback journal serializes even for plain
+                # reads. Persisted in the DB file's header once set, so this
+                # is a cheap no-op on every connection after the first.
+                # PRAGMA busy_timeout matches connect_args["timeout"] above
+                # (belt-and-suspenders — pysqlite is expected to apply that
+                # at the driver level already, but setting the PRAGMA
+                # directly avoids depending on that).
+                dbapi_connection.execute("PRAGMA journal_mode=WAL")
+                dbapi_connection.execute("PRAGMA busy_timeout=30000")
 
         @event.listens_for(_engine, "begin")
         def _sqlite_explicit_begin(conn):
-            conn.exec_driver_sql("BEGIN")
+            # IMMEDIATE, not a plain deferred BEGIN: a deferred transaction
+            # that does a read before its first write (our common case —
+            # e.g. rename_conversation's session.get() before the UPDATE)
+            # only takes a SHARED (read) lock at BEGIN, so if another writer
+            # commits in between, this connection's later attempt to
+            # upgrade to a write lock is an immediate, non-retryable
+            # SQLITE_BUSY — the busy handler is never invoked, no matter how
+            # high busy_timeout is set, because retrying wouldn't help (the
+            # read snapshot is already fixed). BEGIN IMMEDIATE takes the
+            # write lock upfront instead, so contending writers simply queue
+            # on it, which the busy handler *does* retry against.
+            # Confirmed directly (2026-09-29): 10 concurrent writers against
+            # a real NullPool/file-backed engine reproduced this exact
+            # "database is locked" within single-digit milliseconds — far
+            # under the 30s busy_timeout — with a plain BEGIN; switching to
+            # BEGIN IMMEDIATE (kept together with the WAL + busy_timeout
+            # settings above) made the same 10 requests queue and all
+            # succeed instead.
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
 
     SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
