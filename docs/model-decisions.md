@@ -1,6 +1,8 @@
 # Model Decisions
 
-Which OpenAI model each task uses, why, and the test history behind each choice.
+Which model each task uses, why, and the test history behind each choice. Both OpenAI and
+Anthropic (Claude) are available providers as of 2026-09-29 — see "Claude as a second
+provider" below.
 Complements `docs/prompts.md` "Model presets" (the mechanism — `config/model_presets/`,
 `scripts/apply_model_preset.py`) and `docs/roadmap.md` (open/in-progress items link back
 here once a comparison actually runs). This file is the durable record of *what we tried
@@ -149,6 +151,44 @@ its "mini-tier" positioning suggested — but inconsistent (strong in 3/8 profil
 to trade sol's consistency for terra's occasional wins. Worth a full re-test with a larger
 profile set if a future comparison suggests terra's variance was this-run noise, not a real
 gap — not warranted from a single 8-profile pass.
+
+---
+
+## Claude as a second provider (added 2026-09-29)
+
+`app/infra/llm_router.py` routes each call to OpenAI or Anthropic by the model slug's
+`provider` field in `model_registry.py` — the two providers are interchangeable from every
+call site's point of view, including the preset mechanism below. **Verified directly:**
+`scripts/apply_model_preset.py --dry-run` against a throwaway preset assigning
+`claude-haiku-4-5` to a prompt behaved identically to an OpenAI slug (frontmatter rewrite +
+settings-line printout) — the script never validates or special-cases the slug string, so
+no code change was needed to support a Claude preset.
+
+**Not yet done: choosing which task should actually run on Claude.** That's a normal model
+comparison per this file's usual process (compare against the current baseline row above,
+judge quality, check cost), not a default to assume. Tiers to compare, when ready:
+
+- **Chat-latency tier** — `course-session-init`, `course-session-core`,
+  `course-session-closure`, `user-profile-collection` (currently `gpt-4.1`). Candidate:
+  `claude-sonnet-5` or `claude-haiku-4-5`.
+- **Structured-extraction tier** — `user-profile-extraction`, `course-outline-extraction`
+  (currently `gpt-5.4-mini`). Candidate: `claude-haiku-4-5`.
+- **Outline tier** — `course-outline-proposal` (currently `gpt-5.6-sol`, see Test 3 below).
+  Candidate: `claude-sonnet-5` or `claude-opus-5`. `scripts/compare_outline_models.py`
+  already drives this turn provider-agnostically (it only varies `model_slug`), so a Claude
+  candidate needs no script change — just `--models gpt-5.6-sol,claude-sonnet-5`.
+- **Guard tier** — `lesson-objective-complete`, `session-length-extraction`,
+  `closure-continue-extraction`, `framing-answer-check` (currently `gpt-5.4-nano`).
+  Candidate: `claude-haiku-4-5`.
+- **`wrap_up_model`** (progress synthesis, currently `gpt-5.6-luna`). Candidate:
+  `claude-haiku-4-5` or `claude-sonnet-5`. No comparison script exists yet for this one
+  either (same gap noted below for luna vs. sol) — needs the same "drive a real session,
+  diff the resulting progress doc" tool before a Claude candidate can be judged here.
+
+Once a tier's candidate wins (or loses — record that too), add it to a new
+`config/model_presets/claude-2026-09.json` (mirroring `baseline-2026-09.json`'s shape) and
+to the "Current configuration" table above. `baseline-2026-09.json` stays on disk
+unchanged regardless — reverting is always `apply_model_preset.py baseline-2026-09`.
 
 ---
 
