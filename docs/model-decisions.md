@@ -14,8 +14,10 @@ adopted one, so nobody re-runs the same comparison cold next quarter.
 
 ## Current configuration
 
-Reference point: `config/model_presets/baseline-2026-09.json` + `course-outline-sol.json`
-(see `docs/prompts.md`). Pricing: `app/domain/pricing.py`, refreshed 2026-09-17.
+Reference point: `config/model_presets/baseline-2026-09.json` +
+`course-outline-claude-sonnet-5-5.json` (see `docs/prompts.md`). Pricing:
+`app/domain/pricing.py`, refreshed 2026-09-30. `course-outline-sol.json` stays on disk as the
+prior decision's record but is no longer the applied preset.
 
 | Task (prompt slug) | Model | Why this tier | Last reviewed |
 |---|---|---|---|
@@ -25,7 +27,7 @@ Reference point: `config/model_presets/baseline-2026-09.json` + `course-outline-
 | `user-profile-collection` | `gpt-4.1` | Plain framing Q&A, no creative work — split off the outline turn specifically so this could run on a cheap/fast tier (roadmap item 1, 2026-08-04) | 2026-08-04 |
 | `user-profile-extraction` | `gpt-5.4-mini` | Structured extraction from a short transcript | not re-tested since introduced |
 | `course-outline-extraction` | `gpt-5.4-mini` | Structured extraction from a short transcript | not re-tested since introduced |
-| `course-outline-proposal` | **`gpt-5.6-sol`** | The one generation worth paying for — one-shot, high-stakes, low volume (once per learner) | **2026-09-17** — see [Test 3](#test-3-2026-09-17--course-outline-proposal-gpt-56-sol-vs-gpt-6-astra) |
+| `course-outline-proposal` | **`claude-sonnet-5-5`** | Beat `gpt-5.6-sol` on quality, latency, *and* cost across an 8-profile comparison — no tradeoff to weigh | **2026-09-30** — see [Test 5](#test-5-2026-09-30--course-outline-proposal-gpt-56-sol-vs-claude-sonnet-55-vs-claude-opus-55) |
 | `lesson-objective-complete` | `gpt-5.4-nano` | Single-token YES/NO guard, cheap+fast is the whole requirement | not re-tested since introduced |
 | `session-length-extraction` | `gpt-5.4-nano` | Single-token/number extraction guard | not re-tested since introduced |
 | `closure-continue-extraction` | `gpt-5.4-nano` | Single-token YES/NO guard (new 2026-09-17) | 2026-09-17 |
@@ -152,6 +154,44 @@ to trade sol's consistency for terra's occasional wins. Worth a full re-test wit
 profile set if a future comparison suggests terra's variance was this-run noise, not a real
 gap — not warranted from a single 8-profile pass.
 
+### Test 5 — 2026-09-30 — `course-outline-proposal`: `gpt-5.6-sol` vs. `claude-sonnet-5-5` vs. `claude-opus-5-5`
+
+**Method:** Same 8 profiles, two passes with `scripts/compare_outline_models.py`
+(provider-agnostic already — no script change needed). First pass tested `claude-sonnet-5`
+and `claude-opus-5`; mid-comparison, `GET /v1/models` on the live account surfaced a newer
+generation (`claude-sonnet-5-5` released 2026-09-28, `claude-opus-5-5` released 2026-09-21)
+not yet in this repo's registry or in the bundled pricing reference — added to
+`model_registry.py` and `pricing.py` (confirmed live against anthropic.com/pricing: opus-5.5
+is $4/$20/MTok, *cheaper* than opus-5's $5/$25, not a same-price successor; sonnet-5.5 is
+$2/$10/MTok, unchanged from sonnet-5), then re-ran the full 8 profiles against
+`gpt-5.6-sol,claude-opus-5-5,claude-sonnet-5-5`.
+
+**Result:**
+- Quality: sol's one consistent edge across Tests 2-4 was an explicit closing
+  "validate before you trust it" module (missing from the first-pass claude-sonnet-5/opus-5
+  outlines on 2 of 4 profiles checked). The 5.5 generation closed that gap — both
+  claude-opus-5-5 and claude-sonnet-5-5 now include it in every profile (e.g. marketing-SQL's
+  "Checking Your Numbers: Spot common mistakes such as double-counting and missing data, so
+  you can trust your reports before you share them" — near-identical framing to sol's own).
+  claude-sonnet-5-5 added value sol never produced in any of Tests 1-4: a dedicated study-design
+  module (RCT/cohort/case-control) for nurse-research-statistics; an XLOOKUP/VLOOKUP module for
+  bakery-owner-spreadsheets solving the learner's actual "one ingredient price change should
+  update every recipe" problem; explicit balance-check/variance-flag language for
+  financial-analyst-vba-modeling, plus picking the test persona's own name up into the course
+  title. claude-opus-5-5 was comparably strong but didn't add anything claude-sonnet-5-5 lacked.
+- Latency: claude-sonnet-5-5 matched or beat sol on every profile (e.g. 5.7s vs. sol's 9.5s on
+  teacher-python; 6.8s vs. sol's 7.0s on bakery). claude-opus-5-5 was consistently *slower* than
+  sol — up to 16.2s on financial-VBA (sol: 9.2s) — a real regression for a turn the learner
+  waits on live.
+- Cost: claude-sonnet-5-5 is $2/$10 vs. sol's $4/$20 — half price. claude-opus-5-5 is $4/$20 —
+  identical to sol, so its extra latency bought nothing on price.
+
+**Decision: switched.** `course-outline-proposal.md` → `claude-sonnet-5-5`
+(`config/model_presets/course-outline-claude-sonnet-5-5.json`). Won on quality, latency, and
+cost simultaneously — no tradeoff to weigh, unlike every prior switch in this file. Verified
+live end-to-end post-switch: a real setup-flow run (no `model_slug` override — relying purely
+on the prompt's own `model:` frontmatter) resolved to `claude-sonnet-5-5`.
+
 ---
 
 ## Claude as a second provider (added 2026-09-29)
@@ -164,31 +204,34 @@ call site's point of view, including the preset mechanism below. **Verified dire
 settings-line printout) — the script never validates or special-cases the slug string, so
 no code change was needed to support a Claude preset.
 
-**Not yet done: choosing which task should actually run on Claude.** That's a normal model
-comparison per this file's usual process (compare against the current baseline row above,
-judge quality, check cost), not a default to assume. Tiers to compare, when ready:
+**Outline tier decided (2026-09-30) — see [Test 5](#test-5-2026-09-30--course-outline-proposal-gpt-56-sol-vs-claude-sonnet-55-vs-claude-opus-55):**
+`course-outline-proposal` switched to `claude-sonnet-5-5`. The remaining tiers below are
+still open — same process (compare against the current baseline row, judge quality, check
+cost), not a default to assume:
 
 - **Chat-latency tier** — `course-session-init`, `course-session-core`,
   `course-session-closure`, `user-profile-collection` (currently `gpt-4.1`). Candidate:
-  `claude-sonnet-5` or `claude-haiku-4-5`.
+  `claude-sonnet-5-5` or `claude-haiku-4-5`.
 - **Structured-extraction tier** — `user-profile-extraction`, `course-outline-extraction`
   (currently `gpt-5.4-mini`). Candidate: `claude-haiku-4-5`.
-- **Outline tier** — `course-outline-proposal` (currently `gpt-5.6-sol`, see Test 3 below).
-  Candidate: `claude-sonnet-5` or `claude-opus-5`. `scripts/compare_outline_models.py`
-  already drives this turn provider-agnostically (it only varies `model_slug`), so a Claude
-  candidate needs no script change — just `--models gpt-5.6-sol,claude-sonnet-5`.
 - **Guard tier** — `lesson-objective-complete`, `session-length-extraction`,
   `closure-continue-extraction`, `framing-answer-check` (currently `gpt-5.4-nano`).
   Candidate: `claude-haiku-4-5`.
 - **`wrap_up_model`** (progress synthesis, currently `gpt-5.6-luna`). Candidate:
-  `claude-haiku-4-5` or `claude-sonnet-5`. No comparison script exists yet for this one
+  `claude-haiku-4-5` or `claude-sonnet-5-5`. No comparison script exists yet for this one
   either (same gap noted below for luna vs. sol) — needs the same "drive a real session,
   diff the resulting progress doc" tool before a Claude candidate can be judged here.
 
+Before testing any of the above, re-check `GET /v1/models` on the live account first —
+Test 5 found a newer Claude generation (5.5) mid-comparison that wasn't in this file, the
+bundled model reference, or `model_registry.py`/`pricing.py` yet; don't assume the models
+already registered here are still the latest available.
+
 Once a tier's candidate wins (or loses — record that too), add it to a new
-`config/model_presets/claude-2026-09.json` (mirroring `baseline-2026-09.json`'s shape) and
-to the "Current configuration" table above. `baseline-2026-09.json` stays on disk
-unchanged regardless — reverting is always `apply_model_preset.py baseline-2026-09`.
+`config/model_presets/<slug>-<model>.json` (mirroring `course-outline-claude-sonnet-5-5.json`'s
+shape — one prompt, applied on top of baseline) and to the "Current configuration" table
+above. `baseline-2026-09.json` stays on disk unchanged regardless — reverting any one prompt
+is always `apply_model_preset.py baseline-2026-09`.
 
 ---
 

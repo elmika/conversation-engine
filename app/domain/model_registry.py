@@ -101,6 +101,21 @@ MODELS: dict[str, dict] = {
         "description": "Anthropic's most capable model for the hardest reasoning and agentic work",
         "provider": "anthropic",
     },
+
+    # --- Added 2026-09-30 — newer generation released after the above entries
+    # (opus-5.5: 2026-09-21, sonnet-5.5: 2026-09-28), confirmed live via
+    # GET /v1/models. Note opus-5.5 is priced *below* opus-5 ($4/$20 vs
+    # $5/$25 per app/domain/pricing.py), not a straight same-price successor.
+    "claude-opus-5-5": {
+        "name": "Claude Opus 5.5",
+        "description": "Anthropic's latest model for long-running agentic coding and knowledge work",
+        "provider": "anthropic",
+    },
+    "claude-sonnet-5-5": {
+        "name": "Claude Sonnet 5.5",
+        "description": "Anthropic's latest balanced model — speed and intelligence",
+        "provider": "anthropic",
+    },
 }
 
 # Display order — unpriced models (gpt-5-mini, gpt-5-nano) and the priciest

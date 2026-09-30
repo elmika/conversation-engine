@@ -26,6 +26,11 @@ PRICE_PER_MILLION_USD: dict[str, dict[str, float]] = {
     "claude-sonnet-5": {"input": 2.00, "output": 10.00},
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
     "claude-opus-5": {"input": 5.00, "output": 25.00},
+    # Added 2026-09-30 (released 2026-09-21/28, after the pricing page snapshot
+    # above) — confirmed live against anthropic.com/pricing. Note opus-5.5 is
+    # actually *cheaper* than opus-5, not a straight successor-at-same-price.
+    "claude-opus-5-5": {"input": 4.00, "output": 20.00},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},
 }
 
 # The OpenAI API often echoes back a dated snapshot id (e.g. "gpt-4.1-2025-04-14")
