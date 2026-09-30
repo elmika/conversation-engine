@@ -25,6 +25,14 @@ Usage:
 Output: for each test profile, the two models' outline text + latency, printed
 side by side for manual quality judgment (docs/roadmap.md "Evaluate GPT-5.6 Luna").
 This script makes no pass/fail judgment — outline quality is a human call.
+
+Caching: results are cached on disk (scripts/.cache/outline_compare.json), keyed by
+profile answers + model slug + the current text of course-outline-proposal.md and
+user-profile-collection.md. Re-running with an extra model or profile only pays for
+the new cells — already-tested combinations are served from cache. Editing either
+prompt file changes the key, so a prompt edit is never silently served a stale
+response. Use --no-cache to force fresh calls without touching the cache, or
+--refresh to force fresh calls and overwrite the cached entries.
 """
 
 from __future__ import annotations
@@ -38,6 +46,12 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from model_compare_cache import ComparisonCache  # noqa: E402
+
+CACHE_PATH = Path(__file__).resolve().parent / ".cache" / "outline_compare.json"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 
 def _load_admin_token() -> str:
@@ -226,12 +240,31 @@ def run_profile(base: str, profile: dict, model: str) -> dict:
                 pass
 
 
+def _prompt_texts() -> dict[str, str]:
+    """Text of every prompt file whose content can change the outline turn's result —
+    the outline prompt itself, plus the framing prompt that drives the 3 turns before
+    it (setup_flow.py's FRAMING_TURNS). Used as part of the cache key so editing
+    either file invalidates old cached results."""
+    return {
+        "course-outline-proposal": (PROMPTS_DIR / "course-outline-proposal.md").read_text(),
+        "user-profile-collection": (PROMPTS_DIR / "user-profile-collection.md").read_text(),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Compare candidate models on course-outline-proposal.")
     ap.add_argument("--base-url", default="http://localhost:8000")
     ap.add_argument("--models", default=",".join(DEFAULT_MODELS), help="comma-separated model_slugs")
     ap.add_argument(
         "--profiles", default=None, help="comma-separated profile labels to run (default: all)"
+    )
+    ap.add_argument(
+        "--no-cache", action="store_true",
+        help="ignore and don't update the cache — always call the live models",
+    )
+    ap.add_argument(
+        "--refresh", action="store_true",
+        help="call the live models even on a cache hit, and overwrite the cached entry",
     )
     args = ap.parse_args()
     if not ADMIN_TOKEN:
@@ -252,13 +285,31 @@ def main() -> int:
         return 2
     print(f"stack healthy: {health.strip()}\ncomparing models: {models}\n")
 
+    prompt_texts = _prompt_texts()
+    cache = ComparisonCache(CACHE_PATH)
+    cache_hits = 0
+    cache_misses = 0
+
     for profile in profiles:
         print("=" * 100)
         print(f"PROFILE: {profile['label']}")
         print("=" * 100)
         for model in models:
             print(f"\n--- {model} ---")
-            result = run_profile(args.base_url, profile, model)
+            key = cache.make_key(
+                profile_answers=profile["answers"], model=model, prompts=prompt_texts,
+            )
+            cached = None if args.no_cache else cache.get(key)
+            if cached is not None and not args.refresh:
+                result = cached
+                cache_hits += 1
+                print("  (cached)")
+            else:
+                result = run_profile(args.base_url, profile, model)
+                cache_misses += 1
+                if "error" not in result and not args.no_cache:
+                    cache.set(key, result)
+                    cache.save()
             if "error" in result:
                 print(f"  ERROR: {result['error']}")
                 continue
@@ -266,6 +317,7 @@ def main() -> int:
             print(f"  {result['outline']}\n")
 
     print("=" * 100)
+    print(f"cache: {cache_hits} hit(s), {cache_misses} live call(s)")
     print("Done. This script makes no quality judgment — compare the outlines above by eye")
     print("(module relevance, tailoring to the stated goal/industry, scannability) before")
     print("deciding whether to switch course-outline-proposal.md's `model:` field.")

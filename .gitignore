@@ -5,6 +5,7 @@ frontend/.pnpm-store
 .DS_Store
 .notes/
 temp/
+scripts/.cache/
 
 # Python build artifacts
 *.egg-info/

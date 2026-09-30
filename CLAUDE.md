@@ -88,6 +88,15 @@ evaluation (`docs/architecture-decisions.md` §5); currently scoped to the setup
 Expected to be extended to other flow stages (lesson core/closure) and, once a second `LLMPort`
 adapter exists, other providers — this will become routine as models keep shipping.
 
+Results are cached on disk (`scripts/.cache/`, gitignored) keyed by profile answers + model slug
++ the current text of the prompt files involved, via `scripts/model_compare_cache.py`. Adding one
+more model or profile to a comparison only pays for the new cells; editing a prompt file changes
+the key so a stale response is never silently reused. Use `--no-cache` for a call that shouldn't
+touch the cache at all, or `--refresh` to force live calls and overwrite cached entries (e.g. to
+confirm a model slug hasn't drifted). Any future per-tier comparison script (chat-latency,
+structured-extraction, guard tiers — see `docs/model-decisions.md` "Claude as a second provider")
+should reuse `ComparisonCache` rather than re-inventing this.
+
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
 
 ## End-to-End Verification Gate
@@ -192,7 +201,7 @@ app/
 │   └── services.py    # ConversationService: orchestrates history + LLM + persistence — Layer 1b
 ├── domain/            # Core, generic domain — Layer 1a (no learning-specific vocabulary)
 │   ├── prompt_template.py  # {{tag}} rendering: file sections + {{time:*}} — render_instructions()
-│   ├── model_registry.py   # Static registry of supported OpenAI models
+│   ├── model_registry.py   # Static registry of supported models (OpenAI + Anthropic), each tagged with a `provider`
 │   ├── history.py     # trim_history(): caps context by turns/tokens before LLM calls
 │   ├── entities.py    # Domain entities
 │   └── value_objects.py    # ConversationId, PromptSlug
@@ -204,6 +213,8 @@ app/
 │   ├── session_summary.py / progress_synthesis.py  # end-session summary + progress write
 └── infra/             # Concrete adapters — Layer 1b
     ├── llm_openai.py  # OpenAILLMAdapter: wraps Responses API, handles retries/timeouts
+    ├── llm_anthropic.py  # AnthropicLLMAdapter: wraps Messages API, same retry/timeout shape
+    ├── llm_router.py  # RoutingLLMAdapter: dispatches to the right adapter by model_registry's `provider` field
     ├── slot_resolver_files.py  # FileSlotResolver: default SlotResolver, no Layer 2 knowledge
     ├── logging.py     # Structured JSON logging setup
     └── persistence/   # SQLite via sync SQLAlchemy
@@ -242,7 +253,7 @@ L3 concept would follow this exact shape: a new port in `ports.py`, a concrete a
 
 ### Key design decisions
 
-**Dependency injection via `app.state` + FastAPI `Depends`:** `main.py`'s `lifespan()` is the composition root for process-lifetime infra — it creates `Settings` and `OpenAILLMAdapter`, storing both on `app.state`. Per-request dependencies (`uow_factory`, `PromptRepo`, `ConversationService`, `LearningFlowOrchestrator`) are built in `api/routes.py` via `Depends(...)` provider functions (`get_uow_factory`, `get_conversation_service`, etc.), since they need a request-scoped DB session. Nothing is constructed inside a use case.
+**Dependency injection via `app.state` + FastAPI `Depends`:** `main.py`'s `lifespan()` is the composition root for process-lifetime infra — it creates `Settings` and wires `app.state.llm` to a `RoutingLLMAdapter` (`OpenAILLMAdapter` + `AnthropicLLMAdapter`, dispatched by the model slug's `provider` in `model_registry.py`). Per-request dependencies (`uow_factory`, `PromptRepo`, `ConversationService`, `LearningFlowOrchestrator`) are built in `api/routes.py` via `Depends(...)` provider functions (`get_uow_factory`, `get_conversation_service`, etc.), since they need a request-scoped DB session. Nothing is constructed inside a use case.
 
 **Ports (Protocols):** `LLMPort`, `ConversationRepo`, `UnitOfWork`, `SlotResolver`, and `LearningFlowPort` in `ports.py` are Python `Protocol` classes. The service layer depends only on these; the test suite injects fakes/mocks.
 
@@ -253,6 +264,10 @@ L3 concept would follow this exact shape: a new port in `ports.py`, a concrete a
 **Sync SQLAlchemy with async HTTP:** The HTTP layer is async, but SQLAlchemy uses a sync engine. DB work runs in worker threads via `asyncio.to_thread()` in routes to avoid blocking the event loop.
 
 **Never nest `uow_factory()`:** a `LearningFlowPort` method (or anything else that might run inside an already-open `ConversationService` transaction) must accept and reuse the caller's `uow` rather than opening a fresh one via `self._uow_factory()`. A second `BEGIN` on the same connection can deadlock — confirmed against the test suite's shared `StaticPool` connection (2026-09-17), where it silently hung the entire pytest run rather than failing fast.
+
+**SQLite transactions must open `BEGIN IMMEDIATE`, not a plain deferred `BEGIN`:** any transaction that reads before it writes (the common case — e.g. `session.get()` then mutate) only takes a read lock at a deferred `BEGIN`; if another connection commits in between, this connection's later write-lock upgrade is a non-retryable `SQLITE_BUSY` — the busy handler is never invoked, no `busy_timeout` helps. Confirmed by reproducing it with raw `sqlite3` outside SQLAlchemy entirely (2026-09-29): 10 concurrent writers failed 9/10, instantly, regardless of `busy_timeout`. `app/infra/persistence/db.py`'s `_sqlite_explicit_begin` issues `BEGIN IMMEDIATE` for exactly this reason — don't revert it to `BEGIN` for a perceived read-concurrency win without re-reading that comment.
+
+**Adding a new LLM provider:** implement `LLMPort` (see `OpenAILLMAdapter`/`AnthropicLLMAdapter` for the shape — retry loop, error mapping, `complete`/`stream`), tag every one of its models with `"provider": "<name>"` in `model_registry.py`, and register the adapter instance in `RoutingLLMAdapter`'s provider map (`app/infra/llm_router.py`, wired in `main.py`). Every call site keeps depending on a single `LLMPort` — the routing is invisible above `app.state.llm`.
 
 **Synchronous endpoints by default:** Backend endpoints must be synchronous by default — they complete their work and return the final result (200/201/204) before closing the connection. Async patterns (`BackgroundTasks`, task queues, `202 Accepted` with deferred processing) are only acceptable when there is an explicit use case that requires it (e.g. SSE streaming for LLM responses). Never introduce an async workflow speculatively or for performance reasons alone — the added complexity must be justified by a concrete requirement.
 
