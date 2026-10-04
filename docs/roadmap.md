@@ -247,6 +247,94 @@ was rendered, matching `qa-test-suite.md` step 1.7 exactly.
 
 ---
 
+## From: ICW live demo, 2026-09-18
+
+First public demo. Six real testers scanned the QR within one minute, **all on mobile**. Most
+reached the course outline and some corrected it. **None started the first lesson**, so the teaching
+loop, which is the actual product, went unseen. Two failures stacked: a last-minute change broke
+starting a fresh session with a clean user live on stage, and the app wasn't ready for phones.
+The furthest anyone got was one tester reaching the first eval after 27 minutes. One stopped before
+the session-length question. Items below are listed in rough priority order. Status was checked
+against the repo on 2026-10-02.
+
+### 7. Demo-day bug: couldn't start a new session with a clean user (priority: high) — ✅ Fixed 2026-09-23
+
+**Root cause (confirmed by Mika, 2026-10-02):** the learner UUID had started being stored in
+`localStorage` just before the demo. The demo script assumed opening the link always created a new
+user. Instead, `/` kept reloading the existing stored learner on the demo device, so every "fresh"
+start dropped back into the same user, which derailed the guided run scripted for Miriam. **Fix:**
+`/new` (`1bce1dc6`, 09-23) always mints a fresh learner, while `/` intentionally keeps reusing the
+stored id so returning learners keep their identity. Demo runners use `/new`, and the learner QR
+stays on `/`. **Process fix:** freeze code before a live demo, and run the exact demo script on the
+deployed stack after the last deploy.
+
+### 8. Mobile: side panel eats the screen (priority: high) — ✅ Shipped 2026-09-22, re-test pending
+
+Marta's feedback, and true for every tester. Fixed by `ef89724e` (bottom nav replaces the sidebar
+below `md`), `e305f1aa` and `45d00d43` (mobile history cards and touch targets). **Still owed:** a full
+setup → outline → first-lesson run on a real phone, since nobody completed that path at the demo.
+
+### 9. Learners don't see how to go from the outline to the first lesson (priority: high) — 🔴 Open
+
+Marta's feedback, confirmed in the logs: several testers reviewed or corrected the outline and then
+stopped. This is the direct reason nobody reached the teaching part. The "Let's start" button
+(item 6) exists but isn't found, and is probably below the fold or off-screen on mobile. Needs an
+obvious primary CTA after the outline is accepted, possibly with the tutor's message also telling the
+learner what to tap next.
+
+### 10. Admin panel: group by user + DAU stats (priority: medium) — 🔴 Open
+
+The admin conversations view is one row per conversation. Group it by learner, and add daily-active
+-user stats. Overlaps with the retention dashboard designed in the vault (cohort engagement), which
+is already on par with the usage/cost dashboard for pilot readiness.
+
+### 11. Admin review layer for learner conversations (priority: medium) — 🔴 Open
+
+Admins need a way to review learner conversations, attach notes, and mark a conversation as reviewed,
+so pilot feedback is processed systematically rather than by scrolling raw transcripts.
+
+### 12. Rethink the learner panel around one task (priority: medium, needs design) — 🔴 Open
+
+Redesign the learner UI so it focuses on a single task, the ongoing conversation, and drops the
+general-purpose chat-app layout. Design first, not a direct build. Should be done with the
+learn-with-claude reference-experience work, not separately from it.
+
+### 13. Separate admin from learner identity (priority: medium) — 🔴 Open
+
+Today the admin view sits inside the learner app and goes through a learner `user_id` route. The
+admin shouldn't need a learner id at all. Give admin its own entry point that doesn't depend on
+learner identity. Related residual gap: NavBar's admin tab visibility (see Not yet triaged).
+
+### 14. Consent: people share personal things (priority: high) — 🟡 Gate shipped 2026-09-23
+
+The demo ran on verbal consent. The consent gate (see Not yet triaged) shipped five days later.
+What the demo added: testers talk about personal matters, not just work goals, so the disclosure and
+the deferred full-GDPR items (real deletion flow, retention, export) weigh more than the original
+plan assumed. Re-read the consent copy with that in mind before the next unsupervised run.
+
+### 15. In-app help: feedback channel, FAQ, instructions (priority: medium) — 🔴 Open
+
+"Where do I give feedback?" There's no place for that today. Add a help space with a feedback
+channel, short FAQs, and first-use guidance on how the platform works.
+
+### 16. Show the whole journey: objective, path, what to expect (priority: medium, needs design) — 🔴 Open
+
+Testers didn't know where they were going or what to expect. Show the full course journey, set a
+visible objective, and consider light gamification. The within-module checklist (`472a7dda`) is a
+first step. Ties to the accountability / "reason to come back" thread in the vault problem spec.
+
+### Ideas to evaluate (from the same debrief, not yet build items)
+
+- **Calendar booking for sessions.** Active practice needs a quiet space and a fixed slot. After setup
+  (or at session end), offer to put the next session in the learner's calendar.
+- **Voice/audio.** An open product question, not a commitment. One option is to alternate deep
+  written exercises with light voice intros or reviews for commute time. Decide the focus-vs-commute
+  stance first, and test whether learners ask for audio without being prompted before asking them.
+- **Requests for a podcast and for uploading your own content** came up in Q&A. NotebookLM covers
+  both well, so this is a positioning signal more than a backlog item.
+
+---
+
 ## Not yet triaged
 
 - **Audit SkillForge's agent harness against the 8-component framework (surfaced 2026-09-22,
