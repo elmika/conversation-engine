@@ -116,6 +116,29 @@ MODELS: dict[str, dict] = {
         "description": "Anthropic's latest balanced model — speed and intelligence",
         "provider": "anthropic",
     },
+
+    # --- Added 2026-10-29 — found by scripts/check_new_models.py (make check-models);
+    # prices in app/domain/pricing.py. ---
+    "claude-haiku-5-5": {
+        "name": "Claude Haiku 5.5",
+        "description": "Anthropic's fastest model, for high-volume, latency-sensitive tasks",
+        "provider": "anthropic",
+    },
+    "gpt-6.1-sol": {
+        "name": "GPT-6.1 Sol",
+        "description": "Flagship GPT-6.1 tier — same price as claude-sonnet-5-5",
+        "provider": "openai",
+    },
+    "gpt-6.1-terra": {
+        "name": "GPT-6.1 Terra",
+        "description": "GPT-6.1 tier balancing intelligence and cost",
+        "provider": "openai",
+    },
+    "gpt-6-luna": {
+        "name": "GPT-6 Luna",
+        "description": "High-volume/low-cost GPT-6 tier",
+        "provider": "openai",
+    },
 }
 
 # Display order — unpriced models (gpt-5-mini, gpt-5-nano) and the priciest

@@ -81,6 +81,12 @@ endpoint and flags a running `api` container still holding an old key (`.env` ed
 `docker compose up -d api`). Run it before any live script below — the app reports a rejected
 key only as a generic "502 Upstream … API error".
 
+**Check for new models:** `make check-models` (`scripts/check_new_models.py`) diffs both
+providers' live model lists against `model_registry.py`/`pricing.py` and reports NEW (released
+in the last 180 days, not registered), UNPRICED and GONE (registered but retired) models. Neither
+API exposes prices, so it prints the pricing pages to look them up by hand. Run it before any
+model comparison — newer models keep shipping between tests.
+
 **Compare candidate models:**
 ```bash
 python3 scripts/compare_outline_models.py                                              # all profiles, default models

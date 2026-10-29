@@ -31,6 +31,15 @@ PRICE_PER_MILLION_USD: dict[str, dict[str, float]] = {
     # actually *cheaper* than opus-5, not a straight successor-at-same-price.
     "claude-opus-5-5": {"input": 4.00, "output": 20.00},
     "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},
+
+    # Added 2026-10-29 via scripts/check_new_models.py. Anthropic API prices are now at
+    # https://platform.claude.com/docs/en/about-claude/pricing (anthropic.com/pricing only
+    # lists consumer plans). haiku-5.5's price is for prompts up to 100k tokens; above that
+    # it's $0.50/$2.50 — this table has no long-context tier, and no prompt here gets near it.
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50},
+    "gpt-6.1-sol": {"input": 2.00, "output": 10.00},
+    "gpt-6.1-terra": {"input": 1.00, "output": 5.00},
+    "gpt-6-luna": {"input": 0.10, "output": 0.50},
 }
 
 # The OpenAI API often echoes back a dated snapshot id (e.g. "gpt-4.1-2025-04-14")

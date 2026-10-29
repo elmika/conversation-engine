@@ -230,9 +230,40 @@ latency figures are indicative only.
 → `claude-sonnet-5-5` (`config/model_presets/session-claude-sonnet-5-5.json`). The core
 latency tradeoff was weighed and accepted. `user-profile-collection` stays on `gpt-4.1`.
 
-**Not yet tested:** `claude-haiku-5-5` (released 2026-10-07, found via `GET /v1/models`
-during this test, not yet in `model_registry.py`/`pricing.py`) — the obvious candidate to
-recover core's latency if it matches Sonnet's quality.
+**Follow-up:** `claude-haiku-5-5` (released 2026-10-07, found via `GET /v1/models` during
+this test) — tested in [Test 7](#test-7-2026-10-29--lesson-prompts-new-models-claude-haiku-55-gpt-61-terra-gpt-61-sol).
+
+### Test 7 — 2026-10-29 — lesson prompts, new models: `claude-haiku-5-5`, `gpt-6.1-terra`, `gpt-6.1-sol`
+
+**Method:** `make check-models` (new — `scripts/check_new_models.py`) surfaced four text models
+released since the registry was last updated: `claude-haiku-5-5` (2026-10-07, $0.10/$0.50),
+`gpt-6.1-terra` (2026-10-13, $1/$5), `gpt-6.1-sol` (2026-09-28, $2/$10) and `gpt-6-luna`
+(2026-09-14, $0.10/$0.50) — all registered and priced. Same 3 profiles and scenarios as Test 6,
+re-run for all three lesson prompts against `gpt-4.1,claude-sonnet-5-5,claude-haiku-5-5,gpt-6.1-terra,gpt-6.1-sol`
+(Test 6's cache was invalidated by the Test 6 switch itself — non-target turns now run on Sonnet).
+`gpt-6-luna` not tested here: it's a guard/extraction-tier candidate, not a chat one.
+
+**Result:**
+- **`gpt-6.1-terra` — out.** Closure failed on 2 of 3 profiles: replied "Sure, let's keep going!"
+  to a forced time-over. Core was concise and correct but moved on after "I think I get it"
+  without checking.
+- **`gpt-6.1-sol` — out on latency.** Closure worked 3/3 and core was solid, but it was the
+  slowest model by far: init TTFB 2.0–20.9s, closure total up to 8.5s, core turn up to 6.1s.
+- **`claude-haiku-5-5` — real contender, but not for latency.** Core quality was close to Sonnet's:
+  real code by turn 2, and on all 3 profiles it tested "I think I get it" rather than accepting
+  it. Closure wrapped up correctly on 3/3, with one factual slip (said "about 20 minutes, which is
+  our planned time" — the plan was 15). Init repeated Haiku 4.5's format slip on 2/3 profiles
+  (dropped "Module One —" and/or appended "(current)"). Latency: init TTFB 0.6–0.7s (fastest), but
+  core/closure TTFB 1.1–2.6s vs. Sonnet's 1.7–3.6s — a modest gain, not the ~1s gpt-4.1 gives.
+  Price is the big difference: 20× cheaper than Sonnet.
+- **`claude-sonnet-5-5`** reconfirmed: closure 3/3, best core teaching, no format slips.
+- `gpt-4.1` again only partially closed (wrapped up after continuing to teach on 2/3).
+
+**Decision: no change — Sonnet stays on all three lesson prompts.** Haiku 5.5 doesn't recover
+core's latency enough to justify its init format slips and closure fact error; its advantage is
+cost, which at current volume is negligible either way (≈$0.004 vs. ≈$0.0002 per turn). Revisit
+Haiku 5.5 for core/closure if session volume makes cost matter, and as a candidate for the
+structured-extraction and guard tiers below.
 
 ---
 
@@ -253,19 +284,20 @@ still open — same process (compare against the current baseline row, judge qua
 cost), not a default to assume:
 
 - ~~**Chat-latency tier**~~ — decided 2026-10-29 in Test 6: lesson prompts →
-  `claude-sonnet-5-5`, `user-profile-collection` stays `gpt-4.1`. Open follow-up:
-  `claude-haiku-5-5` for `course-session-core` latency.
+  `claude-sonnet-5-5`, `user-profile-collection` stays `gpt-4.1`. `claude-haiku-5-5` tested
+  in Test 7 and not adopted (cost win only).
 - **Structured-extraction tier** — `user-profile-extraction`, `course-outline-extraction`
-  (currently `gpt-5.4-mini`). Candidate: `claude-haiku-4-5`.
+  (currently `gpt-5.4-mini`). Candidates: `claude-haiku-5-5`, `gpt-6-luna` (both $0.10/$0.50).
 - **Guard tier** — `lesson-objective-complete`, `session-length-extraction`,
   `closure-continue-extraction`, `framing-answer-check` (currently `gpt-5.4-nano`).
-  Candidate: `claude-haiku-4-5`.
+  Candidates: `claude-haiku-5-5`, `gpt-6-luna` (both cheaper than nano's $0.20/$1.25).
 - **`wrap_up_model`** (progress synthesis, currently `gpt-5.6-luna`). Candidate:
   `claude-haiku-4-5` or `claude-sonnet-5-5`. No comparison script exists yet for this one
   either (same gap noted below for luna vs. sol) — needs the same "drive a real session,
   diff the resulting progress doc" tool before a Claude candidate can be judged here.
 
-Before testing any of the above, re-check `GET /v1/models` on the live account first —
+Before testing any of the above, run `make check-models` (`scripts/check_new_models.py` —
+diffs both providers' live `GET /v1/models` against the registry and pricing table) first —
 Test 5 found a newer Claude generation (5.5) mid-comparison that wasn't in this file, the
 bundled model reference, or `model_registry.py`/`pricing.py` yet; don't assume the models
 already registered here are still the latest available.
