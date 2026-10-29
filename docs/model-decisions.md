@@ -15,16 +15,16 @@ adopted one, so nobody re-runs the same comparison cold next quarter.
 ## Current configuration
 
 Reference point: `config/model_presets/baseline-2026-09.json` +
-`course-outline-claude-sonnet-5-5.json` (see `docs/prompts.md`). Pricing:
+`course-outline-claude-sonnet-5-5.json` + `session-claude-sonnet-5-5.json` (see `docs/prompts.md`). Pricing:
 `app/domain/pricing.py`, refreshed 2026-09-30. `course-outline-sol.json` stays on disk as the
 prior decision's record but is no longer the applied preset.
 
 | Task (prompt slug) | Model | Why this tier | Last reviewed |
 |---|---|---|---|
-| `course-session-init` | `gpt-4.1` | Chat turn, latency-critical (learner is waiting live) | 2026-09-17 (prompt rewritten; model unchanged, not re-tested) |
-| `course-session-core` | `gpt-4.1` | Chat turn, latency-critical | 2026-09-17 (prompt rewritten; model unchanged, not re-tested) |
-| `course-session-closure` | `gpt-4.1` | Chat turn, latency-critical | 2026-09-17 (prompt rewritten; model unchanged, not re-tested) |
-| `user-profile-collection` | `gpt-4.1` | Plain framing Q&A, no creative work — split off the outline turn specifically so this could run on a cheap/fast tier (roadmap item 1, 2026-08-04) | 2026-08-04 |
+| `course-session-init` | **`claude-sonnet-5-5`** | Chat turn, latency-critical — better learner tailoring at equal latency | **2026-10-29** — see [Test 6](#test-6-2026-10-29--lesson-prompts-gpt-41-vs-claude-haiku-4-5-vs-claude-sonnet-5-5) |
+| `course-session-core` | **`claude-sonnet-5-5`** | Chat turn, latency-critical — clearly better teaching; slower first token (1.9–4.5s vs. ~1s) accepted deliberately | **2026-10-29** — see Test 6 |
+| `course-session-closure` | **`claude-sonnet-5-5`** | Chat turn — only tested model that actually closes the session on time-over | **2026-10-29** — see Test 6 |
+| `user-profile-collection` | `gpt-4.1` | Plain framing Q&A, no creative work — split off the outline turn specifically so this could run on a cheap/fast tier (roadmap item 1, 2026-08-04). Re-tested in Test 6: no model did meaningfully better, Sonnet only added latency | 2026-10-29 |
 | `user-profile-extraction` | `gpt-5.4-mini` | Structured extraction from a short transcript | not re-tested since introduced |
 | `course-outline-extraction` | `gpt-5.4-mini` | Structured extraction from a short transcript | not re-tested since introduced |
 | `course-outline-proposal` | **`claude-sonnet-5-5`** | Beat `gpt-5.6-sol` on quality, latency, *and* cost across an 8-profile comparison — no tradeoff to weigh | **2026-09-30** — see [Test 5](#test-5-2026-09-30--course-outline-proposal-gpt-56-sol-vs-claude-sonnet-55-vs-claude-opus-55) |
@@ -194,6 +194,48 @@ on the prompt's own `model:` frontmatter) resolved to `claude-sonnet-5-5`.
 
 ---
 
+### Test 6 — 2026-10-29 — lesson prompts: `gpt-4.1` vs. `claude-haiku-4-5` vs. `claude-sonnet-5-5`
+
+**Method:** `scripts/compare_session_models.py`, one run per target × 3 profiles
+(backend-engineer-pandas, marketing-manager-sql, teacher-python-classroom-tools), each
+driving the real stack with only the target prompt's turns overridden:
+`course-session-init` (opening turn), `course-session-core` (3 canned mid-lesson turns, incl.
+"I think I get it — what's next?"), `course-session-closure` (time-over forced via DB aging),
+`user-profile-collection` (init + 3 framing answers). Judged by eye; single run each, so
+latency figures are indicative only.
+
+**Result:**
+- **Closure — decisive.** Every run resolved to `course-session-closure`, but only
+  claude-sonnet-5-5 actually closed: on all 3 profiles it said time was up, summarised what was
+  covered, previewed next session and pointed at End Session. gpt-4.1 kept teaching on 2 of 3
+  (partial wrap-up on teacher-python); claude-haiku-4-5 kept teaching on all 3, even opening a
+  fresh SQL lesson. This matches the long-standing closure-quality regression — the model, not
+  just the prompt, was a cause.
+- **Core.** claude-sonnet-5-5 put concrete code in front of the learner by turn 2 on every
+  profile and, on "I think I get it", tested the claim instead of accepting it (marketing-SQL:
+  "since you didn't say what the query returns…"). gpt-4.1 accepted it at face value ("Great,
+  you've understood variables"). claude-haiku-4-5 was fastest (TTFB 0.5–1.0s) but spent turns on
+  background questions and once gave an "example" with no code. Latency cost of Sonnet: TTFB
+  1.9–4.5s vs. gpt-4.1's ~0.7–3.0s.
+- **Init.** claude-sonnet-5-5 tailored the module overview to the learner's background
+  (e.g. "as a backend engineer…", a grade-calculator example for the teacher) at TTFB
+  0.95–1.5s, no slower than gpt-4.1. claude-haiku-4-5 rewrote the module list format on one
+  profile (dropped "Module One —", appended "(current)").
+- **user-profile-collection.** All three fine; gpt-4.1 and claude-haiku-4-5 ~1s, Sonnet 1.2–3.5s
+  TTFB for no quality gain. All three re-welcome the learner on turn 2 — a prompt issue, not a
+  model one.
+- Cost: claude-sonnet-5-5 $2/$10 vs. gpt-4.1 $2/$8 per MTok — same input, +25% output.
+
+**Decision: switched** `course-session-init`, `course-session-core`, `course-session-closure`
+→ `claude-sonnet-5-5` (`config/model_presets/session-claude-sonnet-5-5.json`). The core
+latency tradeoff was weighed and accepted. `user-profile-collection` stays on `gpt-4.1`.
+
+**Not yet tested:** `claude-haiku-5-5` (released 2026-10-07, found via `GET /v1/models`
+during this test, not yet in `model_registry.py`/`pricing.py`) — the obvious candidate to
+recover core's latency if it matches Sonnet's quality.
+
+---
+
 ## Claude as a second provider (added 2026-09-29)
 
 `app/infra/llm_router.py` routes each call to OpenAI or Anthropic by the model slug's
@@ -205,13 +247,14 @@ settings-line printout) — the script never validates or special-cases the slug
 no code change was needed to support a Claude preset.
 
 **Outline tier decided (2026-09-30) — see [Test 5](#test-5-2026-09-30--course-outline-proposal-gpt-56-sol-vs-claude-sonnet-55-vs-claude-opus-55):**
-`course-outline-proposal` switched to `claude-sonnet-5-5`. The remaining tiers below are
+`course-outline-proposal` switched to `claude-sonnet-5-5`; lesson prompts followed in Test 6
+(2026-10-29). The remaining tiers below are
 still open — same process (compare against the current baseline row, judge quality, check
 cost), not a default to assume:
 
-- **Chat-latency tier** — `course-session-init`, `course-session-core`,
-  `course-session-closure`, `user-profile-collection` (currently `gpt-4.1`). Candidate:
-  `claude-sonnet-5-5` or `claude-haiku-4-5`.
+- ~~**Chat-latency tier**~~ — decided 2026-10-29 in Test 6: lesson prompts →
+  `claude-sonnet-5-5`, `user-profile-collection` stays `gpt-4.1`. Open follow-up:
+  `claude-haiku-5-5` for `course-session-core` latency.
 - **Structured-extraction tier** — `user-profile-extraction`, `course-outline-extraction`
   (currently `gpt-5.4-mini`). Candidate: `claude-haiku-4-5`.
 - **Guard tier** — `lesson-objective-complete`, `session-length-extraction`,
