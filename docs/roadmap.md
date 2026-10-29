@@ -568,6 +568,52 @@ strategy implies it should:
   on *shape*, not content quality (per §4). `docs/tutor-behavior-checklist.md` is a manual spec to
   check future prompt/model changes against, not an automated regression gate — a fixed regression
   could still silently reappear with nothing catching it automatically.
+- **No automated UI layer.** `docs/qa-test-suite.md` is the only check that renders the UI, and it
+  runs by hand or through Chrome MCP: slow, token-heavy, non-deterministic. See the Playwright
+  track below.
+
+### Playwright browser E2E, in two tiers (proposed 2026-10-29, priority: medium) — 🔴 Open
+
+Turn `docs/qa-test-suite.md` into scripted Playwright specs. The browser isn't the bottleneck,
+the LLM is: porting the QA suite as-is, real model included, would stay slow and flaky. So split
+by what each tier can assert.
+
+**Tier 1, deterministic, every PR, seconds.** Playwright against a stack running a scripted fake
+LLM. Asserts *structure*, not content: `/` redirects to `/u/{uuid}/chat/{id}`; the compile
+indicator shows and its elapsed counter increments; "Let's start" appears only after the outline
+(item 6); clicking it lands on a new **Active** conversation; History holds exactly 2
+conversations; no console errors, no 4xx/5xx. Most of QA Test 1 is checkable this way.
+
+**Tier 2, live, nightly or pre-demo.** The same specs against the real model with loose
+assertions: one question per framing turn, the latency bands from the QA suite. Content
+judgements ("outline is tailored", "addresses you by name") stay with an AI-driven run or an
+eval. Playwright can't assert them.
+
+**Side wins:**
+- Each Playwright browser context starts with empty `localStorage`, so every run is a fresh learner
+  by default. That's the item 7 failure mode, and the "clear storage first" step in the QA suite
+  goes away.
+- Device emulation (`devices['iPhone 13']`) runs the setup → outline → first lesson path at phone
+  size on every PR (re-tests item 8). It doesn't replace the real-phone rehearsal before a demo.
+
+**Steps:**
+1. **Fake LLM selectable at runtime.** `FakeLLM` exists only in `tests/conftest.py`, injected by
+   patching `app.main.OpenAILLMAdapter` inside pytest. Add an infra adapter behind `LLMPort`,
+   switched by config (e.g. `LLM_ADAPTER=fake`), that returns canned responses keyed by
+   `prompt_slug` and supports streaming. It must never be enabled in the Fly config. This doubles
+   as the replay engine for the B(i) golden/recorded gap above. Record real responses once,
+   replay them here.
+2. **Playwright scaffold** in `frontend/` (`@playwright/test`), a `make e2e` target that brings up
+   the stack with the fake adapter, and Desktop Chrome + mobile projects.
+3. **Port QA Test 1 (course setup)** to a Tier 1 spec. Then port the first learning session.
+4. **CI:** Tier 1 on every PR. Tier 2 as a nightly/manual workflow with the real key, the
+   standing pre-demo gate next to `make smoke`.
+5. Update CLAUDE.md's End-to-End Verification Gate and `docs/qa-test-suite.md` so the specs
+   are the default and the manual/agent run covers only the content-quality checks.
+
+**Check before starting:** the 2026-10-27 direction (host learn-with-claude on the Claude Agent
+SDK behind a web UI) may replace this Next.js UI. Step 1 holds either way. Steps 2–4 only pay
+off if the current frontend survives.
 
 ### Infra & ops backlog (rescued from `RISKS-AND-IMPROVEMENTS.md`, 2026-08-07)
 
