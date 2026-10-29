@@ -25,9 +25,13 @@ Usage:
   python3 scripts/compare_session_models.py --target user-profile-collection \
       --models claude-haiku-4-5
 
-Caching: same mechanism and cache semantics as compare_outline_models.py (see its
-docstring) via scripts/model_compare_cache.py, stored separately at
-scripts/.cache/session_compare.json. --no-cache / --refresh behave the same way.
+Results: every run is recorded in evals/results/session_compare.jsonl (committed) via
+scripts/model_compare_results.py — see its docstring for the record format and key.
+A (profile, model) combination already recorded under the same prompts and context
+models is shown from the log instead of re-run, so adding a model only pays for the
+new cells. --refresh re-runs anyway and appends a newer record (never overwrites);
+--no-record runs live without recording; --label tags records with the test they
+belong to (e.g. "Test 7", matching docs/model-decisions.md).
 """
 
 from __future__ import annotations
@@ -40,7 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare_outline_models import PROFILES as _OUTLINE_PROFILES  # noqa: E402
-from model_compare_cache import ComparisonCache  # noqa: E402
+from model_compare_results import ResultsLog, read_prompts  # noqa: E402
 from session_test_utils import (  # noqa: E402
     ADMIN_TOKEN,
     age_conversation,
@@ -49,10 +53,8 @@ from session_test_utils import (  # noqa: E402
     provision_learner,
     req,
     set_objective_met_db,
+    turn_models,
 )
-
-CACHE_PATH = Path(__file__).resolve().parent / ".cache" / "session_compare.json"
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 TARGETS = [
     "user-profile-collection",
@@ -128,7 +130,7 @@ def _run_user_profile_collection(
                 {"messages": [{"role": "user", "content": answer}], "model_slug": model},
             )
             turns.append(_turn_summary(r))
-        return {"turns": turns}
+        return {"turns": turns, "turn_models": turn_models(db, cid)}
     finally:
         cleanup_learner(base, sections, uid, cid)
 
@@ -145,7 +147,7 @@ def _run_course_session_init(base: str, sections: str, db: str, model: str, prof
             {"prompt_slug": "course-session-init", "model_slug": model},
         )
         cid = init.get("conversation_id")
-        return {"turns": [_turn_summary(init)]}
+        return {"turns": [_turn_summary(init)], "turn_models": turn_models(db, cid)}
     finally:
         cleanup_learner(base, sections, uid, cid)
 
@@ -169,7 +171,7 @@ def _run_course_session_core(base: str, sections: str, db: str, model: str, prof
                 {"messages": [{"role": "user", "content": content}], "model_slug": model},
             )
             turns.append(_turn_summary(r))
-        return {"turns": turns}
+        return {"turns": turns, "turn_models": turn_models(db, cid)}
     finally:
         cleanup_learner(base, sections, uid, cid)
 
@@ -206,7 +208,7 @@ def _run_course_session_closure(
                 f"— time-over may not have forced closure; "
                 f"result may not reflect the closure prompt."
             )
-        return {"turns": [summary]}
+        return {"turns": [summary], "turn_models": turn_models(db, cid)}
     finally:
         cleanup_learner(base, sections, uid, cid)
 
@@ -218,22 +220,18 @@ SCENARIOS = {
     "course-session-closure": _run_course_session_closure,
 }
 
-# Prompt files whose text can change a given target's scenario output — used as part
-# of the cache key so editing any of them busts stale cached results.
-_SCENARIO_PROMPT_FILES = {
-    "user-profile-collection": ["user-profile-collection.md"],
-    "course-session-init": ["course-session-init.md"],
-    "course-session-core": ["course-session-init.md", "course-session-core.md"],
+# Prompts whose text (or, for non-target ones, pinned model) can change a given
+# target's scenario output — part of the results-log key, see model_compare_results.py.
+_SCENARIO_PROMPTS = {
+    "user-profile-collection": ["user-profile-collection"],
+    "course-session-init": ["course-session-init"],
+    "course-session-core": ["course-session-init", "course-session-core"],
     "course-session-closure": [
-        "course-session-init.md",
-        "course-session-core.md",
-        "course-session-closure.md",
+        "course-session-init",
+        "course-session-core",
+        "course-session-closure",
     ],
 }
-
-
-def _prompt_texts(target: str) -> dict[str, str]:
-    return {name: (PROMPTS_DIR / name).read_text() for name in _SCENARIO_PROMPT_FILES[target]}
 
 
 def main() -> int:
@@ -248,12 +246,15 @@ def main() -> int:
         default=None,
         help="comma-separated profile labels to run (default: the 3 built-in session profiles)",
     )
-    ap.add_argument("--no-cache", action="store_true", help="ignore and don't update the cache")
     ap.add_argument(
         "--refresh",
         action="store_true",
-        help="call the live models even on a cache hit, and overwrite the cached entry",
+        help="re-run even when a matching record exists, and append the newer record",
     )
+    ap.add_argument(
+        "--no-record", action="store_true", help="always run live and don't record the results"
+    )
+    ap.add_argument("--label", default=None, help='tag recorded runs, e.g. "Test 8"')
     args = ap.parse_args()
     if not ADMIN_TOKEN:
         print(
@@ -276,11 +277,11 @@ def main() -> int:
         return 2
     print(f"stack healthy: {health.strip()}\ntarget: {args.target}\ncomparing models: {models}\n")
 
-    prompt_texts = _prompt_texts(args.target)
+    prompt_texts = read_prompts(_SCENARIO_PROMPTS[args.target])
     scenario = SCENARIOS[args.target]
-    cache = ComparisonCache(CACHE_PATH)
-    cache_hits = 0
-    cache_misses = 0
+    log = ResultsLog("session_compare")
+    reused = 0
+    live = 0
 
     for profile in profiles:
         print("=" * 100)
@@ -288,24 +289,36 @@ def main() -> int:
         print("=" * 100)
         for model in models:
             print(f"\n--- {model} ---")
-            key = cache.make_key(
+            key = log.make_key(
                 target=args.target,
                 profile_answers=profile["answers"],
                 model=model,
                 prompts=prompt_texts,
             )
-            cached = None if args.no_cache else cache.get(key)
-            if cached is not None and not args.refresh:
-                result = cached
-                cache_hits += 1
-                print("  (cached)")
+            record = None if (args.no_record or args.refresh) else log.latest(key)
+            if record is not None:
+                result = record["result"]
+                reused += 1
+                print(
+                    f"  (recorded {record['recorded_at']}"
+                    + (f", {record['label']})" if record.get("label") else ")")
+                )
             else:
                 result = scenario(args.base_url, args.sections, args.db, model, profile)
-                cache_misses += 1
+                served_by = result.pop("turn_models", None)
+                live += 1
                 has_error = any(t.get("error") for t in result["turns"])
-                if not has_error and not args.no_cache:
-                    cache.set(key, result)
-                    cache.save()
+                if not has_error and not args.no_record:
+                    log.append(
+                        key=key,
+                        target=args.target,
+                        profile=profile["label"],
+                        model=model,
+                        prompts=prompt_texts,
+                        result=result,
+                        turn_models=served_by,
+                        label=args.label,
+                    )
             for i, turn in enumerate(result["turns"], start=1):
                 if turn.get("error"):
                     print(f"  turn {i} ERROR: {turn['error']}")
@@ -317,7 +330,7 @@ def main() -> int:
                 print(f"    {turn['text']}\n")
 
     print("=" * 100)
-    print(f"cache: {cache_hits} hit(s), {cache_misses} live call(s)")
+    print(f"results: {reused} from {log.path.relative_to(log.path.parents[2])}, {live} live run(s)")
     print(
         "Done. No pass/fail judgment — compare latency and text quality above by eye "
         "before deciding whether to switch this prompt's `model:` field."

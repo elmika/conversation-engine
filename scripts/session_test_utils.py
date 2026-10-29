@@ -122,6 +122,22 @@ def set_objective_met_db(db_path: str, cid: str, value: int) -> None:
         con.close()
 
 
+def turn_models(db_path: str, cid: str | None) -> list[dict]:
+    """[{prompt_slug, model}] per assistant turn, from the `runs` table — the SSE stream
+    deliberately doesn't expose the model, so this is how a comparison records which
+    model actually served each turn. Read it before cleanup_learner() deletes the rows."""
+    if not cid:
+        return []
+    con = sqlite3.connect(db_path, timeout=10)
+    try:
+        rows = con.execute(
+            "SELECT prompt_slug, model FROM runs WHERE conversation_id = ? ORDER BY id", (cid,)
+        ).fetchall()
+    finally:
+        con.close()
+    return [{"prompt_slug": slug, "model": model} for slug, model in rows]
+
+
 def cleanup_learner(base_url: str, sections_dir: str, uid: str, cid: str | None) -> None:
     if cid:
         try:

@@ -226,6 +226,8 @@ latency figures are indicative only.
   model one.
 - Cost: claude-sonnet-5-5 $2/$10 vs. gpt-4.1 $2/$8 per MTok — same input, +25% output.
 
+**Raw outputs:** `evals/results/session_compare.jsonl`, records labelled `Test 6`.
+
 **Decision: switched** `course-session-init`, `course-session-core`, `course-session-closure`
 → `claude-sonnet-5-5` (`config/model_presets/session-claude-sonnet-5-5.json`). The core
 latency tradeoff was weighed and accepted. `user-profile-collection` stays on `gpt-4.1`.
@@ -240,7 +242,7 @@ released since the registry was last updated: `claude-haiku-5-5` (2026-10-07, $0
 `gpt-6.1-terra` (2026-10-13, $1/$5), `gpt-6.1-sol` (2026-09-28, $2/$10) and `gpt-6-luna`
 (2026-09-14, $0.10/$0.50) — all registered and priced. Same 3 profiles and scenarios as Test 6,
 re-run for all three lesson prompts against `gpt-4.1,claude-sonnet-5-5,claude-haiku-5-5,gpt-6.1-terra,gpt-6.1-sol`
-(Test 6's cache was invalidated by the Test 6 switch itself — non-target turns now run on Sonnet).
+(the Test 6 switch moved the non-target turns onto Sonnet, so core/closure needed fresh runs).
 `gpt-6-luna` not tested here: it's a guard/extraction-tier candidate, not a chat one.
 
 **Result:**
@@ -258,6 +260,8 @@ re-run for all three lesson prompts against `gpt-4.1,claude-sonnet-5-5,claude-ha
   Price is the big difference: 20× cheaper than Sonnet.
 - **`claude-sonnet-5-5`** reconfirmed: closure 3/3, best core teaching, no format slips.
 - `gpt-4.1` again only partially closed (wrapped up after continuing to teach on 2/3).
+
+**Raw outputs:** `evals/results/session_compare.jsonl`, records labelled `Test 7`.
 
 **Decision: no change — Sonnet stays on all three lesson prompts.** Haiku 5.5 doesn't recover
 core's latency enough to justify its init format slips and closure fact error; its advantage is

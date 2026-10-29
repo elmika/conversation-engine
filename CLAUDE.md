@@ -100,14 +100,19 @@ evaluation (`docs/architecture-decisions.md` §5); currently scoped to the setup
 Expected to be extended to other flow stages (lesson core/closure) and, once a second `LLMPort`
 adapter exists, other providers — this will become routine as models keep shipping.
 
-Results are cached on disk (`scripts/.cache/`, gitignored) keyed by profile answers + model slug
-+ the current text of the prompt files involved, via `scripts/model_compare_cache.py`. Adding one
-more model or profile to a comparison only pays for the new cells; editing a prompt file changes
-the key so a stale response is never silently reused. Use `--no-cache` for a call that shouldn't
-touch the cache at all, or `--refresh` to force live calls and overwrite cached entries (e.g. to
-confirm a model slug hasn't drifted). Any future per-tier comparison script (structured-extraction,
-guard tiers — see `docs/model-decisions.md` "Claude as a second provider") should reuse
-`ComparisonCache` rather than re-inventing this.
+Every run is **recorded, not cached**: appended to `evals/results/<script>.jsonl` (committed —
+these are the evidence behind `docs/model-decisions.md`, shareable as-is; see `evals/README.md`)
+by `scripts/model_compare_results.py`. A (profile, model) cell already recorded under the same
+prompt bodies and context models is shown from the log instead of re-run, so adding a model
+only pays for the new cells. The key deliberately excludes the target prompt's own `model:` line
+(the candidate overrides it) but includes the pinned models of the scenario's *other* prompts
+(those turns run on their pins) — so switching a prompt's model doesn't throw away its own
+comparison, while switching an upstream prompt correctly forces fresh runs. `--refresh` re-runs
+and appends a newer record (never overwrites — e.g. to check a model hasn't drifted);
+`--no-record` runs live without recording; `--label "Test N"` tags records to match the test
+write-up. Any future per-tier comparison script (structured-extraction, guard tiers — see
+`docs/model-decisions.md` "Claude as a second provider") should reuse `ResultsLog` rather than
+re-inventing this.
 
 ```bash
 python3 scripts/compare_session_models.py --target course-session-init --models claude-haiku-4-5,claude-sonnet-5-5
@@ -122,8 +127,9 @@ override; every other turn in the scenario stays on its own currently-pinned mod
 comparing `course-session-core` doesn't also vary the objective-complete guard and confound the
 result. Shares `scripts/session_test_utils.py` (admin-route SSE driving, throwaway section-file
 provisioning, the `age_conversation`/`set_objective_met_db` DB shortcuts used to force phase
-transitions deterministically — same technique as `make smoke`) and the same `ComparisonCache`
-mechanism, in its own `scripts/.cache/session_compare.json`.
+transitions deterministically — same technique as `make smoke`; `turn_models` reads which model
+actually served each turn from the `runs` table, since SSE doesn't expose it) and the same
+`ResultsLog`, in its own `evals/results/session_compare.jsonl`.
 
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
 

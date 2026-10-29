@@ -26,13 +26,14 @@ Output: for each test profile, the two models' outline text + latency, printed
 side by side for manual quality judgment (docs/roadmap.md "Evaluate GPT-5.6 Luna").
 This script makes no pass/fail judgment — outline quality is a human call.
 
-Caching: results are cached on disk (scripts/.cache/outline_compare.json), keyed by
-profile answers + model slug + the current text of course-outline-proposal.md and
-user-profile-collection.md. Re-running with an extra model or profile only pays for
-the new cells — already-tested combinations are served from cache. Editing either
-prompt file changes the key, so a prompt edit is never silently served a stale
-response. Use --no-cache to force fresh calls without touching the cache, or
---refresh to force fresh calls and overwrite the cached entries.
+Results: every run is recorded in evals/results/outline_compare.jsonl (committed) via
+scripts/model_compare_results.py — see its docstring for the record format and key
+(profile answers + model + both prompts' bodies + user-profile-collection's pinned
+model, which runs the framing turns). Re-running with an extra model or profile only
+pays for the new cells; editing either prompt's text, or re-pinning
+user-profile-collection, forces fresh runs. --refresh re-runs anyway and appends a
+newer record (never overwrites); --no-record runs live without recording; --label tags
+records with the test they belong to (e.g. "Test 8", matching docs/model-decisions.md).
 """
 
 from __future__ import annotations
@@ -48,10 +49,13 @@ import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from model_compare_cache import ComparisonCache  # noqa: E402
+from model_compare_results import ResultsLog, read_prompts  # noqa: E402
+from session_test_utils import turn_models  # noqa: E402
 
-CACHE_PATH = Path(__file__).resolve().parent / ".cache" / "outline_compare.json"
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+TARGET = "course-outline-proposal"
+# The outline prompt itself, plus the framing prompt that drives the 3 turns before it
+# (setup_flow.py's FRAMING_TURNS) — see model_compare_results.py for how both feed the key.
+SCENARIO_PROMPTS = [TARGET, "user-profile-collection"]
 
 
 def _load_admin_token() -> str:
@@ -195,7 +199,7 @@ def _post_sse(url: str, body: dict, timeout: int = 180) -> dict:
     return done
 
 
-def run_profile(base: str, profile: dict, model: str) -> dict:
+def run_profile(base: str, db: str, profile: dict, model: str) -> dict:
     """Drive one setup conversation through all 4 framing turns; the 4th turn's
     model_slug is the candidate under test, which is exactly the turn that flips
     to the course-outline-proposal prompt (app/learning/setup_flow.py FRAMING_TURNS)."""
@@ -231,6 +235,7 @@ def run_profile(base: str, profile: dict, model: str) -> dict:
             "ttfb_ms": timings.get("ttfb_ms"),
             "total_ms": timings.get("total_ms"),
             "wall_s": round(wall_s, 1),
+            "turn_models": turn_models(db, cid),
         }
     finally:
         if cid:
@@ -240,17 +245,6 @@ def run_profile(base: str, profile: dict, model: str) -> dict:
                 pass
 
 
-def _prompt_texts() -> dict[str, str]:
-    """Text of every prompt file whose content can change the outline turn's result —
-    the outline prompt itself, plus the framing prompt that drives the 3 turns before
-    it (setup_flow.py's FRAMING_TURNS). Used as part of the cache key so editing
-    either file invalidates old cached results."""
-    return {
-        "course-outline-proposal": (PROMPTS_DIR / "course-outline-proposal.md").read_text(),
-        "user-profile-collection": (PROMPTS_DIR / "user-profile-collection.md").read_text(),
-    }
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(description="Compare candidate models on course-outline-proposal.")
     ap.add_argument("--base-url", default="http://localhost:8000")
@@ -258,14 +252,15 @@ def main() -> int:
     ap.add_argument(
         "--profiles", default=None, help="comma-separated profile labels to run (default: all)"
     )
-    ap.add_argument(
-        "--no-cache", action="store_true",
-        help="ignore and don't update the cache — always call the live models",
-    )
+    ap.add_argument("--db", default="data/chat.db", help="path to the SQLite DB (host side)")
     ap.add_argument(
         "--refresh", action="store_true",
-        help="call the live models even on a cache hit, and overwrite the cached entry",
+        help="re-run even when a matching record exists, and append the newer record",
     )
+    ap.add_argument(
+        "--no-record", action="store_true", help="always run live and don't record the results"
+    )
+    ap.add_argument("--label", default=None, help='tag recorded runs, e.g. "Test 8"')
     args = ap.parse_args()
     if not ADMIN_TOKEN:
         print("No ADMIN_TOKEN found (checked env and .env). This script drives the admin-only "
@@ -285,10 +280,10 @@ def main() -> int:
         return 2
     print(f"stack healthy: {health.strip()}\ncomparing models: {models}\n")
 
-    prompt_texts = _prompt_texts()
-    cache = ComparisonCache(CACHE_PATH)
-    cache_hits = 0
-    cache_misses = 0
+    prompt_texts = read_prompts(SCENARIO_PROMPTS)
+    log = ResultsLog("outline_compare")
+    reused = 0
+    live = 0
 
     for profile in profiles:
         print("=" * 100)
@@ -296,20 +291,27 @@ def main() -> int:
         print("=" * 100)
         for model in models:
             print(f"\n--- {model} ---")
-            key = cache.make_key(
-                profile_answers=profile["answers"], model=model, prompts=prompt_texts,
+            key = log.make_key(
+                target=TARGET, profile_answers=profile["answers"], model=model,
+                prompts=prompt_texts,
             )
-            cached = None if args.no_cache else cache.get(key)
-            if cached is not None and not args.refresh:
-                result = cached
-                cache_hits += 1
-                print("  (cached)")
+            record = None if (args.no_record or args.refresh) else log.latest(key)
+            if record is not None:
+                result = record["result"]
+                reused += 1
+                print(f"  (recorded {record['recorded_at']}" + (
+                    f", {record['label']})" if record.get("label") else ")"
+                ))
             else:
-                result = run_profile(args.base_url, profile, model)
-                cache_misses += 1
-                if "error" not in result and not args.no_cache:
-                    cache.set(key, result)
-                    cache.save()
+                result = run_profile(args.base_url, args.db, profile, model)
+                served_by = result.pop("turn_models", None)
+                live += 1
+                if "error" not in result and not args.no_record:
+                    log.append(
+                        key=key, target=TARGET, profile=profile["label"], model=model,
+                        prompts=prompt_texts, result=result, turn_models=served_by,
+                        label=args.label,
+                    )
             if "error" in result:
                 print(f"  ERROR: {result['error']}")
                 continue
@@ -317,7 +319,7 @@ def main() -> int:
             print(f"  {result['outline']}\n")
 
     print("=" * 100)
-    print(f"cache: {cache_hits} hit(s), {cache_misses} live call(s)")
+    print(f"results: {reused} from {log.path.relative_to(log.path.parents[2])}, {live} live run(s)")
     print("Done. This script makes no quality judgment — compare the outlines above by eye")
     print("(module relevance, tailoring to the stated goal/industry, scannability) before")
     print("deciding whether to switch course-outline-proposal.md's `model:` field.")
