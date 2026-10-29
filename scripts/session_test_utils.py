@@ -89,7 +89,8 @@ def provision_learner(
     (sections / "user" / f"{uid}.md").write_text(
         f"## Name\n{name}\n\n## Work\n{work}\n\n"
         f"## Technical background\nSee work description.\n\n## Goal\n{goal}\n\n"
-        f"## Session length\n{session_length_minutes} minutes\n\n## Other context\nNot yet provided.\n"
+        f"## Session length\n{session_length_minutes} minutes\n\n"
+        f"## Other context\nNot yet provided.\n"
     )
     (sections / "course" / f"{uid}.md").write_text(course_outline)
     (sections / "progress" / f"{uid}.md").write_text(

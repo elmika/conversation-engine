@@ -58,7 +58,10 @@ def container_value(name: str) -> str | None:
     try:
         out = subprocess.run(
             ["docker", "compose", "exec", "-T", "api", "printenv", name],
-            capture_output=True, text=True, timeout=15, cwd=ENV_PATH.parent,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            cwd=ENV_PATH.parent,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -99,16 +102,21 @@ def main() -> int:
 
         in_shell = os.environ.get(name)
         if in_shell and in_shell != key:
-            print(f"{'':<18} NOTE     shell exports a different {name} (sha {fingerprint(in_shell)}) — "
-                  f"the app uses .env, but scripts run outside Docker may pick up the shell one")
+            print(
+                f"{'':<18} NOTE     shell exports a different {name} "
+                f"(sha {fingerprint(in_shell)}) — the app uses .env, "
+                f"but scripts run outside Docker may pick up the shell one"
+            )
 
         in_container = container_value(name)
         if in_container is None:
             print(f"{'':<18}          (api container not running — skipped sync check)")
         elif in_container != key:
-            print(f"{'':<18} STALE    api container has a different key "
-                  f"(sha {fingerprint(in_container) if in_container else 'empty'}) — "
-                  f"run `docker compose up -d api` to pick up .env")
+            print(
+                f"{'':<18} STALE    api container has a different key "
+                f"(sha {fingerprint(in_container) if in_container else 'empty'}) — "
+                f"run `docker compose up -d api` to pick up .env"
+            )
             ok = False
     return 0 if ok else 1
 

@@ -37,13 +37,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_api_keys import load_env_value  # noqa: E402
+
 from app.domain.model_registry import MODELS  # noqa: E402
 from app.domain.pricing import PRICE_PER_MILLION_USD  # noqa: E402
-from check_api_keys import load_env_value  # noqa: E402
 
 PRICING_PAGES = {
     "openai": "https://developers.openai.com/api/docs/pricing",
-    "anthropic": "https://platform.claude.com/docs/en/about-claude/pricing",  # API prices; anthropic.com/pricing is consumer plans only
+    # API prices — anthropic.com/pricing only lists consumer plans.
+    "anthropic": "https://platform.claude.com/docs/en/about-claude/pricing",
 }
 
 # OpenAI model families LLMPort can't use (it drives text chat via the Responses API).
@@ -72,7 +74,9 @@ def fetch_anthropic() -> dict[str, dt.date]:
     out: dict[str, dt.date] = {}
     after = None
     while True:
-        url = "https://api.anthropic.com/v1/models?limit=100" + (f"&after_id={after}" if after else "")
+        url = "https://api.anthropic.com/v1/models?limit=100" + (
+            f"&after_id={after}" if after else ""
+        )
         page = _get(url, headers)
         for m in page["data"]:
             out[m["id"]] = dt.date.fromisoformat(m["created_at"][:10])
@@ -87,7 +91,9 @@ def candidates(provider: str, served: dict[str, dt.date], show_all: bool) -> dic
         return served
     keep = {}
     for model_id, created in served.items():
-        if provider == "openai" and (_OPENAI_NON_TEXT.search(model_id) or not model_id.startswith(("gpt-", "o"))):
+        if provider == "openai" and (
+            _OPENAI_NON_TEXT.search(model_id) or not model_id.startswith(("gpt-", "o"))
+        ):
             continue
         alias = _SNAPSHOT_SUFFIX.sub("", model_id)
         if alias != model_id and (alias in served or alias in MODELS):
@@ -98,10 +104,13 @@ def candidates(provider: str, served: dict[str, dt.date], show_all: bool) -> dic
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="List provider models not yet in model_registry.py.")
-    ap.add_argument("--since", type=dt.date.fromisoformat,
-                    default=dt.date.today() - dt.timedelta(days=DEFAULT_LOOKBACK_DAYS),
-                    help=f"only show NEW models released on/after this date "
-                         f"(default: {DEFAULT_LOOKBACK_DAYS} days ago)")
+    ap.add_argument(
+        "--since",
+        type=dt.date.fromisoformat,
+        default=dt.date.today() - dt.timedelta(days=DEFAULT_LOOKBACK_DAYS),
+        help=f"only show NEW models released on/after this date "
+        f"(default: {DEFAULT_LOOKBACK_DAYS} days ago)",
+    )
     ap.add_argument("--all", action="store_true", help="don't filter snapshots / non-text families")
     args = ap.parse_args()
 
@@ -118,7 +127,8 @@ def main() -> int:
         served_aliases = set(served) | {_SNAPSHOT_SUFFIX.sub("", s) for s in served}
 
         new = {
-            mid: created for mid, created in candidates(provider, served, args.all).items()
+            mid: created
+            for mid, created in candidates(provider, served, args.all).items()
             if mid not in MODELS and (args.all or created >= args.since)
         }
         unpriced = sorted(s for s in registered if s not in PRICE_PER_MILLION_USD)

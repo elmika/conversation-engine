@@ -19,9 +19,11 @@ ANTHROPIC_API_KEY, real ADMIN_TOKEN in .env, candidate models registered in
 app/domain/model_registry.py.
 
 Usage:
-  python3 scripts/compare_session_models.py --target course-session-init --models claude-haiku-4-5,claude-sonnet-5-5
+  python3 scripts/compare_session_models.py --target course-session-init \
+      --models claude-haiku-4-5,claude-sonnet-5-5
   python3 scripts/compare_session_models.py --target course-session-core --models claude-sonnet-5-5
-  python3 scripts/compare_session_models.py --target user-profile-collection --models claude-haiku-4-5
+  python3 scripts/compare_session_models.py --target user-profile-collection \
+      --models claude-haiku-4-5
 
 Caching: same mechanism and cache semantics as compare_outline_models.py (see its
 docstring) via scripts/model_compare_cache.py, stored separately at
@@ -104,7 +106,9 @@ def _turn_summary(result: dict) -> dict:
     }
 
 
-def _run_user_profile_collection(base: str, sections: str, db: str, model: str, profile: dict) -> dict:
+def _run_user_profile_collection(
+    base: str, sections: str, db: str, model: str, profile: dict
+) -> dict:
     """Drive init + 3 framing turns (of 4) with model_slug=<candidate> — enough to
     exercise every user-profile-collection turn without also triggering the outline
     turn (the 4th answer), which is a different prompt on its own, already-decided
@@ -133,7 +137,9 @@ def _run_course_session_init(base: str, sections: str, db: str, model: str, prof
     uid = _new_uid()
     cid = None
     try:
-        provision_learner(sections, uid, profile, _course_outline_for(profile), SESSION_LENGTH_MINUTES)
+        provision_learner(
+            sections, uid, profile, _course_outline_for(profile), SESSION_LENGTH_MINUTES
+        )
         init = post_sse(
             f"{base}/admin/u/{uid}/conversations/init-stream",
             {"prompt_slug": "course-session-init", "model_slug": model},
@@ -148,7 +154,9 @@ def _run_course_session_core(base: str, sections: str, db: str, model: str, prof
     uid = _new_uid()
     cid = None
     try:
-        provision_learner(sections, uid, profile, _course_outline_for(profile), SESSION_LENGTH_MINUTES)
+        provision_learner(
+            sections, uid, profile, _course_outline_for(profile), SESSION_LENGTH_MINUTES
+        )
         init = post_sse(
             f"{base}/admin/u/{uid}/conversations/init-stream",
             {"prompt_slug": "course-session-init"},
@@ -166,11 +174,15 @@ def _run_course_session_core(base: str, sections: str, db: str, model: str, prof
         cleanup_learner(base, sections, uid, cid)
 
 
-def _run_course_session_closure(base: str, sections: str, db: str, model: str, profile: dict) -> dict:
+def _run_course_session_closure(
+    base: str, sections: str, db: str, model: str, profile: dict
+) -> dict:
     uid = _new_uid()
     cid = None
     try:
-        provision_learner(sections, uid, profile, _course_outline_for(profile), SESSION_LENGTH_MINUTES)
+        provision_learner(
+            sections, uid, profile, _course_outline_for(profile), SESSION_LENGTH_MINUTES
+        )
         init = post_sse(
             f"{base}/admin/u/{uid}/conversations/init-stream",
             {"prompt_slug": "course-session-init"},
@@ -189,8 +201,11 @@ def _run_course_session_closure(base: str, sections: str, db: str, model: str, p
         )
         summary = _turn_summary(r)
         if summary["prompt_slug"] != "course-session-closure":
-            print(f"  WARNING: expected course-session-closure, got {summary['prompt_slug']!r} "
-                  f"— time-over may not have forced closure; result may not reflect the closure prompt.")
+            print(
+                f"  WARNING: expected course-session-closure, got {summary['prompt_slug']!r} "
+                f"— time-over may not have forced closure; "
+                f"result may not reflect the closure prompt."
+            )
         return {"turns": [summary]}
     finally:
         cleanup_learner(base, sections, uid, cid)
@@ -210,7 +225,9 @@ _SCENARIO_PROMPT_FILES = {
     "course-session-init": ["course-session-init.md"],
     "course-session-core": ["course-session-init.md", "course-session-core.md"],
     "course-session-closure": [
-        "course-session-init.md", "course-session-core.md", "course-session-closure.md",
+        "course-session-init.md",
+        "course-session-core.md",
+        "course-session-closure.md",
     ],
 }
 
@@ -227,18 +244,22 @@ def main() -> int:
     ap.add_argument("--target", required=True, choices=TARGETS)
     ap.add_argument("--models", required=True, help="comma-separated model_slugs")
     ap.add_argument(
-        "--profiles", default=None,
+        "--profiles",
+        default=None,
         help="comma-separated profile labels to run (default: the 3 built-in session profiles)",
     )
     ap.add_argument("--no-cache", action="store_true", help="ignore and don't update the cache")
     ap.add_argument(
-        "--refresh", action="store_true",
+        "--refresh",
+        action="store_true",
         help="call the live models even on a cache hit, and overwrite the cached entry",
     )
     args = ap.parse_args()
     if not ADMIN_TOKEN:
-        print("No ADMIN_TOKEN found (checked env and .env). This script drives admin-only routes "
-              "and will fail with 401 without it.")
+        print(
+            "No ADMIN_TOKEN found (checked env and .env). This script drives admin-only routes "
+            "and will fail with 401 without it."
+        )
         return 2
 
     models = [m.strip() for m in args.models.split(",") if m.strip()]
@@ -268,7 +289,9 @@ def main() -> int:
         for model in models:
             print(f"\n--- {model} ---")
             key = cache.make_key(
-                target=args.target, profile_answers=profile["answers"], model=model,
+                target=args.target,
+                profile_answers=profile["answers"],
+                model=model,
                 prompts=prompt_texts,
             )
             cached = None if args.no_cache else cache.get(key)
@@ -287,14 +310,18 @@ def main() -> int:
                 if turn.get("error"):
                     print(f"  turn {i} ERROR: {turn['error']}")
                     continue
-                print(f"  turn {i} [{turn['prompt_slug']}] "
-                      f"ttfb={turn['ttfb_ms']}ms total={turn['total_ms']}ms")
+                print(
+                    f"  turn {i} [{turn['prompt_slug']}] "
+                    f"ttfb={turn['ttfb_ms']}ms total={turn['total_ms']}ms"
+                )
                 print(f"    {turn['text']}\n")
 
     print("=" * 100)
     print(f"cache: {cache_hits} hit(s), {cache_misses} live call(s)")
-    print("Done. No pass/fail judgment — compare latency and text quality above by eye "
-          "before deciding whether to switch this prompt's `model:` field.")
+    print(
+        "Done. No pass/fail judgment — compare latency and text quality above by eye "
+        "before deciding whether to switch this prompt's `model:` field."
+    )
     return 0
 
 
