@@ -30,8 +30,8 @@ export function ConsentScreen({ onContinue, isSubmitting, error }: ConsentScreen
           your course we&apos;ll ask your name, role, and what you want to learn — and everything
           you write in a session is saved so the tutor can pick up where you left off next time.
           As the person running this pilot, I can see your name and messages to build and improve
-          the product; nobody else does. Your messages are sent to OpenAI to generate the
-          tutor&apos;s replies, same as any AI chat tool. Nothing is sold or shared beyond that.
+          the product; nobody else does. Your messages are sent to OpenAI and Anthropic to
+          generate the tutor&apos;s replies, same as any AI chat tool. Nothing is sold or shared beyond that.
           This pilot is provided as-is, with no guarantee of availability, and I may end it at any
           time without needing to justify why. It&apos;s expected to run for around two weeks —
           enough time to complete one course. After the pilot, I may keep an anonymized version of
