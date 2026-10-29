@@ -54,11 +54,11 @@ check-layers: ## Enforce architecture layer rules (no upward imports)
 	docker build -t $(IMAGE) . -q
 	docker run --rm $(IMAGE) python -m pytest tests/test_architecture.py -v
 
-lint: ## Run ruff linter on backend
-	docker run --rm $(IMAGE) python -m ruff check .
+lint: ## Run ruff linter on the working tree (mounts the repo into the image)
+	docker run --rm -v "$(PWD)":/src -w /src $(IMAGE) python -m ruff check .
 
-format: ## Run ruff formatter on backend
-	docker run --rm $(IMAGE) python -m ruff format .
+format: ## Run ruff formatter on the working tree (mounts the repo into the image)
+	docker run --rm -v "$(PWD)":/src -w /src $(IMAGE) python -m ruff format .
 
 deploy-backend: ## Deploy the API to Fly.io (app: learning-platform, config: fly.toml)
 	fly deploy -c fly.toml

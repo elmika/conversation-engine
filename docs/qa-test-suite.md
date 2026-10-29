@@ -138,6 +138,12 @@ handles just the outline turn, paired with the loading indicator above. A failin
     ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
   }
   ```
+- **Cold dev server (AI-agent-specific):** under `make up` the Next.js dev server compiles each
+  route on first hit (`/` took ~17s, the chat route ~20s). During that window a Chrome-tool
+  navigation can silently land back on `chrome://newtab`, and the next step fails with
+  "JavaScript execution is not allowed on chrome:// pages". Warm the routes first
+  (`curl -s -m 90 localhost:3000/ >/dev/null`), and if a navigation still bounces, re-run it on
+  its own before batching further steps.
 - **Tool round-trip latency is not negligible:** each Chrome-tool call in an AI-driven run can take
   real minutes, not seconds — don't trust an explicit `wait` duration as the true elapsed time
   since a message was sent. When timing matters (e.g. confirming a loading state is live), read
