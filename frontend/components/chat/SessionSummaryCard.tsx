@@ -36,13 +36,27 @@ export function SessionSummaryCard({ summary, onStartNextSession, onClose }: Ses
           </p>
           <ol className="space-y-0.5">
             {summary.modules.map((mod, i) => (
-              <li key={i} className="text-sm text-muted-foreground flex items-baseline gap-2">
-                <span className="w-8 text-right shrink-0 font-mono text-xs">
-                  {mod.status === "done" ? "✓" : mod.status === "current" ? "→" : ""} {i + 1}.
-                </span>
-                <span className="prose prose-sm dark:prose-invert max-w-none [&_p]:m-0">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{mod.title}</ReactMarkdown>
-                </span>
+              <li key={i} className="text-sm text-muted-foreground">
+                <div className="flex items-baseline gap-2">
+                  <span className="w-8 text-right shrink-0 font-mono text-xs">
+                    {mod.status === "done" ? "✓" : mod.status === "current" ? "→" : ""} {i + 1}.
+                  </span>
+                  <span className="prose prose-sm dark:prose-invert max-w-none [&_p]:m-0">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{mod.title}</ReactMarkdown>
+                  </span>
+                </div>
+                {mod.checklist && mod.checklist.length > 0 && (
+                  <ul className="ml-8 mt-1 space-y-0.5">
+                    {mod.checklist.map((item, j) => (
+                      <li key={j} className="text-xs flex items-baseline gap-1.5">
+                        <span className="shrink-0">{item.done ? "✓" : "○"}</span>
+                        <span className={item.done ? "" : "text-muted-foreground/70"}>
+                          {item.title}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ol>

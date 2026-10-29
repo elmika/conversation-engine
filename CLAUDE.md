@@ -75,6 +75,18 @@ make format
 make build
 ```
 
+**Check API keys first:** `make check-keys` (`scripts/check_api_keys.py`) verifies the
+`OPENAI_API_KEY`/`ANTHROPIC_API_KEY` in `.env` against each provider's free `/v1/models`
+endpoint and flags a running `api` container still holding an old key (`.env` edits need
+`docker compose up -d api`). Run it before any live script below — the app reports a rejected
+key only as a generic "502 Upstream … API error".
+
+**Check for new models:** `make check-models` (`scripts/check_new_models.py`) diffs both
+providers' live model lists against `model_registry.py`/`pricing.py` and reports NEW (released
+in the last 180 days, not registered), UNPRICED and GONE (registered but retired) models. Neither
+API exposes prices, so it prints the pricing pages to look them up by hand. Run it before any
+model comparison — newer models keep shipping between tests.
+
 **Compare candidate models:**
 ```bash
 python3 scripts/compare_outline_models.py                                              # all profiles, default models
@@ -87,6 +99,37 @@ re-implementation of the prompt/template logic. Used for the `gpt-5.6-luna` vs. 
 evaluation (`docs/architecture-decisions.md` §5); currently scoped to the setup/outline turn only.
 Expected to be extended to other flow stages (lesson core/closure) and, once a second `LLMPort`
 adapter exists, other providers — this will become routine as models keep shipping.
+
+Every run is **recorded, not cached**: appended to `evals/results/<script>.jsonl` (committed —
+these are the evidence behind `docs/model-decisions.md`, shareable as-is; see `evals/README.md`)
+by `scripts/model_compare_results.py`. A (profile, model) cell already recorded under the same
+prompt bodies and context models is shown from the log instead of re-run, so adding a model
+only pays for the new cells. The key deliberately excludes the target prompt's own `model:` line
+(the candidate overrides it) but includes the pinned models of the scenario's *other* prompts
+(those turns run on their pins) — so switching a prompt's model doesn't throw away its own
+comparison, while switching an upstream prompt correctly forces fresh runs. `--refresh` re-runs
+and appends a newer record (never overwrites — e.g. to check a model hasn't drifted);
+`--no-record` runs live without recording; `--label "Test N"` tags records to match the test
+write-up. Any future per-tier comparison script (structured-extraction, guard tiers — see
+`docs/model-decisions.md` "Claude as a second provider") should reuse `ResultsLog` rather than
+re-inventing this.
+
+```bash
+python3 scripts/compare_session_models.py --target course-session-init --models claude-haiku-4-5,claude-sonnet-5-5
+python3 scripts/compare_session_models.py --target course-session-core --models claude-sonnet-5-5
+```
+Chat-latency-tier counterpart, for `course-session-init/core/closure` and `user-profile-collection`
+— the highest-traffic prompts (every session runs through them, not a one-time setup turn). These
+four don't share one comparison shape, so `--target` picks a purpose-built scenario per prompt
+(single opening turn, N canned mid-lesson turns, a forced time-over transition, etc. — see the
+script's own docstring). Only the turn(s) matching `--target` get an explicit `model_slug`
+override; every other turn in the scenario stays on its own currently-pinned model, so e.g.
+comparing `course-session-core` doesn't also vary the objective-complete guard and confound the
+result. Shares `scripts/session_test_utils.py` (admin-route SSE driving, throwaway section-file
+provisioning, the `age_conversation`/`set_objective_met_db` DB shortcuts used to force phase
+transitions deterministically — same technique as `make smoke`; `turn_models` reads which model
+actually served each turn from the `runs` table, since SSE doesn't expose it) and the same
+`ResultsLog`, in its own `evals/results/session_compare.jsonl`.
 
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
 
@@ -192,7 +235,7 @@ app/
 │   └── services.py    # ConversationService: orchestrates history + LLM + persistence — Layer 1b
 ├── domain/            # Core, generic domain — Layer 1a (no learning-specific vocabulary)
 │   ├── prompt_template.py  # {{tag}} rendering: file sections + {{time:*}} — render_instructions()
-│   ├── model_registry.py   # Static registry of supported OpenAI models
+│   ├── model_registry.py   # Static registry of supported models (OpenAI + Anthropic), each tagged with a `provider`
 │   ├── history.py     # trim_history(): caps context by turns/tokens before LLM calls
 │   ├── entities.py    # Domain entities
 │   └── value_objects.py    # ConversationId, PromptSlug
@@ -204,6 +247,8 @@ app/
 │   ├── session_summary.py / progress_synthesis.py  # end-session summary + progress write
 └── infra/             # Concrete adapters — Layer 1b
     ├── llm_openai.py  # OpenAILLMAdapter: wraps Responses API, handles retries/timeouts
+    ├── llm_anthropic.py  # AnthropicLLMAdapter: wraps Messages API, same retry/timeout shape
+    ├── llm_router.py  # RoutingLLMAdapter: dispatches to the right adapter by model_registry's `provider` field
     ├── slot_resolver_files.py  # FileSlotResolver: default SlotResolver, no Layer 2 knowledge
     ├── logging.py     # Structured JSON logging setup
     └── persistence/   # SQLite via sync SQLAlchemy
@@ -242,7 +287,7 @@ L3 concept would follow this exact shape: a new port in `ports.py`, a concrete a
 
 ### Key design decisions
 
-**Dependency injection via `app.state` + FastAPI `Depends`:** `main.py`'s `lifespan()` is the composition root for process-lifetime infra — it creates `Settings` and `OpenAILLMAdapter`, storing both on `app.state`. Per-request dependencies (`uow_factory`, `PromptRepo`, `ConversationService`, `LearningFlowOrchestrator`) are built in `api/routes.py` via `Depends(...)` provider functions (`get_uow_factory`, `get_conversation_service`, etc.), since they need a request-scoped DB session. Nothing is constructed inside a use case.
+**Dependency injection via `app.state` + FastAPI `Depends`:** `main.py`'s `lifespan()` is the composition root for process-lifetime infra — it creates `Settings` and wires `app.state.llm` to a `RoutingLLMAdapter` (`OpenAILLMAdapter` + `AnthropicLLMAdapter`, dispatched by the model slug's `provider` in `model_registry.py`). Per-request dependencies (`uow_factory`, `PromptRepo`, `ConversationService`, `LearningFlowOrchestrator`) are built in `api/routes.py` via `Depends(...)` provider functions (`get_uow_factory`, `get_conversation_service`, etc.), since they need a request-scoped DB session. Nothing is constructed inside a use case.
 
 **Ports (Protocols):** `LLMPort`, `ConversationRepo`, `UnitOfWork`, `SlotResolver`, and `LearningFlowPort` in `ports.py` are Python `Protocol` classes. The service layer depends only on these; the test suite injects fakes/mocks.
 
@@ -253,6 +298,10 @@ L3 concept would follow this exact shape: a new port in `ports.py`, a concrete a
 **Sync SQLAlchemy with async HTTP:** The HTTP layer is async, but SQLAlchemy uses a sync engine. DB work runs in worker threads via `asyncio.to_thread()` in routes to avoid blocking the event loop.
 
 **Never nest `uow_factory()`:** a `LearningFlowPort` method (or anything else that might run inside an already-open `ConversationService` transaction) must accept and reuse the caller's `uow` rather than opening a fresh one via `self._uow_factory()`. A second `BEGIN` on the same connection can deadlock — confirmed against the test suite's shared `StaticPool` connection (2026-09-17), where it silently hung the entire pytest run rather than failing fast.
+
+**SQLite transactions must open `BEGIN IMMEDIATE`, not a plain deferred `BEGIN`:** any transaction that reads before it writes (the common case — e.g. `session.get()` then mutate) only takes a read lock at a deferred `BEGIN`; if another connection commits in between, this connection's later write-lock upgrade is a non-retryable `SQLITE_BUSY` — the busy handler is never invoked, no `busy_timeout` helps. Confirmed by reproducing it with raw `sqlite3` outside SQLAlchemy entirely (2026-09-29): 10 concurrent writers failed 9/10, instantly, regardless of `busy_timeout`. `app/infra/persistence/db.py`'s `_sqlite_explicit_begin` issues `BEGIN IMMEDIATE` for exactly this reason — don't revert it to `BEGIN` for a perceived read-concurrency win without re-reading that comment.
+
+**Adding a new LLM provider:** implement `LLMPort` (see `OpenAILLMAdapter`/`AnthropicLLMAdapter` for the shape — retry loop, error mapping, `complete`/`stream`), tag every one of its models with `"provider": "<name>"` in `model_registry.py`, and register the adapter instance in `RoutingLLMAdapter`'s provider map (`app/infra/llm_router.py`, wired in `main.py`). Every call site keeps depending on a single `LLMPort` — the routing is invisible above `app.state.llm`.
 
 **Synchronous endpoints by default:** Backend endpoints must be synchronous by default — they complete their work and return the final result (200/201/204) before closing the connection. Async patterns (`BackgroundTasks`, task queues, `202 Accepted` with deferred processing) are only acceptable when there is an explicit use case that requires it (e.g. SSE streaming for LLM responses). Never introduce an async workflow speculatively or for performance reasons alone — the added complexity must be justified by a concrete requirement.
 

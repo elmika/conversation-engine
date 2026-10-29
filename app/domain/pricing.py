@@ -21,12 +21,33 @@ PRICE_PER_MILLION_USD: dict[str, dict[str, float]] = {
     "gpt-5.6-terra": {"input": 2.00, "output": 12.00},
     "gpt-5.6-sol": {"input": 4.00, "output": 20.00},
     "gpt-6-astra": {"input": 10.00, "output": 50.00},
+
+    # Anthropic — https://www.anthropic.com/pricing, confirmed 2026-09-29.
+    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    "claude-opus-5": {"input": 5.00, "output": 25.00},
+    # Added 2026-09-30 (released 2026-09-21/28, after the pricing page snapshot
+    # above) — confirmed live against anthropic.com/pricing. Note opus-5.5 is
+    # actually *cheaper* than opus-5, not a straight successor-at-same-price.
+    "claude-opus-5-5": {"input": 4.00, "output": 20.00},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},
+
+    # Added 2026-10-29 via scripts/check_new_models.py. Anthropic API prices are now at
+    # https://platform.claude.com/docs/en/about-claude/pricing (anthropic.com/pricing only
+    # lists consumer plans). haiku-5.5's price is for prompts up to 100k tokens; above that
+    # it's $0.50/$2.50 — this table has no long-context tier, and no prompt here gets near it.
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50},
+    "gpt-6.1-sol": {"input": 2.00, "output": 10.00},
+    "gpt-6.1-terra": {"input": 1.00, "output": 5.00},
+    "gpt-6-luna": {"input": 0.10, "output": 0.50},
 }
 
 # The OpenAI API often echoes back a dated snapshot id (e.g. "gpt-4.1-2025-04-14")
-# in the response instead of the bare alias we requested. Strip that suffix before
-# a price-table lookup so a Run recording the snapshot id still prices correctly.
-_DATE_SNAPSHOT_SUFFIX = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+# in the response instead of the bare alias we requested; Anthropic does the same
+# with a different date format (e.g. "claude-haiku-4-5-20251001"). Strip either
+# suffix before a price-table lookup so a Run recording the snapshot id still
+# prices correctly.
+_DATE_SNAPSHOT_SUFFIX = re.compile(r"-\d{4}-\d{2}-\d{2}$|-\d{8}$")
 
 
 def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> Optional[float]:

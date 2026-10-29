@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = ""
+    anthropic_api_key: str = ""
     default_model: str = "gpt-4.1"
     wrap_up_model: str = "gpt-5.6-luna"
     max_input_chars: int = 32_000

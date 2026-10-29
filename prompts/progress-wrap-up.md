@@ -10,7 +10,7 @@ The current progress document is:
 
 Review the conversation history provided and produce an **updated** version of that document, incorporating what happened in this session.
 
-Your output must be **only** the markdown document below — no preamble, no explanation, no code fences. Use the exact same four-section structure:
+Your output must be **only** the markdown document below — no preamble, no explanation, no code fences. Use the exact same five-section structure:
 
 ## What the student knows
 
@@ -35,4 +35,19 @@ Only move on to the next module if this module's material has been **reasonably 
 
 Ground both parts in what actually happened in this session's transcript, not the course's abstract module description — don't restate the module's full scope as work still ahead if part of it was already covered today.
 
-Output only the markdown for these four sections. Do not add any other sections or commentary.
+## Module checklist
+
+Tracks the *current* module's sub-points as a checklist — one module at a time, not the whole course. Format exactly:
+
+```
+Module <N>
+- [x] <sub-point already covered>
+- [ ] <sub-point not yet covered>
+```
+
+- The first time a module is introduced (its opening breakdown lists 2–4 sub-points — see the tutor's own "we'll look at: 1. ... 2. ... 3. ..." turn), create its checklist here with all sub-points unchecked.
+- Otherwise, carry the existing checklist forward. Check off `[x]` any sub-point actually discussed and understood this session — cross-check against "What the student knows" above, same rule as the Progress section. **Never uncheck** a sub-point that was already `[x]`, even if today's session didn't touch it again.
+- If nothing new was covered this session, output the checklist **exactly unchanged** — do not check anything off on a guess, and do not reword the sub-point titles.
+- If the "Progress - Current state" section above decided to move on to a new module, **replace this checklist entirely** with that new module's sub-points, all unchecked — this section always reflects the module named in "Next, we'll continue/move on to Module N" above, never a module that's already finished.
+
+Output only the markdown for these five sections. Do not add any other sections or commentary.

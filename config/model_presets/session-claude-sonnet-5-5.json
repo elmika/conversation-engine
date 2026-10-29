@@ -1,0 +1,9 @@
+{
+  "name": "session-claude-sonnet-5-5",
+  "description": "Decision 2026-10-29: switch the three lesson prompts (course-session-init/core/closure) from gpt-4.1 to claude-sonnet-5-5 after a 3-profile head-to-head (scripts/compare_session_models.py) of gpt-4.1 vs. claude-haiku-4-5 vs. claude-sonnet-5-5. Closure was decisive: on a forced time-over, only claude-sonnet-5-5 actually wrapped the session up (summary, next-session preview, End Session pointer) on all 3 profiles -- gpt-4.1 and claude-haiku-4-5 mostly kept teaching. Core: claude-sonnet-5-5 taught with concrete code from the first turns and checked understanding instead of accepting 'I think I get it' at face value; tradeoff is TTFB 1.9-4.5s vs. ~1s for gpt-4.1, accepted deliberately. Init: better learner-specific tailoring at equal latency. Cost: $2/$10 per MTok vs. gpt-4.1's $2/$8 -- same input, +25% output. user-profile-collection deliberately stays on gpt-4.1 (plain Q&A, no quality gain, Sonnet only added latency). Applied on top of baseline-2026-09 + course-outline-claude-sonnet-5-5.",
+  "prompts": {
+    "course-session-init": "claude-sonnet-5-5",
+    "course-session-core": "claude-sonnet-5-5",
+    "course-session-closure": "claude-sonnet-5-5"
+  }
+}

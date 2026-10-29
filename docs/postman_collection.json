@@ -589,7 +589,7 @@
                 }
               ],
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"status\": \"ending\",\n  \"summary\": {\n    \"course_name\": \"Intro to TypeScript\",\n    \"modules\": [\n      {\"title\": \"Types\", \"status\": \"done\"},\n      {\"title\": \"Interfaces\", \"status\": \"current\"}\n    ],\n    \"next_step\": \"Generics\"\n  }\n}"
+              "body": "{\n  \"status\": \"ending\",\n  \"summary\": {\n    \"course_name\": \"Intro to TypeScript\",\n    \"modules\": [\n      {\"title\": \"Types\", \"status\": \"done\", \"checklist\": null},\n      {\"title\": \"Interfaces\", \"status\": \"current\", \"checklist\": [\n        {\"title\": \"Structural typing\", \"done\": true},\n        {\"title\": \"Optional and readonly properties\", \"done\": false}\n      ]}\n    ],\n    \"next_step\": \"Generics\"\n  }\n}"
             },
             {
               "name": "409 Conflict — already ended",
@@ -807,7 +807,7 @@
                 }
               ],
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"course_name\": \"Intro to TypeScript\",\n  \"modules\": [\n    {\"title\": \"Types\", \"status\": \"done\"},\n    {\"title\": \"Interfaces\", \"status\": \"current\"}\n  ],\n  \"next_step\": \"Generics\"\n}"
+              "body": "{\n  \"course_name\": \"Intro to TypeScript\",\n  \"modules\": [\n    {\"title\": \"Types\", \"status\": \"done\", \"checklist\": null},\n    {\"title\": \"Interfaces\", \"status\": \"current\", \"checklist\": [\n      {\"title\": \"Structural typing\", \"done\": true},\n      {\"title\": \"Optional and readonly properties\", \"done\": false}\n    ]}\n  ],\n  \"next_step\": \"Generics\"\n}"
             },
             {
               "name": "409 Conflict — not ended",
@@ -1613,7 +1613,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    },\n    {\n      \"slug\": \"gpt-5.4-nano\",\n      \"name\": \"GPT-5.4 nano\",\n      \"description\": \"Our cheapest GPT-5.4-class model for simple high-volume tasks\"\n    }\n  ]\n}",
+              "body": "{\n  \"models\": [\n    {\n      \"slug\": \"gpt-4.1\",\n      \"name\": \"GPT-4.1\",\n      \"description\": \"Smartest non-reasoning model\"\n    },\n    {\n      \"slug\": \"gpt-5.4-mini\",\n      \"name\": \"GPT-5.4 mini\",\n      \"description\": \"Our strongest mini model yet for coding, computer use, and subagents\"\n    },\n    {\n      \"slug\": \"gpt-5.4-nano\",\n      \"name\": \"GPT-5.4 nano\",\n      \"description\": \"Our cheapest GPT-5.4-class model for simple high-volume tasks\"\n    },\n    {\n      \"slug\": \"claude-sonnet-5\",\n      \"name\": \"Claude Sonnet 5\",\n      \"description\": \"Anthropic's balanced flagship model for everyday conversation and coding\"\n    },\n    {\n      \"slug\": \"claude-haiku-4-5\",\n      \"name\": \"Claude Haiku 4.5\",\n      \"description\": \"Anthropic's fastest, most cost-efficient current model\"\n    }\n  ]\n}",
               "_postman_previewlanguage": "json"
             }
           ]
