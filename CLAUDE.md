@@ -75,6 +75,12 @@ make format
 make build
 ```
 
+**Check API keys first:** `make check-keys` (`scripts/check_api_keys.py`) verifies the
+`OPENAI_API_KEY`/`ANTHROPIC_API_KEY` in `.env` against each provider's free `/v1/models`
+endpoint and flags a running `api` container still holding an old key (`.env` edits need
+`docker compose up -d api`). Run it before any live script below — the app reports a rejected
+key only as a generic "502 Upstream … API error".
+
 **Compare candidate models:**
 ```bash
 python3 scripts/compare_outline_models.py                                              # all profiles, default models
@@ -93,9 +99,25 @@ Results are cached on disk (`scripts/.cache/`, gitignored) keyed by profile answ
 more model or profile to a comparison only pays for the new cells; editing a prompt file changes
 the key so a stale response is never silently reused. Use `--no-cache` for a call that shouldn't
 touch the cache at all, or `--refresh` to force live calls and overwrite cached entries (e.g. to
-confirm a model slug hasn't drifted). Any future per-tier comparison script (chat-latency,
-structured-extraction, guard tiers — see `docs/model-decisions.md` "Claude as a second provider")
-should reuse `ComparisonCache` rather than re-inventing this.
+confirm a model slug hasn't drifted). Any future per-tier comparison script (structured-extraction,
+guard tiers — see `docs/model-decisions.md` "Claude as a second provider") should reuse
+`ComparisonCache` rather than re-inventing this.
+
+```bash
+python3 scripts/compare_session_models.py --target course-session-init --models claude-haiku-4-5,claude-sonnet-5-5
+python3 scripts/compare_session_models.py --target course-session-core --models claude-sonnet-5-5
+```
+Chat-latency-tier counterpart, for `course-session-init/core/closure` and `user-profile-collection`
+— the highest-traffic prompts (every session runs through them, not a one-time setup turn). These
+four don't share one comparison shape, so `--target` picks a purpose-built scenario per prompt
+(single opening turn, N canned mid-lesson turns, a forced time-over transition, etc. — see the
+script's own docstring). Only the turn(s) matching `--target` get an explicit `model_slug`
+override; every other turn in the scenario stays on its own currently-pinned model, so e.g.
+comparing `course-session-core` doesn't also vary the objective-complete guard and confound the
+result. Shares `scripts/session_test_utils.py` (admin-route SSE driving, throwaway section-file
+provisioning, the `age_conversation`/`set_objective_met_db` DB shortcuts used to force phase
+transitions deterministically — same technique as `make smoke`) and the same `ComparisonCache`
+mechanism, in its own `scripts/.cache/session_compare.json`.
 
 **Environment:** Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Copy `frontend/.env.local.example` to `frontend/.env.local` (for local-only dev without Compose). Tests use `DATABASE_URL=sqlite:///:memory:` set in `tests/conftest.py`.
 

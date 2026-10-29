@@ -36,6 +36,9 @@ smoke: ## Live smoke test of the course-session lifecycle (needs `make up` + rea
 smoke-openai: ## Live smoke test of the OpenAI Responses API shape (needs local OPENAI_API_KEY + `pip install openai`; bypasses Docker/the app; makes a real LLM call)
 	python3 scripts/smoke_openai_direct.py
 
+check-keys: ## Verify OPENAI/ANTHROPIC API keys in .env are accepted and in sync with the api container (free, no tokens)
+	python3 scripts/check_api_keys.py
+
 usage: ## Show token usage per run (last 20), ordered by most recent
 	@sqlite3 -column -header data/chat.db \
 		"SELECT created_at, prompt_slug, model, input_tokens, output_tokens, (input_tokens + output_tokens) AS total_tokens FROM runs ORDER BY created_at DESC LIMIT 20"
