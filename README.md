@@ -71,15 +71,17 @@ Test gate: fix any failing tests before considering a change complete.
 
 ## Run locally (optional)
 
-If you have Python and pip:
+With [uv](https://docs.astral.sh/uv/) installed (it fetches a matching Python if needed):
 
 ```bash
 cp .env.example .env   # then set OPENAI_API_KEY in .env
-pip install -e ".[dev]"
-uvicorn app.main:app --reload
+uv sync                # exact versions from uv.lock, dev tools included
+uv run uvicorn app.main:app --reload
 ```
 
-Tests: `pytest` or `pytest -v`.
+Tests: `uv run pytest`. Change dependencies with `uv add <pkg>` / `uv remove <pkg>`, which update
+`pyproject.toml` and `uv.lock` together. Commit both: Docker and CI install with `--locked` and fail
+if `uv.lock` is out of date.
 
 ## Light load testing & TTFB
 
@@ -166,14 +168,17 @@ These examples assume the app is running on `http://127.0.0.1:8000` (locally or 
 
 ## Contributing
 
-`main` is protected: it only changes through a pull request whose CI checks passed.
+`main` is protected: it only changes through a pull request whose CI checks and
+[SonarCloud](https://sonarcloud.io/project/overview?id=elmika_conversation-engine) quality gate
+passed.
 
 1. **Once per clone:** `make hooks` installs a pre-push hook that blocks direct pushes to `main`.
 2. **Work on a branch.** Before pushing, run `make format`, `make lint` and `make test`.
 3. **Push.** CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to any
    branch. Backend: ruff lint and format check, then pytest. Frontend: typecheck, Vitest and a
    production build. No secrets needed.
-4. **Merge:** `make merge BRANCH=<branch>`. It opens the PR, waits for CI, merges with a merge commit
+4. **Merge:** `make merge BRANCH=<branch>`. It opens the PR, waits for CI and SonarCloud (which
+   analyzes PRs only), merges with a merge commit
    and pulls `main`. If the branch is behind `main`, merge `main` into it first. GitHub requires the
    branch to be up to date, so CI has tested exactly what lands.
 

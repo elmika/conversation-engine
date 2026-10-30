@@ -31,7 +31,7 @@ make up
 # UI   → http://localhost:3000
 ```
 
-Both `app/` and `prompts/` are volume-mounted and uvicorn runs with `--reload`, so backend changes take effect immediately without a rebuild. A rebuild (`make build`) is only needed when dependencies change (`requirements.txt`) or the Dockerfile itself changes.
+Both `app/` and `prompts/` are volume-mounted and uvicorn runs with `--reload`, so backend changes take effect immediately without a rebuild. A rebuild (`make build`) is only needed when dependencies change (`pyproject.toml` + `uv.lock`) or the Dockerfile itself changes.
 
 **Backend tests:**
 ```bash
@@ -72,13 +72,33 @@ make format
 
 **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs on every push. Backend: `ruff check`,
 `ruff format --check`, pytest. Frontend: `tsc --noEmit`, Vitest, `next build`. It runs Python/Node
-directly on the runner, not Docker, so keep its Python/Node versions and the ruff pin in sync with
-the Dockerfiles (ruff is also pinned in `pyproject.toml`'s dev extra). Run `make format` before pushing: unformatted code fails CI.
+directly on the runner, not Docker, so keep its Python/Node/uv versions in sync with the Dockerfiles.
+Run `make format` before pushing: unformatted code fails CI.
+Branch protection requires checks by their exact job `name:` ("Backend (ruff + pytest)",
+"Frontend (typecheck + vitest + build)", "SonarCloud Code Analysis"). Renaming or splitting a CI job
+leaves the old required name unreported, so every PR waits forever, and admins aren't exempt. Update
+the required checks in the same change: `gh api -X PATCH repos/elmika/conversation-engine/branches/main/protection/required_status_checks`.
 
-**Merging into `main`:** `main` is protected on GitHub. It only changes through a PR whose Backend
-and Frontend checks passed, the branch must be up to date with `main`, merges are merge commits
+**Dependencies are locked:** Python via `uv.lock` (uv; `[dependency-groups] dev` holds pytest/ruff),
+frontend via `frontend/pnpm-lock.yaml`. Docker and CI install with `uv sync --locked` /
+`pnpm install --frozen-lockfile --ignore-scripts` and fail on a stale lock, so a dependency change
+must commit the updated lockfile. To add a Python package without local uv, use the dev image
+(it ships uv): `docker run --rm -v "$PWD":/src -w /src conversation-engine uv add --no-sync <pkg>`,
+then `make build`. GitHub Actions are pinned to
+commit SHAs (tag in a trailing comment). SonarCloud flagged all three gaps (2026-10-30). Updates come
+from Dependabot (`.github/dependabot.yml`): weekly grouped PRs for actions, uv and npm, 14-day cooldown.
+Docker base images aren't covered. Bump those by hand, in sync with CI.
+
+**Merging into `main`:** `main` is protected on GitHub. It only changes through a PR whose Backend,
+Frontend and SonarCloud checks passed, the branch must be up to date with `main`, merges are merge commits
 only, and admins aren't exempt. A local `git merge` + `git push origin main` is rejected. Use
 `make merge BRANCH=<branch>`: it pushes, opens the PR, waits for CI, merges, and pulls `main`.
+**SonarCloud** (project `elmika_conversation-engine`, public, readable via its API without a token)
+analyzes every PR through SonarCloud's Automatic Analysis, configured on sonarcloud.io, not in
+this repo. Its quality gate (new code: A ratings, ≤3% duplication, hotspots reviewed) posts the
+required "SonarCloud Code Analysis" check. It only runs on PRs, not on branch pushes. A false
+positive is marked Safe/Accepted in the SonarCloud UI, with a reason, rather than worked around
+in code.
 `make hooks` (once per clone) installs `scripts/git-hooks/pre-push`, which blocks a direct push to
 `main` locally with the same pointer.
 
@@ -92,6 +112,14 @@ make build
 endpoint and flags a running `api` container still holding an old key (`.env` edits need
 `docker compose up -d api`). Run it before any live script below — the app reports a rejected
 key only as a generic "502 Upstream … API error".
+
+**A hung stack is often an OOM kill, not an app bug:** if `/healthz` accepts the connection but never
+answers and the API logs simply stop, check `docker inspect learning-platform-api-1 --format '{{.State.OOMKilled}}'`.
+Docker Desktop's VM is ~6 GB. Image builds or the full test suite in extra containers next to a
+running `make up` can get the uvicorn worker killed by the kernel. Uvicorn's `--reload` parent survives
+and keeps port 8000 open, so nothing errors and nothing restarts. Fix: `docker compose restart api`.
+Avoid heavy Docker jobs while a `make smoke` run or a live comparison is using the stack. Confirmed
+2026-10-30, when it surfaced as a `make smoke` health-check timeout.
 
 **Check for new models:** `make check-models` (`scripts/check_new_models.py`) diffs both
 providers' live model lists against `model_registry.py`/`pricing.py` and reports NEW (released

@@ -50,7 +50,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from model_compare_results import ResultsLog, read_prompts  # noqa: E402
-from session_test_utils import turn_models  # noqa: E402
+from session_test_utils import check_http_url, turn_models  # noqa: E402
 
 TARGET = "course-outline-proposal"
 # The outline prompt itself, plus the framing prompt that drives the 3 turns before it
@@ -167,6 +167,7 @@ PROFILES = [
 
 
 def _req(method: str, url: str, body: dict | None = None, timeout: int = 180) -> str:
+    check_http_url(url)
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
@@ -280,7 +281,7 @@ def main() -> int:
 
     try:
         health = _req("GET", f"{args.base_url}/healthz", timeout=5)
-    except urllib.error.URLError as e:
+    except OSError as e:  # URLError, but also a timeout from a hung server
         print(f"Stack not reachable at {args.base_url} ({e}). Start it with `make up`.")
         return 2
     print(f"stack healthy: {health.strip()}\ncomparing models: {models}\n")
