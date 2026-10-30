@@ -1,0 +1,14 @@
+#!/bin/sh
+# Refuse direct pushes to main. GitHub branch protection rejects them anyway (main only
+# changes through a PR whose CI passed); this just fails earlier, with the way forward.
+# Installed by `make hooks` (sets core.hooksPath to scripts/git-hooks).
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "pre-push: direct pushes to main are blocked (branch protection)." >&2
+    echo "  Merge through a PR instead:  make merge BRANCH=<branch>" >&2
+    echo "  (opens the PR, waits for CI to pass, merges with a merge commit)" >&2
+    exit 1
+  fi
+done
+exit 0

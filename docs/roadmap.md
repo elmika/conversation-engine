@@ -389,8 +389,9 @@ learner starts anonymously exactly as today and can *claim* that profile later.
 format check, then pytest (314 tests, including the layer rules). Frontend: `tsc --noEmit`, Vitest
 and `next build`. Getting it green meant clearing a 189-error ruff backlog and a stale test type
 error. ruff is pinned (`0.17.3`) in both CI and the Dockerfile so a new release can't break CI by
-itself. `next lint` is not run: the frontend has no ESLint config. **Still open:** branch protection
-(require the two checks before merging into `main`, a GitHub settings change), plus steps 4–5.
+itself. `next lint` is not run: the frontend has no ESLint config. Branch protection is on for `main` (the
+two checks are required, branch must be up to date, PR-only, merge commits only, admins included),
+with `make merge` and a pre-push hook for the local side. **Still open:** steps 4–5.
 
 Before this, nothing ran on push (see the Infra & ops backlog below). The repo is public on GitHub, so
 Actions minutes on standard hosted runners are free and unlimited. No new service or account needed.

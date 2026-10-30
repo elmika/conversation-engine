@@ -75,6 +75,13 @@ make format
 directly on the runner, not Docker, so keep its Python/Node versions and the ruff pin in sync with
 the Dockerfiles. Run `make format` before pushing: unformatted code fails CI.
 
+**Merging into `main`:** `main` is protected on GitHub. It only changes through a PR whose Backend
+and Frontend checks passed, the branch must be up to date with `main`, merges are merge commits
+only, and admins aren't exempt. A local `git merge` + `git push origin main` is rejected. Use
+`make merge BRANCH=<branch>`: it pushes, opens the PR, waits for CI, merges, and pulls `main`.
+`make hooks` (once per clone) installs `scripts/git-hooks/pre-push`, which blocks a direct push to
+`main` locally with the same pointer.
+
 **Production build (both images):**
 ```bash
 make build

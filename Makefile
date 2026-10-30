@@ -1,4 +1,4 @@
-.PHONY: up down build test test-backend test-frontend test-watch check-layers lint format backup usage help deploy deploy-backend deploy-frontend fly-stop fly-start
+.PHONY: hooks merge up down build test test-backend test-frontend test-watch check-layers lint format backup usage help deploy deploy-backend deploy-frontend fly-stop fly-start
 
 IMAGE := conversation-engine
 
@@ -59,6 +59,24 @@ lint: ## Run ruff linter on the working tree (mounts the repo into the image)
 
 format: ## Run ruff formatter on the working tree (mounts the repo into the image)
 	docker run --rm -v "$(PWD)":/src -w /src $(IMAGE) python -m ruff format .
+
+hooks: ## Install the repo's git hooks (pre-push blocks direct pushes to main)
+	git config core.hooksPath scripts/git-hooks
+
+merge: ## Merge BRANCH into main via a GitHub PR once its CI passes (merge commit, like --no-ff)
+	@test -n "$(BRANCH)" || { echo "usage: make merge BRANCH=<branch>"; exit 1; }
+	git fetch origin
+	@git merge-base --is-ancestor origin/main $(BRANCH) || { \
+		echo "$(BRANCH) is behind main. Update it first: git checkout $(BRANCH) && git merge origin/main"; \
+		exit 1; }
+	git push -u origin $(BRANCH)
+	@gh pr view $(BRANCH) --json state -q .state 2>/dev/null | grep -q OPEN || \
+		gh pr create --base main --head $(BRANCH) --fill
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+		gh pr checks $(BRANCH) >/dev/null 2>&1; [ $$? -ne 1 ] && break; sleep 5; done
+	gh pr checks $(BRANCH) --watch --fail-fast
+	gh pr merge $(BRANCH) --merge
+	git checkout main && git pull --ff-only
 
 deploy-backend: ## Deploy the API to Fly.io (app: learning-platform, config: fly.toml)
 	fly deploy -c fly.toml
