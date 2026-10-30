@@ -7,14 +7,17 @@ ARG NODE_VERSION=22
 
 # ---- base: Node + pnpm ----
 FROM node:${NODE_VERSION}-alpine AS base
-RUN npm install -g pnpm@9
+# Exact pnpm version = "packageManager" in package.json. --ignore-scripts: no package
+# lifecycle scripts run at install time (none of our dependencies need one to build).
+RUN npm install -g --ignore-scripts pnpm@9.15.4
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # ---- deps: install all dependencies ----
 FROM base AS deps
 WORKDIR /app
-COPY package.json ./
-RUN pnpm install
+# Exact versions from the lockfile; fails if it's out of date with package.json.
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # ---- dev: mount source via volume, run next dev ----
 FROM base AS dev
