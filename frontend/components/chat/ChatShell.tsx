@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CornerDownLeft, Download, Loader2, LogOut, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
+import { CornerDownLeft, Download, Loader2, LogOut, PanelLeft, Plus, SquarePen } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { OutlineReadyBar } from "./OutlineReadyBar";
@@ -432,19 +432,18 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
                 </div>
               </div>
             )
-          ) : isStreaming ? (
-            <div className="flex justify-center">
-              <Button variant="outline" size="sm" onClick={cancel} className="gap-2">
-                <StopCircle className="h-4 w-4" />
-                Stop
-              </Button>
-            </div>
           ) : (
             <>
-              {activeConversationId && isSetupConversation && setupOutlineReady && (
+              {activeConversationId && !isStreaming && isSetupConversation && setupOutlineReady && (
                 <OutlineReadyBar onStart={() => completeSetupMutate()} isStarting={isCompletingSetup} />
               )}
-              <ChatInput onSend={handleSend} disabled={awaitingUserStatus} enterToSend={enterToSend} />
+              <ChatInput
+                onSend={handleSend}
+                disabled={awaitingUserStatus}
+                enterToSend={enterToSend}
+                isStreaming={isStreaming}
+                onStop={cancel}
+              />
             </>
           )}
         </div>

@@ -58,12 +58,12 @@ Between minting/resolving the UUID (§1.1) and the redirect into chat, the root 
 The core interaction. The user types a message and receives a streaming response from the AI assistant. Responses render as formatted markdown (headings, lists, tables, code blocks).
 
 ### 2.2 Streaming responses
-The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading. The view auto-follows the streamed text only until the reply grows taller than the visible area — at that point auto-follow stops for the rest of that reply, so a still-growing message doesn't repeatedly yank the view down and hide the part being read. Manually scrolling up at any point (wheel, trackpad, touch, or keyboard) stops auto-follow immediately too, for the same reason. Scrolling back to the bottom re-engages auto-follow, including for the remainder of the current reply.
+The assistant's reply appears word-by-word in real time. A typing indicator is shown while the response is loading. The view auto-follows the streamed text only until the reply grows taller than the visible area — at that point auto-follow stops for the rest of that reply, so a still-growing message doesn't repeatedly yank the view down and hide the part being read. Manually scrolling up at any point (wheel, trackpad, touch, or keyboard) stops auto-follow immediately too, for the same reason. Scrolling back to the bottom re-engages auto-follow, including for the remainder of the current reply. When something appears below the messages (the outline's "Let's start" bar, an error banner, a phone keyboard), the view keeps its bottom edge in place, so the lines being read don't slide under it.
 
 The course-outline-compile step during setup (§1.3) runs on a slower, higher-quality model and can take up to ~2 minutes — during that wait it shows a dedicated loading state ("Compiling your personalised course… This can take a minute or two.") with a live elapsed-seconds counter, instead of the generic typing indicator, so the wait reads as "still working" rather than "frozen."
 
 ### 2.3 Stop / cancel streaming
-A **Stop** button replaces the input field while the assistant is responding. Clicking it immediately halts the stream.
+While the assistant is responding, the input's send button becomes a **Stop** button (square icon). Clicking it immediately halts the stream. The input itself stays in place, same size and focus, so the end of a reply never jumps when it finishes, and the learner can already type their next message: Enter does nothing until the reply is done, and the text is kept.
 
 ### 2.4 Send key preference
 A toggle in the chat header bar switches between two send modes:
@@ -312,5 +312,5 @@ dashboard.
 - **Identity is device-bound** — the learner UUID (§1.1) lives in `localStorage` and the URL. Clearing browser storage or switching devices, without the bookmarked `/u/{userId}/…` URL, starts a brand-new learner with no history or profile. Consider surfacing/exporting the URL so learners don't silently lose their progress.
 - **Setup is a one-way gate** — completing setup (§1.5) ends the setup conversation and writes the profile/course files. There is currently no in-product way to redo setup or edit the captured profile afterwards.
 - **Conversation naming** — auto-names are generated from the first user message (or course title). If the first message is short or generic (e.g. "Hi"), the name won't be descriptive. Consider an option to regenerate the name, or to auto-name from an AI summary.
-- **Stop button placement** — the Stop button currently replaces the entire input area during streaming. Consider whether it's better placed as an overlay or alongside the input to maintain visual continuity.
+- ✅ **Stop button placement** — done 2026-10-30: Stop now sits in the input's send-button slot (§2.3).
 - **History vs. sidebar** — there are two entry points to past conversations (sidebar and `/history`). The sidebar is quick-access; the history page offers search-ready table layout. The relationship between the two is not currently explained to the user.

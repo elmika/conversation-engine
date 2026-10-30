@@ -2,22 +2,33 @@
 
 import { useState, useRef, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { SendHorizonal } from "lucide-react";
+import { SendHorizonal, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   enterToSend?: boolean;
+  // While a reply streams, the box stays mounted (same height, keeps focus, so the reader can
+  // type their next message) and the send button becomes Stop. Swapping the whole box for a
+  // Stop button resized the message list at the end of every reply and hid its last lines.
+  isStreaming?: boolean;
+  onStop?: () => void;
 }
 
-export function ChatInput({ onSend, disabled = false, enterToSend = true }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  disabled = false,
+  enterToSend = true,
+  isStreaming = false,
+  onStop,
+}: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = () => {
     const text = value.trim();
-    if (!text || disabled) return;
+    if (!text || disabled || isStreaming) return;
     onSend(text);
     setValue("");
     if (textareaRef.current) {
@@ -70,14 +81,20 @@ export function ChatInput({ onSend, disabled = false, enterToSend = true }: Chat
             disabled && "opacity-50 cursor-not-allowed"
           )}
         />
-        <Button
-          size="icon"
-          onClick={handleSend}
-          disabled={disabled || !value.trim()}
-          aria-label="Send message"
-        >
-          <SendHorizonal className="h-4 w-4" />
-        </Button>
+        {isStreaming && onStop ? (
+          <Button size="icon" variant="outline" onClick={onStop} aria-label="Stop generating" title="Stop">
+            <Square className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            size="icon"
+            onClick={handleSend}
+            disabled={disabled || isStreaming || !value.trim()}
+            aria-label="Send message"
+          >
+            <SendHorizonal className="h-4 w-4" />
+          </Button>
+        )}
       </div>
       <p className="px-1 text-xs text-muted-foreground">{hint}</p>
     </div>
