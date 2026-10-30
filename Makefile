@@ -72,8 +72,10 @@ merge: ## Merge BRANCH into main via a GitHub PR once its CI passes (merge commi
 	git push -u origin $(BRANCH)
 	@gh pr view $(BRANCH) --json state -q .state 2>/dev/null | grep -q OPEN || \
 		gh pr create --base main --head $(BRANCH) --fill
-	@for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
-		gh pr checks $(BRANCH) >/dev/null 2>&1; [ $$? -ne 1 ] && break; sleep 5; done
+	@# SonarCloud only starts once the PR exists: wait (up to ~3 min) for its check to register,
+	@# so --watch below doesn't finish on the CI checks alone and leave the merge blocked.
+	@for i in $$(seq 1 36); do \
+		gh pr checks $(BRANCH) 2>/dev/null | grep -q "SonarCloud Code Analysis" && break; sleep 5; done
 	gh pr checks $(BRANCH) --watch --fail-fast
 	gh pr merge $(BRANCH) --merge
 	git checkout main && git pull --ff-only

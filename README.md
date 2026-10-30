@@ -168,14 +168,17 @@ These examples assume the app is running on `http://127.0.0.1:8000` (locally or 
 
 ## Contributing
 
-`main` is protected: it only changes through a pull request whose CI checks passed.
+`main` is protected: it only changes through a pull request whose CI checks and
+[SonarCloud](https://sonarcloud.io/project/overview?id=elmika_conversation-engine) quality gate
+passed.
 
 1. **Once per clone:** `make hooks` installs a pre-push hook that blocks direct pushes to `main`.
 2. **Work on a branch.** Before pushing, run `make format`, `make lint` and `make test`.
 3. **Push.** CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to any
    branch. Backend: ruff lint and format check, then pytest. Frontend: typecheck, Vitest and a
    production build. No secrets needed.
-4. **Merge:** `make merge BRANCH=<branch>`. It opens the PR, waits for CI, merges with a merge commit
+4. **Merge:** `make merge BRANCH=<branch>`. It opens the PR, waits for CI and SonarCloud (which
+   analyzes PRs only), merges with a merge commit
    and pulls `main`. If the branch is behind `main`, merge `main` into it first. GitHub requires the
    branch to be up to date, so CI has tested exactly what lands.
 

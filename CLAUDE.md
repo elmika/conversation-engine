@@ -83,10 +83,16 @@ must commit the updated lockfile. To add a Python package without local uv, use 
 then `make build`. GitHub Actions are pinned to
 commit SHAs (tag in a trailing comment). SonarCloud flagged all three gaps (2026-10-30).
 
-**Merging into `main`:** `main` is protected on GitHub. It only changes through a PR whose Backend
-and Frontend checks passed, the branch must be up to date with `main`, merges are merge commits
+**Merging into `main`:** `main` is protected on GitHub. It only changes through a PR whose Backend,
+Frontend and SonarCloud checks passed, the branch must be up to date with `main`, merges are merge commits
 only, and admins aren't exempt. A local `git merge` + `git push origin main` is rejected. Use
 `make merge BRANCH=<branch>`: it pushes, opens the PR, waits for CI, merges, and pulls `main`.
+**SonarCloud** (project `elmika_conversation-engine`, public, readable via its API without a token)
+analyzes every PR through SonarCloud's Automatic Analysis, configured on sonarcloud.io, not in
+this repo. Its quality gate (new code: A ratings, ≤3% duplication, hotspots reviewed) posts the
+required "SonarCloud Code Analysis" check. It only runs on PRs, not on branch pushes. A false
+positive is marked Safe/Accepted in the SonarCloud UI, with a reason, rather than worked around
+in code.
 `make hooks` (once per clone) installs `scripts/git-hooks/pre-push`, which blocks a direct push to
 `main` locally with the same pointer.
 
