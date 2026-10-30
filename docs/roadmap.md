@@ -425,6 +425,24 @@ Actions minutes on standard hosted runners are free and unlimited. No new servic
 Keep the jobs runnable without Docker-in-Docker where possible: run Python/Node directly on the
 runner, with versions pinned to match the Dockerfiles, so CI stays fast.
 
+### 19. Onboarding: the learner waits for a greeting that's always the same (priority: medium, revisit) — 🔴 Open
+
+Spotted while testing item 9. A fresh setup chat makes a live gpt-4.1 call before the learner has
+typed anything ("the AI always opens", §1.4). The opening is effectively fixed text (welcome + "what's
+your name?"), yet the `runs` table shows 1–7.5 s before the first word, ~3 s today.
+
+Two directions, not decided:
+- **Small:** an `opening:` field in `prompts/user-profile-collection.md`, saved as the first assistant
+  message without an LLM call. Instant, and the four-turn flow after it is unchanged.
+- **Bigger question:** does this step need to be a chat at all? Name, role and session length are
+  form data. The prompt spends most of its rules forcing the model to behave like a form (exactly four
+  turns, one question each, never skip or merge), and `SETUP_FRAMING_TURNS = 4` couples the frontend,
+  `setup_flow.py` and the prompt. A hybrid (short form for the facts, then the chat starts from "what
+  do you want to learn, and why?") would remove the wait, the turn-count coupling and some extraction.
+  Caveat: the demo drop-off was after the outline (item 9), not during these questions, so the Q&A
+  isn't the measured problem. Decide together with item 17 (accounts) and the consent screen, since
+  all three are the learner's first minutes.
+
 ---
 
 ## Not yet triaged
