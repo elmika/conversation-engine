@@ -286,7 +286,8 @@ learner what to tap next.
 message input ("Happy with this course outline? Start your first lesson, or reply below to change
 it."), shown once the outline exists. The tutor's message still doesn't point at the button: that's
 a deliberate prompt decision (`prompts/course-outline-proposal.md`), so the UI carries the next step
-alone. Still to confirm: whether testers now find it without help.
+alone. Checked in the browser 2026-10-30, works. Still to confirm: whether testers now find it
+without help.
 
 ### 10. Admin panel: group by user + DAU stats (priority: medium) — 🔴 Open
 
@@ -442,6 +443,20 @@ Two directions, not decided:
   Caveat: the demo drop-off was after the outline (item 9), not during these questions, so the Q&A
   isn't the measured problem. Decide together with item 17 (accounts) and the consent screen, since
   all three are the learner's first minutes.
+
+**To explore: a hybrid onboarding** (UX sketch, 2026-10-30, not a decision):
+1. One short screen for the facts: first name (optional; collect less if we don't need it), role,
+   session length as buttons (15 / 30 / 60 min). Possibly folded into the consent screen, so the
+   learner meets one gate instead of two.
+2. Then the chat, opening on the goal: "Hi Marta. What would you like to get better at, and what's
+   it for?" This is where a tutor adds value over a text box: it asks back when the goal is vague,
+   and the outline gets better for it. The greeting can use the form data without an LLM call, so
+   the first model call happens only after the learner has typed something.
+3. Outline, refinement and "Let's start" stay as they are.
+
+Why it's worth it: no wait before the first input, no four-turn coupling, simpler extraction, easier
+on mobile. Why keep the chat at all: the product is a tutor you talk to, and the goal and outline
+refinement are naturally conversational. A form-only onboarding sets the wrong first impression.
 
 ---
 
