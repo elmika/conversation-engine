@@ -31,7 +31,7 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      # Same install as the Dockerfile's builder stage (keep the ruff pin in sync with it).
+      # Same install as the Dockerfile's builder stage (keep the ruff pin in sync with it and pyproject.toml).
       - name: Install dependencies
         id: install
         run: |

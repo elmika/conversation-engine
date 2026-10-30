@@ -73,7 +73,7 @@ make format
 **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs on every push. Backend: `ruff check`,
 `ruff format --check`, pytest. Frontend: `tsc --noEmit`, Vitest, `next build`. It runs Python/Node
 directly on the runner, not Docker, so keep its Python/Node versions and the ruff pin in sync with
-the Dockerfiles. Run `make format` before pushing: unformatted code fails CI.
+the Dockerfiles (ruff is also pinned in `pyproject.toml`'s dev extra). Run `make format` before pushing: unformatted code fails CI.
 
 **Merging into `main`:** `main` is protected on GitHub. It only changes through a PR whose Backend
 and Frontend checks passed, the branch must be up to date with `main`, merges are merge commits
