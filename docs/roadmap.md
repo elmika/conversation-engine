@@ -274,13 +274,19 @@ Marta's feedback, and true for every tester. Fixed by `ef89724e` (bottom nav rep
 below `md`), `e305f1aa` and `45d00d43` (mobile history cards and touch targets). **Still owed:** a full
 setup → outline → first-lesson run on a real phone, since nobody completed that path at the demo.
 
-### 9. Learners don't see how to go from the outline to the first lesson (priority: high) — 🔴 Open
+### 9. Learners don't see how to go from the outline to the first lesson (priority: high) — 🟡 Built 2026-10-30, needs a tester run
 
 Marta's feedback, confirmed in the logs: several testers reviewed or corrected the outline and then
 stopped. This is the direct reason nobody reached the teaching part. The "Let's start" button
 (item 6) exists but isn't found, and is probably below the fold or off-screen on mobile. Needs an
 obvious primary CTA after the outline is accepted, possibly with the tutor's message also telling the
 learner what to tap next.
+
+**Built (2026-10-30):** "Let's start" moved out of the header into a highlighted bar right above the
+message input ("Happy with this course outline? Start your first lesson, or reply below to change
+it."), shown once the outline exists. The tutor's message still doesn't point at the button: that's
+a deliberate prompt decision (`prompts/course-outline-proposal.md`), so the UI carries the next step
+alone. Still to confirm: whether testers now find it without help.
 
 ### 10. Admin panel: group by user + DAU stats (priority: medium) — 🔴 Open
 
