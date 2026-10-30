@@ -34,7 +34,7 @@ Per the design principle *"the AI always opens — no blank input ever"*, the as
 While the learner's profile status is still loading, the input is briefly disabled so a conversation is never created with the wrong prompt.
 
 ### 1.5 Complete setup ("Let's start")
-During a setup conversation, once the outline has been proposed, a **Let's start** button (sparkle icon) appears in the header. Clicking it:
+During a setup conversation, once the outline has been proposed, a highlighted bar appears directly above the message input: *"Happy with this course outline? Start your first lesson, or reply below to change it."* with a prominent **Let's start** button (sparkle icon). It sits next to where the learner is already typing, so it's visible on mobile too, and it stays while they keep refining the outline. Clicking it:
 1. Runs profile + course-outline extraction against the setup conversation and writes the learner's profile and course section files.
 2. Marks the setup conversation as ended.
 3. Immediately opens the first real course session (AI-initiated).

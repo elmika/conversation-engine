@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CornerDownLeft, Download, Loader2, LogOut, PanelLeft, Plus, Sparkles, SquarePen, StopCircle } from "lucide-react";
+import { CornerDownLeft, Download, Loader2, LogOut, PanelLeft, Plus, SquarePen, StopCircle } from "lucide-react";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
+import { OutlineReadyBar } from "./OutlineReadyBar";
 import { SessionSummaryCard } from "./SessionSummaryCard";
 import { ConversationList } from "@/components/history/ConversationList";
 import { useChatStore } from "@/hooks/useChatStore";
@@ -335,23 +336,6 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
             <SquarePen className="h-4 w-4" />
           </Button>
           <div className="ml-auto flex items-center gap-2">
-            {activeConversationId && !isStreaming && !isEnded && isSetupConversation && setupOutlineReady && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => completeSetupMutate()}
-                disabled={isCompletingSetup}
-                className="gap-1.5 text-xs"
-                title="Confirm your course and start learning"
-              >
-                {isCompletingSetup ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" />
-                )}
-                {isCompletingSetup ? "Setting up…" : "Let's start"}
-              </Button>
-            )}
             {activeConversationId && !isStreaming && !isEnded && !isSetupConversation && (
               <Button
                 variant="outline"
@@ -456,7 +440,12 @@ export function ChatShell({ userId, conversationId }: ChatShellProps) {
               </Button>
             </div>
           ) : (
-            <ChatInput onSend={handleSend} disabled={awaitingUserStatus} enterToSend={enterToSend} />
+            <>
+              {activeConversationId && isSetupConversation && setupOutlineReady && (
+                <OutlineReadyBar onStart={() => completeSetupMutate()} isStarting={isCompletingSetup} />
+              )}
+              <ChatInput onSend={handleSend} disabled={awaitingUserStatus} enterToSend={enterToSend} />
+            </>
           )}
         </div>
       </div>
