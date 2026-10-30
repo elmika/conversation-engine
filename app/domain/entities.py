@@ -12,7 +12,7 @@ from app.domain.value_objects import ConversationId, MessageRole
 class Message:
     """
     Domain message entity.
-    
+
     Represents a single message in a conversation with validated role and content.
     """
 
@@ -24,7 +24,7 @@ class Message:
     def create(cls, role: str, content: str, id: Optional[int] = None) -> Message:
         """
         Create a Message with validated role.
-        
+
         Raises ValueError if role is invalid.
         """
         validated_role = MessageRole.from_string(role)
@@ -41,7 +41,7 @@ class Message:
 class ConversationTurn:
     """
     Domain representation of a conversation turn.
-    
+
     A turn consists of one or more user messages followed by an assistant response.
     This is a value object that represents the business concept of a "turn" in a conversation.
     """
@@ -55,10 +55,13 @@ class ConversationTurn:
             raise ValueError("A turn must have at least one user message")
         for msg in self.user_messages:
             if msg.role != MessageRole.USER:
-                raise ValueError(f"Turn user_messages must have role 'user', got '{msg.role.value}'")
+                raise ValueError(
+                    f"Turn user_messages must have role 'user', got '{msg.role.value}'"
+                )
         if self.assistant_message and self.assistant_message.role != MessageRole.ASSISTANT:
             raise ValueError(
-                f"Turn assistant_message must have role 'assistant', got '{self.assistant_message.role.value}'"
+                f"Turn assistant_message must have role 'assistant', "
+                f"got '{self.assistant_message.role.value}'"
             )
 
     def all_messages(self) -> list[Message]:
@@ -72,7 +75,7 @@ class ConversationTurn:
 class Conversation:
     """
     Domain aggregate root for a conversation.
-    
+
     Encapsulates conversation identity and the history of turns.
     Enforces business rules about conversation structure.
     """
@@ -89,7 +92,7 @@ class Conversation:
     def from_existing(cls, conversation_id: str, messages: list[Message]) -> Conversation:
         """
         Reconstruct a conversation from persistence.
-        
+
         Groups messages into turns (user messages followed by assistant response).
         """
         conv_id = ConversationId.from_string(conversation_id)
@@ -100,7 +103,7 @@ class Conversation:
     def _group_messages_into_turns(messages: list[Message]) -> list[ConversationTurn]:
         """
         Group messages into turns.
-        
+
         A turn is one or more user messages followed by an optional assistant message.
         This is a simplified grouping; in practice, conversations may have complex patterns.
         """
@@ -112,10 +115,12 @@ class Conversation:
                 current_user_messages.append(msg)
             elif msg.role == MessageRole.ASSISTANT:
                 if current_user_messages:
-                    turns.append(ConversationTurn(
-                        user_messages=current_user_messages,
-                        assistant_message=msg,
-                    ))
+                    turns.append(
+                        ConversationTurn(
+                            user_messages=current_user_messages,
+                            assistant_message=msg,
+                        )
+                    )
                     current_user_messages = []
 
         if current_user_messages:

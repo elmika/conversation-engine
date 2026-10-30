@@ -2,20 +2,19 @@
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from pathlib import Path
-
+import app.infra.persistence.db as _db
 from app.api.middleware import RequestIdAndTimingMiddleware
 from app.api.routes import admin_user_router, router, user_router
 from app.infra.llm_anthropic import AnthropicLLMAdapter
 from app.infra.llm_openai import OpenAILLMAdapter
 from app.infra.llm_router import RoutingLLMAdapter
 from app.infra.logging import setup_logging
-import app.infra.persistence.db as _db
 from app.infra.migrations import run_migrations
 from app.infra.persistence.db import Base, get_engine, init_engine
 from app.infra.prompt_seeder import seed_prompts_from_directory

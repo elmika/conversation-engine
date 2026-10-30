@@ -91,7 +91,9 @@ class TestMentionsDuration:
 
 
 class TestParseExtractedMinutes:
-    @pytest.mark.parametrize("raw,expected", [("30", 30), ("60", 60), (" 45 ", 45), ("5", 5), ("180", 180)])
+    @pytest.mark.parametrize(
+        "raw,expected", [("30", 30), ("60", 60), (" 45 ", 45), ("5", 5), ("180", 180)]
+    )
     def test_valid_integer_in_range(self, raw, expected):
         assert parse_extracted_minutes(raw) == expected
 
@@ -118,8 +120,12 @@ class TestIsTimeOver:
         assert is_time_over(elapsed_minutes=40, session_length_minutes=25) is True
 
     def test_buffer_is_configurable(self):
-        assert is_time_over(elapsed_minutes=18, session_length_minutes=25, buffer_minutes=10) is True
-        assert is_time_over(elapsed_minutes=14, session_length_minutes=25, buffer_minutes=10) is False
+        assert (
+            is_time_over(elapsed_minutes=18, session_length_minutes=25, buffer_minutes=10) is True
+        )
+        assert (
+            is_time_over(elapsed_minutes=14, session_length_minutes=25, buffer_minutes=10) is False
+        )
 
     def test_never_negative_window(self):
         # Tiny session shorter than the buffer → over from the start.

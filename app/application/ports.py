@@ -2,8 +2,8 @@
 
 from collections.abc import Callable, Iterable
 from datetime import datetime
-from typing import Optional, Protocol, TypedDict
 from types import TracebackType
+from typing import Optional, Protocol, TypedDict
 
 
 class SlotResolver(Protocol):
@@ -186,8 +186,18 @@ class ConversationRepo(Protocol):
         """Create a new conversation with a generated ID; return its id."""
         ...
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None, session_length_minutes: Optional[int] = None) -> None:
-        """Create a new conversation with a specific ID, optional name, user_id, prompt_slug, and session length."""
+    def create_conversation_with_id(
+        self,
+        conversation_id: str,
+        name: Optional[str] = None,
+        user_id: str = "default",
+        prompt_slug: Optional[str] = None,
+        session_length_minutes: Optional[int] = None,
+    ) -> None:
+        """Create a new conversation with a specific ID.
+
+        Optionally sets name, user_id, prompt_slug, and session length.
+        """
         ...
 
     def record_run(
@@ -210,7 +220,10 @@ class ConversationRepo(Protocol):
         ...
 
     def get_messages_with_metadata(self, conversation_id: str, user_id: str) -> list[dict]:
-        """Return [{id, role, content, created_at}] ordered by id ASC. Empty if not owned by user_id."""
+        """Return [{id, role, content, created_at}] ordered by id ASC.
+
+        Empty if not owned by user_id.
+        """
         ...
 
     def rename_conversation(self, conversation_id: str, name: str, user_id: str) -> None:
@@ -222,11 +235,17 @@ class ConversationRepo(Protocol):
         ...
 
     def delete_conversation(self, conversation_id: str, user_id: str) -> None:
-        """Delete a conversation (owned by user_id) and all its messages and runs (no-op otherwise)."""
+        """Delete a conversation and all its messages and runs.
+
+        Only if owned by user_id; no-op otherwise.
+        """
         ...
 
     def truncate_from(self, conversation_id: str, message_id: int, user_id: str) -> None:
-        """Delete messages with id >= message_id and their associated runs (no-op if not owned by user_id)."""
+        """Delete messages with id >= message_id and their associated runs.
+
+        No-op if not owned by user_id.
+        """
         ...
 
     def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
@@ -269,7 +288,10 @@ class ConversationRepo(Protocol):
         ...
 
     def end_conversation(self, conversation_id: str, user_id: str) -> None:
-        """Set ended_at = now(UTC) for the given conversation (owned by user_id; no-op otherwise)."""
+        """Set ended_at = now(UTC) for the given conversation.
+
+        Only if owned by user_id; no-op otherwise.
+        """
         ...
 
     def get_active_conversation(self, user_id: str) -> Optional[str]:
@@ -279,19 +301,28 @@ class ConversationRepo(Protocol):
     def get_session_spend_usd(
         self, conversation_id: str, price_fn: Callable[[str, int, int], Optional[float]]
     ) -> float:
-        """Sum estimated $ cost of all runs on this conversation. Raises if any run's model has no price entry."""
+        """Sum estimated $ cost of all runs on this conversation.
+
+        Raises if any run's model has no price entry.
+        """
         ...
 
     def get_user_daily_spend_usd(
         self, user_id: str, price_fn: Callable[[str, int, int], Optional[float]]
     ) -> float:
-        """Sum estimated $ cost of all of user_id's runs today (UTC). Raises if any run's model has no price entry."""
+        """Sum estimated $ cost of all of user_id's runs today (UTC).
+
+        Raises if any run's model has no price entry.
+        """
         ...
 
     def get_platform_daily_spend_usd(
         self, price_fn: Callable[[str, int, int], Optional[float]]
     ) -> float:
-        """Sum estimated $ cost of all runs today (UTC), across all users. Raises if any run's model has no price entry."""
+        """Sum estimated $ cost of all runs today (UTC), across all users.
+
+        Raises if any run's model has no price entry.
+        """
         ...
 
     def get_user_ids_with_runs_today(self) -> list[str]:
@@ -348,10 +379,10 @@ class PromptRepo(Protocol):
 class UnitOfWork(Protocol):
     """
     Unit of Work pattern: manages transaction boundaries.
-    
+
     The UoW owns the session lifecycle and controls commit/rollback.
     Repositories should only add/flush, never commit.
-    
+
     Usage:
         with uow:
             uow.repo.create_conversation_with_id(cid)

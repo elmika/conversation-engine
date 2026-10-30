@@ -10,7 +10,9 @@ MODELS: dict[str, dict] = {
     },
     "gpt-5-mini": {
         "name": "GPT-5 mini",
-        "description": "Near-frontier intelligence for cost sensitive, low latency, high volume workloads",
+        "description": (
+            "Near-frontier intelligence for cost sensitive, low latency, high volume workloads"
+        ),
         "provider": "openai",
     },
     "gpt-5-nano": {
@@ -28,7 +30,6 @@ MODELS: dict[str, dict] = {
         "description": "Our cheapest GPT-5.4-class model for simple high-volume tasks",
         "provider": "openai",
     },
-
     "gpt-5.4-pro": {
         "name": "GPT-5.4 pro",
         "description": "Most capable GPT-5.4 model",
@@ -40,7 +41,6 @@ MODELS: dict[str, dict] = {
         "replacement for course-outline-proposal/wrap_up_model (docs/roadmap.md, untriaged)",
         "provider": "openai",
     },
-
     # --- Added 2026-09-17 during the model-tier review (docs/roadmap.md) — pulled
     # live from GET /v1/models + https://developers.openai.com/api/docs/pricing.
     "gpt-5.4": {
@@ -73,7 +73,6 @@ MODELS: dict[str, dict] = {
         "reasoning, coding, computer use, research",
         "provider": "openai",
     },
-
     # --- Expensive models: commented out to prevent accidental use during development ---
     # "gpt-5": {"name": "GPT-5", "description": "Reasoning model"},
     # "gpt-5-codex": {"name": "GPT-5 Codex", ...},
@@ -83,7 +82,6 @@ MODELS: dict[str, dict] = {
     # "gpt-5.2-codex": {"name": "GPT-5.2 Codex", ...},
     # "gpt-5.3-codex": {"name": "GPT-5.3 Codex", ...},
     # "gpt-5.4": {"name": "GPT-5.4", ...},
-
     # --- Added 2026-09-28 to add Anthropic as a second LLM provider (see
     # app/infra/llm_anthropic.py, app/infra/llm_router.py). ---
     "claude-sonnet-5": {
@@ -101,14 +99,15 @@ MODELS: dict[str, dict] = {
         "description": "Anthropic's most capable model for the hardest reasoning and agentic work",
         "provider": "anthropic",
     },
-
     # --- Added 2026-09-30 — newer generation released after the above entries
     # (opus-5.5: 2026-09-21, sonnet-5.5: 2026-09-28), confirmed live via
     # GET /v1/models. Note opus-5.5 is priced *below* opus-5 ($4/$20 vs
     # $5/$25 per app/domain/pricing.py), not a straight same-price successor.
     "claude-opus-5-5": {
         "name": "Claude Opus 5.5",
-        "description": "Anthropic's latest model for long-running agentic coding and knowledge work",
+        "description": (
+            "Anthropic's latest model for long-running agentic coding and knowledge work"
+        ),
         "provider": "anthropic",
     },
     "claude-sonnet-5-5": {
@@ -116,7 +115,6 @@ MODELS: dict[str, dict] = {
         "description": "Anthropic's latest balanced model — speed and intelligence",
         "provider": "anthropic",
     },
-
     # --- Added 2026-10-29 — found by scripts/check_new_models.py (make check-models);
     # prices in app/domain/pricing.py. ---
     "claude-haiku-5-5": {

@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Install runtime + dev dependencies first for layer caching
 COPY requirements.txt pyproject.toml README.md ./
-RUN pip install --no-cache-dir -r requirements.txt pytest pytest-asyncio ruff
+RUN pip install --no-cache-dir -r requirements.txt pytest pytest-asyncio ruff==0.17.3
 
 # Copy source and install the package itself (no deps re-install)
 COPY app/ app/

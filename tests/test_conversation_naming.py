@@ -17,12 +17,15 @@ from tests.conftest import TEST_USER
 
 
 def _make_llm_result(text: str = "Reply") -> LLMResult:
-    return LLMResult(text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0)
+    return LLMResult(
+        text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0
+    )
 
 
 @pytest.fixture
 def client():
     from app.api import routes as api_routes
+
     mock_llm = MagicMock()
     mock_llm.complete.return_value = _make_llm_result()
     main_app.dependency_overrides[api_routes.get_llm] = lambda: mock_llm
@@ -34,6 +37,7 @@ def client():
 def _end_conversation(cid: str) -> None:
     """End a conversation directly in the DB so the next one can be created."""
     from app.infra.persistence.db import get_engine
+
     engine = get_engine()
     with engine.connect() as conn:
         conn.execute(
@@ -61,6 +65,7 @@ def _get_conversation(client: TestClient, cid: str) -> dict:
 
 # --- name is set on creation ---
 
+
 def test_new_conversation_has_non_null_name(client) -> None:
     """Conversation name must be set (not None) immediately after creation."""
     cid = _create_conversation(client)
@@ -83,6 +88,7 @@ def test_new_conversation_name_appears_in_list(client) -> None:
 
 # --- deduplication suffix ---
 
+
 def test_duplicate_name_gets_numeric_suffix(client) -> None:
     """Second conversation with the same base name gets a ' (2)' suffix."""
     cid1 = _create_conversation(client)
@@ -93,9 +99,7 @@ def test_duplicate_name_gets_numeric_suffix(client) -> None:
     cid2 = _create_conversation(client)
     conv2 = _get_conversation(client, cid2)
 
-    assert conv2["name"] == f"{base_name} (2)", (
-        f"Expected '{base_name} (2)', got '{conv2['name']}'"
-    )
+    assert conv2["name"] == f"{base_name} (2)", f"Expected '{base_name} (2)', got '{conv2['name']}'"
 
 
 def test_third_conversation_gets_suffix_3(client) -> None:

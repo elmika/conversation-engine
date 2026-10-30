@@ -67,7 +67,12 @@ class FakeLLM:
 
         self.complete_calls.append((instructions, messages, model))
         return LLMResult(
-            text=self.complete_text, model="fake", ttfb_ms=0, total_ms=0, input_tokens=0, output_tokens=0
+            text=self.complete_text,
+            model="fake",
+            ttfb_ms=0,
+            total_ms=0,
+            input_tokens=0,
+            output_tokens=0,
         )
 
 
@@ -145,10 +150,15 @@ def test_objective_met_closes_even_within_time(uow_factory):
     assert _used_slug_for_next_turn(uow_factory) == "course-session-closure"
 
 
-def _seed_closure_turn(uow_factory, *, objective_met: bool, session_length_minutes: int, learner_reply: str) -> None:
+def _seed_closure_turn(
+    uow_factory, *, objective_met: bool, session_length_minutes: int, learner_reply: str
+) -> None:
     with uow_factory() as uow:
         uow.repo.create_conversation_with_id(
-            CID, user_id=TEST_USER, prompt_slug="course-session-init", session_length_minutes=session_length_minutes
+            CID,
+            user_id=TEST_USER,
+            prompt_slug="course-session-init",
+            session_length_minutes=session_length_minutes,
         )
         uow.repo.append_message(CID, "assistant", "opening message")
         if objective_met:
@@ -161,7 +171,9 @@ def _seed_closure_turn(uow_factory, *, objective_met: bool, session_length_minut
 def test_resume_from_closure_unlatches_and_extends_on_continue_intent(uow_factory):
     # Objective was latched with plenty of time left; learner asks to keep going.
     _seed_closure_turn(
-        uow_factory, objective_met=True, session_length_minutes=120,
+        uow_factory,
+        objective_met=True,
+        session_length_minutes=120,
         learner_reply="actually can we keep going, I want to cover more",
     )
     llm = FakeLLM(complete_text="YES")
@@ -178,7 +190,9 @@ def test_resume_from_closure_noop_when_model_says_no(uow_factory):
     # Contains a pre-filter hint word ("actually") but isn't really asking to
     # continue — proves the model call, not just the pre-filter, decides.
     _seed_closure_turn(
-        uow_factory, objective_met=True, session_length_minutes=120,
+        uow_factory,
+        objective_met=True,
+        session_length_minutes=120,
         learner_reply="actually, thanks, that's enough for today",
     )
     llm = FakeLLM(complete_text="NO")
@@ -194,9 +208,14 @@ def test_resume_from_closure_noop_when_model_says_no(uow_factory):
 def test_resume_from_closure_skips_model_call_without_continue_hint(uow_factory):
     # No continue-ish keywords in the reply — the cheap pre-filter should skip the model entirely.
     _seed_closure_turn(
-        uow_factory, objective_met=True, session_length_minutes=120, learner_reply="ok, see you next time",
+        uow_factory,
+        objective_met=True,
+        session_length_minutes=120,
+        learner_reply="ok, see you next time",
     )
-    llm = FakeLLM(complete_text="YES")  # would flip if called — proves the pre-filter, not the model, gated this
+    llm = FakeLLM(
+        complete_text="YES"
+    )  # would flip if called — proves the pre-filter, not the model, gated this
     _service(uow_factory, llm).maybe_resume_from_closure(CID)
 
     with uow_factory() as uow:
@@ -208,7 +227,10 @@ def test_resume_from_closure_skips_model_call_without_continue_hint(uow_factory)
 def test_resume_from_closure_noop_when_not_actually_in_closure(uow_factory):
     # Plenty of time left, objective not met — the prior turn was CORE, not CLOSURE.
     _seed_closure_turn(
-        uow_factory, objective_met=False, session_length_minutes=120, learner_reply="let's keep going",
+        uow_factory,
+        objective_met=False,
+        session_length_minutes=120,
+        learner_reply="let's keep going",
     )
     llm = FakeLLM(complete_text="YES")
     _service(uow_factory, llm).maybe_resume_from_closure(CID)

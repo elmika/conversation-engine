@@ -27,14 +27,10 @@ def _validate_tag(raw: str) -> None:
         )
     namespace = raw.split(":", 1)[0]
     if namespace not in KNOWN_NAMESPACES:
-        raise PromptTemplateError(
-            f"Unknown namespace '{namespace}' in tag '{{{{{raw}}}}}'"
-        )
+        raise PromptTemplateError(f"Unknown namespace '{namespace}' in tag '{{{{{raw}}}}}'")
     if raw not in KNOWN_TAGS:
         known = ", ".join(sorted(f"{{{{{t}}}}}" for t in KNOWN_TAGS))
-        raise PromptTemplateError(
-            f"Unknown tag '{{{{{raw}}}}}'. Known tags: {known}"
-        )
+        raise PromptTemplateError(f"Unknown tag '{{{{{raw}}}}}'. Known tags: {known}")
 
 
 def validate_template(template: str) -> None:
@@ -52,15 +48,14 @@ def resolve_file_sections(
     Time tags are left untouched for the second rendering pass.
     Raises PromptTemplateError if a file is not found.
     """
+
     def _replace(match: re.Match) -> str:
         raw = match.group(1)
         if raw not in FILE_SECTION_TAGS:
             return match.group(0)  # pass time tags through
         content = loader(raw)
         if content is None:
-            raise PromptTemplateError(
-                f"Section file not found: sections/{raw}/<user>.md"
-            )
+            raise PromptTemplateError(f"Section file not found: sections/{raw}/<user>.md")
         return content
 
     return TAG_PATTERN.sub(_replace, template)
@@ -106,6 +101,7 @@ def render_prompt(template: str, context: dict[str, str]) -> str:
     Validation of the original template happens at write time (validate_template).
     Injected slot content may contain arbitrary {{ }} syntax — it is never re-validated.
     """
+
     def _replace(match: re.Match) -> str:
         raw = match.group(1)
         if raw not in context:

@@ -1,9 +1,7 @@
 """Integration tests: template rendering wired through service and routes."""
 
 import re
-import tempfile
 from collections.abc import Iterable
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,12 +12,13 @@ from app.domain.prompt_template import PromptTemplateError
 from app.main import app as main_app
 from tests.conftest import ADMIN_HEADERS, TEST_USER
 
-
 # ── Helpers & fixtures ─────────────────────────────────────────────────────────
 
 
 def _make_llm_result(text: str = "Reply") -> LLMResult:
-    return LLMResult(text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0)
+    return LLMResult(
+        text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0
+    )
 
 
 def _make_stream_events() -> Iterable[StreamEvent]:
@@ -37,6 +36,7 @@ def mock_llm():
 @pytest.fixture
 def client_with_mock_llm(mock_llm):
     from app.api import routes as api_routes
+
     main_app.dependency_overrides[api_routes.get_llm] = lambda: mock_llm
     with TestClient(main_app) as c:
         yield c
@@ -54,6 +54,7 @@ def mock_llm_streaming():
 @pytest.fixture
 def client_with_mock_stream(mock_llm_streaming):
     from app.api import routes as api_routes
+
     main_app.dependency_overrides[api_routes.get_llm] = lambda: mock_llm_streaming
     with TestClient(main_app) as c:
         yield c
@@ -100,7 +101,10 @@ def test_conversation_start_consistent_across_turns(client_with_mock_llm, mock_l
         "start-time-test",
         "Started: {{time:conversation-start}}.",
     )
-    mock_llm.complete.side_effect = [_make_llm_result("first reply"), _make_llm_result("second reply")]
+    mock_llm.complete.side_effect = [
+        _make_llm_result("first reply"),
+        _make_llm_result("second reply"),
+    ]
 
     r1 = client_with_mock_llm.post(
         f"/admin/u/{TEST_USER}/conversations",
@@ -146,27 +150,36 @@ def test_template_error_in_create_route_returns_400(client_with_mock_llm) -> Non
         "app.domain.prompt_template.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
-        r = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
-            "messages": [{"role": "user", "content": "hi"}],
-        })
+        r = client_with_mock_llm.post(
+            f"/u/{TEST_USER}/conversations",
+            json={
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
     assert r.status_code == 400
     assert "Bad tag" in r.json()["detail"]
 
 
 def test_template_error_in_append_route_returns_400(client_with_mock_llm, mock_llm) -> None:
     """PromptTemplateError during append_and_chat must surface as HTTP 400, not 404."""
-    r1 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations", json={
-        "messages": [{"role": "user", "content": "first"}],
-    })
+    r1 = client_with_mock_llm.post(
+        f"/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "first"}],
+        },
+    )
     cid = r1.json()["conversation_id"]
 
     with patch(
         "app.domain.prompt_template.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
-        r2 = client_with_mock_llm.post(f"/u/{TEST_USER}/conversations/{cid}", json={
-            "messages": [{"role": "user", "content": "second"}],
-        })
+        r2 = client_with_mock_llm.post(
+            f"/u/{TEST_USER}/conversations/{cid}",
+            json={
+                "messages": [{"role": "user", "content": "second"}],
+            },
+        )
     assert r2.status_code == 400
     assert "Bad tag" in r2.json()["detail"]
 
@@ -180,9 +193,12 @@ def test_template_error_in_create_stream_emits_error_done(client_with_mock_strea
         "app.domain.prompt_template.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
-        r = client_with_mock_stream.post(f"/u/{TEST_USER}/conversations/stream", json={
-            "messages": [{"role": "user", "content": "hi"}],
-        })
+        r = client_with_mock_stream.post(
+            f"/u/{TEST_USER}/conversations/stream",
+            json={
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
     assert r.status_code == 200
     body = b"".join(r.iter_bytes()).decode()
     assert "event: done" in body
@@ -194,9 +210,12 @@ def test_template_error_in_append_stream_emits_error_done(
     client_with_mock_stream, mock_llm_streaming
 ) -> None:
     """PromptTemplateError during append_and_stream must emit a done SSE error event."""
-    r1 = client_with_mock_stream.post(f"/u/{TEST_USER}/conversations", json={
-        "messages": [{"role": "user", "content": "first"}],
-    })
+    r1 = client_with_mock_stream.post(
+        f"/u/{TEST_USER}/conversations",
+        json={
+            "messages": [{"role": "user", "content": "first"}],
+        },
+    )
     assert r1.status_code == 200
     cid = r1.json()["conversation_id"]
 
@@ -205,9 +224,12 @@ def test_template_error_in_append_stream_emits_error_done(
         "app.domain.prompt_template.render_prompt",
         side_effect=PromptTemplateError("Bad tag '{{oops}}'"),
     ):
-        r2 = client_with_mock_stream.post(f"/u/{TEST_USER}/conversations/{cid}/stream", json={
-            "messages": [{"role": "user", "content": "second"}],
-        })
+        r2 = client_with_mock_stream.post(
+            f"/u/{TEST_USER}/conversations/{cid}/stream",
+            json={
+                "messages": [{"role": "user", "content": "second"}],
+            },
+        )
     assert r2.status_code == 200
     body = b"".join(r2.iter_bytes()).decode()
     assert "event: done" in body
@@ -250,7 +272,9 @@ def client_with_sections(mock_llm, sections_dir):
     main_app.dependency_overrides.clear()
 
 
-def test_file_section_resolved_before_llm_call(client_with_sections, mock_llm, sections_dir) -> None:
+def test_file_section_resolved_before_llm_call(
+    client_with_sections, mock_llm, sections_dir
+) -> None:
     """{{course}} must be expanded with file content before the LLM receives instructions."""
     (sections_dir / "course" / f"{TEST_USER}.md").write_text("Docker for CI/CD")
     _create_template_prompt(client_with_sections, "section-test", "Context: {{course}}")

@@ -49,7 +49,12 @@ class FakeLLM:
     def complete(self, instructions, messages, model=None):
         self.complete_calls.append((instructions, messages, model))
         return LLMResult(
-            text=self.complete_text, model="fake", ttfb_ms=0, total_ms=0, input_tokens=0, output_tokens=0
+            text=self.complete_text,
+            model="fake",
+            ttfb_ms=0,
+            total_ms=0,
+            input_tokens=0,
+            output_tokens=0,
         )
 
     def stream(self, *a, **k):
@@ -89,7 +94,9 @@ def _service(uow_factory, llm: FakeLLM) -> ConversationService:
 def _seed(uow_factory, *, exchanges: list[tuple[str, str]]) -> None:
     """exchanges: [(tutor question, learner reply), ...] in order."""
     with uow_factory() as uow:
-        uow.repo.create_conversation_with_id(CID, user_id=TEST_USER, prompt_slug="user-profile-collection")
+        uow.repo.create_conversation_with_id(
+            CID, user_id=TEST_USER, prompt_slug="user-profile-collection"
+        )
         for question, answer in exchanges:
             uow.repo.append_message(CID, "assistant", question)
             uow.repo.append_message(CID, "user", answer)
@@ -102,11 +109,14 @@ def _conv(uow_factory) -> dict:
 
 
 def test_extends_framing_when_reply_did_not_answer(uow_factory):
-    _seed(uow_factory, exchanges=[
-        ("What's your name?", "I'm Mik"),
-        ("What do you do for work?", "software engineer and entrepreneur"),
-        ("What made you want to explore this skill?", "What skill are you talking about?"),
-    ])
+    _seed(
+        uow_factory,
+        exchanges=[
+            ("What's your name?", "I'm Mik"),
+            ("What do you do for work?", "software engineer and entrepreneur"),
+            ("What made you want to explore this skill?", "What skill are you talking about?"),
+        ],
+    )
     llm = FakeLLM(complete_text="NO")  # the model judges: this reply didn't answer
     _service(uow_factory, llm).maybe_extend_framing_turns(CID)
 
@@ -115,11 +125,17 @@ def test_extends_framing_when_reply_did_not_answer(uow_factory):
 
 
 def test_no_extension_when_reply_answered_normally(uow_factory):
-    _seed(uow_factory, exchanges=[
-        ("What's your name?", "I'm Mik"),
-        ("What do you do for work?", "software engineer and entrepreneur"),
-        ("What made you want to explore this skill?", "I want to get sharper on AI product design."),
-    ])
+    _seed(
+        uow_factory,
+        exchanges=[
+            ("What's your name?", "I'm Mik"),
+            ("What do you do for work?", "software engineer and entrepreneur"),
+            (
+                "What made you want to explore this skill?",
+                "I want to get sharper on AI product design.",
+            ),
+        ],
+    )
     llm = FakeLLM(complete_text="YES")
     _service(uow_factory, llm).maybe_extend_framing_turns(CID)
 
@@ -130,12 +146,15 @@ def test_no_extension_when_reply_answered_normally(uow_factory):
 def test_skips_once_already_past_framing(uow_factory):
     # 4 exchanges already -> this turn already crossed the (default) FRAMING_TURNS
     # threshold; too late to correct via this hook.
-    _seed(uow_factory, exchanges=[
-        ("What's your name?", "I'm Mik"),
-        ("What do you do for work?", "engineer"),
-        ("What made you want to explore this skill?", "career growth"),
-        ("How long do you usually have for a session?", "20 minutes"),
-    ])
+    _seed(
+        uow_factory,
+        exchanges=[
+            ("What's your name?", "I'm Mik"),
+            ("What do you do for work?", "engineer"),
+            ("What made you want to explore this skill?", "career growth"),
+            ("How long do you usually have for a session?", "20 minutes"),
+        ],
+    )
     llm = FakeLLM(complete_text="NO")  # would extend if called — proves the skip, not the model
     _service(uow_factory, llm).maybe_extend_framing_turns(CID)
 
@@ -145,7 +164,9 @@ def test_skips_once_already_past_framing(uow_factory):
 
 def test_skips_non_setup_flow_conversations(uow_factory):
     with uow_factory() as uow:
-        uow.repo.create_conversation_with_id(CID, user_id=TEST_USER, prompt_slug="course-session-init")
+        uow.repo.create_conversation_with_id(
+            CID, user_id=TEST_USER, prompt_slug="course-session-init"
+        )
         uow.repo.append_message(CID, "assistant", "opening")
         uow.repo.append_message(CID, "user", "some reply")
         uow.commit()
@@ -162,11 +183,14 @@ def test_synchronous_check_catches_a_detour_landing_on_the_threshold_turn_itself
     maybe_extend_framing_turns can never see this case (by the time it would run,
     OUTLINE has already fired for this exact turn) — only the synchronous check
     inside resolve_effective_prompt can catch it, in the same turn."""
-    _seed(uow_factory, exchanges=[
-        ("What's your name?", "Bubi"),
-        ("What do you do for work?", "travel agent, organise hikes"),
-        ("What made you want to explore this skill?", "career growth"),
-    ])
+    _seed(
+        uow_factory,
+        exchanges=[
+            ("What's your name?", "Bubi"),
+            ("What do you do for work?", "travel agent, organise hikes"),
+            ("What made you want to explore this skill?", "career growth"),
+        ],
+    )
     llm = FakeLLM(complete_text="NO")  # "What skill are you referring to?" doesn't answer
     prompt_repo = FakePromptRepo()
     slot_resolver = _NullResolver()
@@ -189,12 +213,15 @@ def test_synchronous_check_does_not_fire_on_a_legitimate_later_outline_turn(uow_
     """Once OUTLINE has legitimately started, a normal refinement reply must
     never be re-routed through the threshold check (that would wrongly re-lock
     framing on every later turn)."""
-    _seed(uow_factory, exchanges=[
-        ("What's your name?", "Bubi"),
-        ("What do you do for work?", "travel agent"),
-        ("What made you want to explore this skill?", "career growth"),
-        ("How long do you usually have for a session?", "20 minutes"),
-    ])
+    _seed(
+        uow_factory,
+        exchanges=[
+            ("What's your name?", "Bubi"),
+            ("What do you do for work?", "travel agent"),
+            ("What made you want to explore this skill?", "career growth"),
+            ("How long do you usually have for a session?", "20 minutes"),
+        ],
+    )
     llm = FakeLLM(complete_text="NO")  # would (wrongly) extend framing if ever called
     prompt_repo = FakePromptRepo()
     slot_resolver = _NullResolver()
@@ -218,11 +245,14 @@ def test_the_reported_repro_end_to_end(uow_factory):
     """The exact real-world sequence: clarifying question on turn 3 pushes the
     real motivation answer to turn 4 — without the fix, that turn would cross
     FRAMING_TURNS and jump straight to OUTLINE, skipping session length."""
-    _seed(uow_factory, exchanges=[
-        ("What's your name?", "I'm Mik"),
-        ("What do you do for work?", "software engineer and entrepreneur, building my project"),
-        ("What made you want to explore this skill?", "What skill are you talking about?"),
-    ])
+    _seed(
+        uow_factory,
+        exchanges=[
+            ("What's your name?", "I'm Mik"),
+            ("What do you do for work?", "software engineer and entrepreneur, building my project"),
+            ("What made you want to explore this skill?", "What skill are you talking about?"),
+        ],
+    )
     llm = FakeLLM(complete_text="NO")
     svc = _service(uow_factory, llm)
     svc.maybe_extend_framing_turns(CID)

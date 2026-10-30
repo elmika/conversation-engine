@@ -87,8 +87,9 @@ def test_conversation_stream_sends_meta_chunk_done(
     assert '"ttfb_ms"' not in body
     assert '"model"' not in body
 
-    from app.infra.persistence.db import get_engine
     from sqlalchemy import text as sql_text
+
+    from app.infra.persistence.db import get_engine
 
     engine = get_engine()
     with engine.connect() as conn:
@@ -150,8 +151,9 @@ def test_conversation_stream_rejects_input_over_max_chars(client_with_mock_strea
 
 def test_conversation_stream_emits_done_on_llm_error(client_with_mock_stream) -> None:
     """POST /u/{user_id}/conversations/stream emits done event with error when LLM raises."""
-    from app.api import routes
     from fastapi import HTTPException
+
+    from app.api import routes
 
     mock_llm = MagicMock()
     mock_llm.stream.side_effect = HTTPException(status_code=429, detail="Rate limit exceeded")
@@ -179,8 +181,9 @@ def test_conversation_stream_emits_done_on_llm_error(client_with_mock_stream) ->
 
 def test_conversation_stream_append_emits_done_on_llm_error(client_with_mock_stream) -> None:
     """POST /u/{user_id}/conversations/{id}/stream emits done event with error when LLM raises."""
-    from app.api import routes
     from fastapi import HTTPException
+
+    from app.api import routes
 
     # First create a conversation
     create_resp = client_with_mock_stream.post(

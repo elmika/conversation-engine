@@ -1,5 +1,7 @@
 # Conversation Engine
 
+[![CI](https://github.com/elmika/conversation-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/elmika/conversation-engine/actions/workflows/ci.yml)
+
 Adaptive learning platform with retrieval practice, learner profiling, and session memory. Built with FastAPI, Python, hexagonal architecture.
 
 ## Setup (OpenAI API key)
@@ -161,6 +163,23 @@ These examples assume the app is running on `http://127.0.0.1:8000` (locally or 
 - **Error handling and observability**: A middleware assigns `request_id` and logs endpoint, status, and latency; a global exception handler logs unhandled errors (including `request_id`) and returns a consistent 500 envelope, while streaming paths are designed to evolve toward structured SSE error events.
 - **Persistence and analytics hooks**: Conversations, messages, and runs are stored in SQLite for local/demo use; the `runs` table tracks timing now and is ready to record token counts and finish reasons once they’re wired from the OpenAI responses.
 - **Containerization**: The Dockerfile uses a multi-stage build; the default image includes dev tools so you can both run the app and `pytest`, and there’s an optional slimmer `prod` target. Containers run as a non-root user with a writable `/app/data` directory for SQLite.
+
+## Contributing
+
+`main` is protected: it only changes through a pull request whose CI checks passed.
+
+1. **Once per clone:** `make hooks` installs a pre-push hook that blocks direct pushes to `main`.
+2. **Work on a branch.** Before pushing, run `make format`, `make lint` and `make test`.
+3. **Push.** CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to any
+   branch. Backend: ruff lint and format check, then pytest. Frontend: typecheck, Vitest and a
+   production build. No secrets needed.
+4. **Merge:** `make merge BRANCH=<branch>`. It opens the PR, waits for CI, merges with a merge commit
+   and pulls `main`. If the branch is behind `main`, merge `main` into it first. GitHub requires the
+   branch to be up to date, so CI has tested exactly what lands.
+
+Changes to a user-facing flow also need an end-to-end run against the running stack (`make up`,
+`make smoke`). Green CI alone isn't enough. API changes must update `docs/openapi.yml` and
+`docs/postman_collection.json`. See [CLAUDE.md](CLAUDE.md) for the full set of project rules.
 
 ## More
 

@@ -14,7 +14,9 @@ USER_B = "admin-conv-test-user-b"
 
 
 def _make_llm_result(text: str = "Reply") -> LLMResult:
-    return LLMResult(text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0)
+    return LLMResult(
+        text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0
+    )
 
 
 @pytest.fixture
@@ -70,9 +72,10 @@ def test_admin_list_conversations_spans_all_users(client) -> None:
 
 
 def test_admin_list_conversations_pagination(client) -> None:
+    from sqlalchemy import text
+
     from app.api import routes as api_routes
     from app.infra.persistence.db import get_engine
-    from sqlalchemy import text
 
     mock_llm = main_app.dependency_overrides.get(api_routes.get_llm)
     if mock_llm:

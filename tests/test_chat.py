@@ -42,6 +42,7 @@ def mock_llm():
 def client_with_mock_llm(mock_llm):
     """Override get_llm to return mock_llm."""
     from app.api import routes
+
     app.dependency_overrides[routes.get_llm] = lambda: mock_llm
     with TestClient(app) as c:
         yield c
@@ -122,7 +123,7 @@ def test_conversations_create_uses_prompt_slug(client_with_mock_llm, mock_llm) -
 
 
 def test_conversations_append_uses_path_conversation_id(client_with_mock_llm, mock_llm) -> None:
-    """POST /u/{user_id}/conversations/{conversation_id} returns the same id and includes history."""
+    """POST /u/{user_id}/conversations/{conversation_id} keeps the id, includes history."""
     # First create a conversation to obtain a valid id.
     create_resp = client_with_mock_llm.post(
         f"/u/{TEST_USER}/conversations",
@@ -179,7 +180,7 @@ def test_conversations_create_records_token_usage(client_with_mock_llm, mock_llm
 
 
 def test_conversations_reject_input_over_max_chars(client_with_mock_llm) -> None:
-    """POST /u/{user_id}/conversations returns 400 when total message content exceeds max_input_chars."""
+    """POST /u/{user_id}/conversations returns 400 when total content > max_input_chars."""
     from app.api import routes
 
     # Override settings so a short message is over the limit.

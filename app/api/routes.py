@@ -13,11 +13,11 @@ from app.api.schemas import (
     AdminConversationRequest,
     AdminConversationResponse,
     AdminInitSessionRequest,
+    CompleteSetupResponse,
     ConsentRecordResponse,
     ConsentStatusResponse,
     ConversationListResponse,
     ConversationRenameRequest,
-    CompleteSetupResponse,
     ConversationRequest,
     ConversationResponse,
     ConversationRewindRequest,
@@ -31,20 +31,14 @@ from app.api.schemas import (
     PromptCreateRequest,
     PromptRenderResponse,
     PromptSchema,
-    PromptUpdateRequest,
     PromptsResponse,
+    PromptUpdateRequest,
     SessionSummarySchema,
     TimingsSchema,
     UsageTodayResponse,
     UserUsageSchema,
 )
 from app.application.ports import LLMPort, PromptRepo, UnitOfWork
-from app.infra.slot_resolver_files import FileSlotResolver
-from app.learning.flow_orchestrator import LearningFlowOrchestrator
-from app.learning.session_summary import build_session_summary
-from app.learning.progress_synthesis import synthesise_progress
-from app.learning.setup_completion import SetupCompletionError, complete_setup
-from app.learning.setup_flow import FRAMING_TURNS, SetupPhase, setup_phase_for_turn
 from app.application.services import ConversationService
 from app.domain.model_registry import list_models
 from app.domain.pricing import estimate_cost_usd
@@ -54,6 +48,12 @@ from app.infra.persistence.db import get_session
 from app.infra.persistence.repo_consent import SQLAlchemyConsentRepo
 from app.infra.persistence.repo_prompt import SQLAlchemyPromptRepo
 from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
+from app.infra.slot_resolver_files import FileSlotResolver
+from app.learning.flow_orchestrator import LearningFlowOrchestrator
+from app.learning.progress_synthesis import synthesise_progress
+from app.learning.session_summary import build_session_summary
+from app.learning.setup_completion import SetupCompletionError, complete_setup
+from app.learning.setup_flow import FRAMING_TURNS, SetupPhase, setup_phase_for_turn
 from app.settings import Settings
 
 # Root router — healthz, models, prompts (no user prefix).
@@ -101,8 +101,10 @@ admin_user_router = APIRouter(prefix="/admin/u/{user_id}", dependencies=[Depends
 
 def get_uow_factory(db=Depends(get_session)):
     """Provide a UnitOfWork factory that creates UoW instances with the current session."""
+
     def _factory() -> UnitOfWork:
         return SQLAlchemyUnitOfWork(db)
+
     return _factory
 
 
@@ -193,7 +195,10 @@ def get_conversation_service(
 
 
 def _parse_md_h1(content: str) -> Optional[str]:
-    """Extract the first H1 heading from markdown content, stripping a 'Course: ' prefix if present."""
+    """Extract the first H1 heading from markdown content.
+
+    Strips a 'Course: ' prefix if present.
+    """
     first_line = content.splitlines()[0] if content else ""
     if not first_line.startswith("# "):
         return None
@@ -215,6 +220,7 @@ def _check_input_length(messages: list[dict[str, str]], max_chars: int) -> None:
 
 # ── Root routes (no user prefix) ─────────────────────────────────────────────
 
+
 @router.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Health check."""
@@ -228,6 +234,7 @@ async def list_models_endpoint() -> ModelsResponse:
 
 
 # ── User-scoped routes (/u/{user_id}/...) ────────────────────────────────────
+
 
 @user_router.get("/status")
 async def get_user_status(
@@ -300,14 +307,21 @@ async def create_conversation_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         try:
+
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.create_and_stream(messages, None, None)
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
                         active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
-                        raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
-                    raise HTTPException(status_code=400, detail=str(e))
+                        raise HTTPException(
+                            status_code=409,
+                            detail={
+                                "message": "An active conversation already exists",
+                                "conversation_id": active_id,
+                            },
+                        ) from e
+                    raise HTTPException(status_code=400, detail=str(e)) from e
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
                 _stream_setup
@@ -367,11 +381,21 @@ async def create_conversation_stream(
                     }
                     yield _sse_event("done", done_payload)
         except CapExceeded as exc:
-            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
+            yield _sse_event(
+                "done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}}
+            )
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
-            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
+            yield _sse_event(
+                "done",
+                {
+                    "error": {
+                        "type": "internal_error",
+                        "message": "An unexpected error occurred during streaming",
+                    }
+                },
+            )
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -413,25 +437,33 @@ async def init_session_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         try:
+
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
-                    return service.create_and_stream_init(
-                        requested_slug, None, name=conv_name
-                    )
+                    return service.create_and_stream_init(requested_slug, None, name=conv_name)
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
                         active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
-                        raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
-                    raise HTTPException(status_code=400, detail=str(e))
+                        raise HTTPException(
+                            status_code=409,
+                            detail={
+                                "message": "An active conversation already exists",
+                                "conversation_id": active_id,
+                            },
+                        ) from e
+                    raise HTTPException(status_code=400, detail=str(e)) from e
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
                 _stream_setup
             )
 
-            yield _sse_event("meta", {
-                "conversation_id": conv_id,
-                "prompt_slug": used_prompt_slug,
-            })
+            yield _sse_event(
+                "meta",
+                {
+                    "conversation_id": conv_id,
+                    "prompt_slug": used_prompt_slug,
+                },
+            )
 
             assistant_text_parts: list[str] = []
             ttfb_ms = 0
@@ -473,21 +505,34 @@ async def init_session_stream(
                         ev.get("input_tokens", 0),
                         ev.get("output_tokens", 0),
                     )
-                    yield _sse_event("done", {
-                        "conversation_id": conv_id,
-                        "assistant_message": full_text,
-                    })
+                    yield _sse_event(
+                        "done",
+                        {
+                            "conversation_id": conv_id,
+                            "assistant_message": full_text,
+                        },
+                    )
                 elif ev.get("type") == "error":
-                    yield _sse_event("done", {"error": {
-                        "type": ev.get("error_type", "stream_error"),
-                        "message": ev.get("error_message", "Stream error"),
-                    }})
+                    yield _sse_event(
+                        "done",
+                        {
+                            "error": {
+                                "type": ev.get("error_type", "stream_error"),
+                                "message": ev.get("error_message", "Stream error"),
+                            }
+                        },
+                    )
         except CapExceeded as exc:
-            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
+            yield _sse_event(
+                "done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}}
+            )
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
-            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred"}})
+            yield _sse_event(
+                "done",
+                {"error": {"type": "internal_error", "message": "An unexpected error occurred"}},
+            )
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -514,8 +559,14 @@ async def create_conversation(
     except ValueError as e:
         if str(e).startswith("active_conversation_exists"):
             active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
-            raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
-        raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "An active conversation already exists",
+                    "conversation_id": active_id,
+                },
+            ) from e
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # model/ttfb_ms/total_ms are still recorded server-side (the `runs` table,
     # inside create_and_chat's own transaction) — just not returned to the
@@ -575,11 +626,11 @@ async def append_conversation_turn(
         try:
             return service.append_and_chat(conversation_id, messages, None, None)
         except PromptTemplateError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except ValueError as e:
             if str(e) == "conversation_ended":
-                raise HTTPException(status_code=409, detail="Conversation has ended")
-            raise HTTPException(status_code=404, detail=str(e))
+                raise HTTPException(status_code=409, detail="Conversation has ended") from e
+            raise HTTPException(status_code=404, detail=str(e)) from e
 
     # model/ttfb_ms/total_ms are still recorded server-side (the `runs` table,
     # inside append_and_chat's own transaction) — just not returned to the
@@ -614,15 +665,16 @@ async def append_conversation_turn_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         try:
+
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.append_and_stream(conversation_id, messages, None, None)
                 except PromptTemplateError as e:
-                    raise HTTPException(status_code=400, detail=str(e))
+                    raise HTTPException(status_code=400, detail=str(e)) from e
                 except ValueError as e:
                     if str(e) == "conversation_ended":
-                        raise HTTPException(status_code=409, detail="Conversation has ended")
-                    raise HTTPException(status_code=404, detail=str(e))
+                        raise HTTPException(status_code=409, detail="Conversation has ended") from e
+                    raise HTTPException(status_code=404, detail=str(e)) from e
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
                 _stream_setup
@@ -691,11 +743,21 @@ async def append_conversation_turn_stream(
             await asyncio.to_thread(service.maybe_resume_from_closure, conv_id)
             await asyncio.to_thread(service.maybe_extend_framing_turns, conv_id)
         except CapExceeded as exc:
-            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
+            yield _sse_event(
+                "done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}}
+            )
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
-            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
+            yield _sse_event(
+                "done",
+                {
+                    "error": {
+                        "type": "internal_error",
+                        "message": "An unexpected error occurred during streaming",
+                    }
+                },
+            )
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -722,19 +784,21 @@ async def rewind_conversation_stream(
       - chunk: incremental text delta
       - done: final assistant message
     """
+
     async def event_generator() -> AsyncIterator[str]:
         try:
+
             def _rewind_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.rewind_and_stream(
                         conversation_id, body.message_id, body.content, None, None
                     )
                 except PromptTemplateError as e:
-                    raise HTTPException(status_code=400, detail=str(e))
+                    raise HTTPException(status_code=400, detail=str(e)) from e
                 except ValueError as e:
                     if str(e) == "conversation_ended":
-                        raise HTTPException(status_code=409, detail="Conversation has ended")
-                    raise HTTPException(status_code=404, detail=str(e))
+                        raise HTTPException(status_code=409, detail="Conversation has ended") from e
+                    raise HTTPException(status_code=404, detail=str(e)) from e
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
                 _rewind_setup
@@ -794,11 +858,21 @@ async def rewind_conversation_stream(
                     }
                     yield _sse_event("done", done_payload)
         except CapExceeded as exc:
-            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
+            yield _sse_event(
+                "done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}}
+            )
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
-            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
+            yield _sse_event(
+                "done",
+                {
+                    "error": {
+                        "type": "internal_error",
+                        "message": "An unexpected error occurred during streaming",
+                    }
+                },
+            )
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -812,6 +886,7 @@ async def list_conversations(
     uow_factory=Depends(get_uow_factory),
 ) -> ConversationListResponse:
     """List conversations for user_id with pagination, ordered by created_at DESC."""
+
     def _run() -> tuple[list[dict], int]:
         with uow_factory() as uow:
             return uow.repo.list_conversations(user_id, page, page_size)
@@ -842,6 +917,7 @@ async def delete_conversation(
     uow_factory=Depends(get_uow_factory),
 ) -> None:
     """Delete a conversation and all its messages. No-op if not owned by user_id."""
+
     def _run() -> None:
         with uow_factory() as uow:
             uow.repo.delete_conversation(conversation_id, user_id)
@@ -858,6 +934,7 @@ async def rename_conversation(
     uow_factory=Depends(get_uow_factory),
 ) -> ConversationSummary:
     """Rename a conversation. Returns 404 if not found or not owned by user_id."""
+
     def _run() -> None:
         with uow_factory() as uow:
             if uow.repo.get_conversation(conversation_id, user_id) is None:
@@ -875,7 +952,11 @@ async def get_conversation_messages(
     conversation_id: str,
     uow_factory=Depends(get_uow_factory),
 ) -> MessagesResponse:
-    """Get all messages for a conversation, ordered by id ASC. Returns 404 if not owned by user_id."""
+    """Get all messages for a conversation, ordered by id ASC.
+
+    Returns 404 if not owned by user_id.
+    """
+
     def _run() -> tuple[list[dict], Optional[dict]]:
         with uow_factory() as uow:
             conv = uow.repo.get_conversation(conversation_id, user_id)
@@ -921,13 +1002,14 @@ async def end_session(
     always reflects the completed session — the learner sees the correct next step
     immediately. Returns 409 if the conversation is already ended.
     """
+
     def _end() -> list[dict]:
         try:
             return service.end_conversation(conversation_id)
         except ValueError as e:
             if str(e) == "conversation_ended":
-                raise HTTPException(status_code=409, detail="Conversation has already ended")
-            raise HTTPException(status_code=404, detail=str(e))
+                raise HTTPException(status_code=409, detail="Conversation has already ended") from e
+            raise HTTPException(status_code=404, detail=str(e)) from e
 
     messages = await asyncio.to_thread(_end)
     await asyncio.to_thread(
@@ -974,13 +1056,14 @@ async def complete_setup_route(
     ended LAST. If extraction/writes fail, the conversation stays active and the
     learner can retry — nothing is left half-finished.
     """
+
     def _load_messages() -> list[dict]:
         try:
             return service.get_active_messages(conversation_id)
         except ValueError as e:
             if str(e) == "conversation_ended":
-                raise HTTPException(status_code=409, detail="Conversation has already ended")
-            raise HTTPException(status_code=404, detail=str(e))
+                raise HTTPException(status_code=409, detail="Conversation has already ended") from e
+            raise HTTPException(status_code=404, detail=str(e)) from e
 
     messages = await asyncio.to_thread(_load_messages)
 
@@ -1004,7 +1087,7 @@ async def complete_setup_route(
             user_id,
         )
     except SetupCompletionError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     # Profile + course files are now durably written — safe to end the conversation.
     def _end() -> None:
@@ -1012,8 +1095,8 @@ async def complete_setup_route(
             service.end_conversation(conversation_id)
         except ValueError as e:
             if str(e) == "conversation_ended":
-                raise HTTPException(status_code=409, detail="Conversation has already ended")
-            raise HTTPException(status_code=404, detail=str(e))
+                raise HTTPException(status_code=409, detail="Conversation has already ended") from e
+            raise HTTPException(status_code=404, detail=str(e)) from e
 
     await asyncio.to_thread(_end)
 
@@ -1031,6 +1114,7 @@ async def get_session_summary(
     settings: Settings = Depends(get_settings),
 ) -> SessionSummarySchema:
     """Return the session summary for an ended conversation."""
+
     def _check() -> None:
         with uow_factory() as uow:
             conv = uow.repo.get_conversation(conversation_id, user_id)
@@ -1047,6 +1131,7 @@ async def get_session_summary(
 
 
 # ── Prompt admin routes (root, no user prefix) ────────────────────────────────
+
 
 @router.get("/prompts", response_model=PromptsResponse)
 async def list_prompts(
@@ -1079,14 +1164,14 @@ async def create_prompt(
     try:
         validate_template(body.system_prompt)
     except PromptTemplateError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     try:
         await asyncio.to_thread(
             prompt_repo.create, body.slug, body.name, body.system_prompt, body.model
         )
         await asyncio.to_thread(db.commit)
     except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return PromptSchema(
         slug=body.slug,
         name=body.name,
@@ -1106,6 +1191,7 @@ async def get_usage_today(
     Minimal admin spend visibility — not a full cost dashboard, just enough to
     sanity-check spend before/during the pilot.
     """
+
     def _query() -> UsageTodayResponse:
         with uow_factory() as uow:
             platform_usd_today = uow.repo.get_platform_daily_spend_usd(estimate_cost_usd)
@@ -1130,6 +1216,7 @@ async def admin_list_conversations(
     _admin: None = Depends(require_admin),
 ) -> ConversationListResponse:
     """All conversations across all users — admin support/QA read access."""
+
     def _run() -> tuple[list[dict], int]:
         with uow_factory() as uow:
             return uow.repo.list_all_conversations(page, page_size)
@@ -1138,13 +1225,19 @@ async def admin_list_conversations(
     return ConversationListResponse(
         conversations=[
             ConversationSummary(
-                id=r["id"], name=r.get("name"), created_at=r["created_at"],
-                last_activity=r.get("last_activity"), first_message=r.get("first_message"),
-                ended_at=r.get("ended_at"), user_id=r.get("user_id"),
+                id=r["id"],
+                name=r.get("name"),
+                created_at=r["created_at"],
+                last_activity=r.get("last_activity"),
+                first_message=r.get("first_message"),
+                ended_at=r.get("ended_at"),
+                user_id=r.get("user_id"),
             )
             for r in rows
         ],
-        total=total, page=page, page_size=page_size,
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 
@@ -1155,6 +1248,7 @@ async def admin_get_conversation_messages(
     _admin: None = Depends(require_admin),
 ) -> MessagesResponse:
     """Any conversation's transcript, regardless of owner — admin support/QA read access."""
+
     def _run() -> tuple[list[dict], Optional[dict]]:
         with uow_factory() as uow:
             conv = uow.repo.get_conversation_any_owner(conversation_id)
@@ -1168,7 +1262,12 @@ async def admin_get_conversation_messages(
         conversation_id=conversation_id,
         ended_at=conv["ended_at"] if conv else None,
         prompt_slug=conv["prompt_slug"] if conv else None,
-        messages=[MessageSchema(id=m["id"], role=m["role"], content=m["content"], created_at=m["created_at"]) for m in msgs],
+        messages=[
+            MessageSchema(
+                id=m["id"], role=m["role"], content=m["content"], created_at=m["created_at"]
+            )
+            for m in msgs
+        ],
     )
 
 
@@ -1206,8 +1305,14 @@ async def admin_create_conversation(
     except ValueError as e:
         if str(e).startswith("active_conversation_exists"):
             active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
-            raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
-        raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "An active conversation already exists",
+                    "conversation_id": active_id,
+                },
+            ) from e
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return AdminConversationResponse(
         conversation_id=conversation_id,
@@ -1241,6 +1346,7 @@ async def admin_init_session_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         try:
+
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.create_and_stream_init(
@@ -1249,18 +1355,27 @@ async def admin_init_session_stream(
                 except ValueError as e:
                     if str(e).startswith("active_conversation_exists"):
                         active_id = str(e).split(":", 1)[1] if ":" in str(e) else None
-                        raise HTTPException(status_code=409, detail={"message": "An active conversation already exists", "conversation_id": active_id})
-                    raise HTTPException(status_code=400, detail=str(e))
+                        raise HTTPException(
+                            status_code=409,
+                            detail={
+                                "message": "An active conversation already exists",
+                                "conversation_id": active_id,
+                            },
+                        ) from e
+                    raise HTTPException(status_code=400, detail=str(e)) from e
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
                 _stream_setup
             )
 
-            yield _sse_event("meta", {
-                "conversation_id": conv_id,
-                "model": resolved_model,
-                "prompt_slug": used_prompt_slug,
-            })
+            yield _sse_event(
+                "meta",
+                {
+                    "conversation_id": conv_id,
+                    "model": resolved_model,
+                    "prompt_slug": used_prompt_slug,
+                },
+            )
 
             assistant_text_parts: list[str] = []
             ttfb_ms = 0
@@ -1299,23 +1414,36 @@ async def admin_init_session_stream(
                         ev.get("input_tokens", 0),
                         ev.get("output_tokens", 0),
                     )
-                    yield _sse_event("done", {
-                        "conversation_id": conv_id,
-                        "assistant_message": full_text,
-                        "model": model,
-                        "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
-                    })
+                    yield _sse_event(
+                        "done",
+                        {
+                            "conversation_id": conv_id,
+                            "assistant_message": full_text,
+                            "model": model,
+                            "timings": {"ttfb_ms": ttfb_ms, "total_ms": total_ms},
+                        },
+                    )
                 elif ev.get("type") == "error":
-                    yield _sse_event("done", {"error": {
-                        "type": ev.get("error_type", "stream_error"),
-                        "message": ev.get("error_message", "Stream error"),
-                    }})
+                    yield _sse_event(
+                        "done",
+                        {
+                            "error": {
+                                "type": ev.get("error_type", "stream_error"),
+                                "message": ev.get("error_message", "Stream error"),
+                            }
+                        },
+                    )
         except CapExceeded as exc:
-            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
+            yield _sse_event(
+                "done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}}
+            )
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
-            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred"}})
+            yield _sse_event(
+                "done",
+                {"error": {"type": "internal_error", "message": "An unexpected error occurred"}},
+            )
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -1343,11 +1471,11 @@ async def admin_append_conversation_turn(
                 conversation_id, messages, body.prompt_slug, body.model_slug
             )
         except PromptTemplateError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except ValueError as e:
             if str(e) == "conversation_ended":
-                raise HTTPException(status_code=409, detail="Conversation has ended")
-            raise HTTPException(status_code=404, detail=str(e))
+                raise HTTPException(status_code=409, detail="Conversation has ended") from e
+            raise HTTPException(status_code=404, detail=str(e)) from e
 
     conv_id, assistant_message, model, ttfb_ms, total_ms = await asyncio.to_thread(_run)
     return AdminConversationResponse(
@@ -1374,17 +1502,18 @@ async def admin_append_conversation_turn_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         try:
+
             def _stream_setup() -> tuple[str, Any, str, str, UnitOfWork]:
                 try:
                     return service.append_and_stream(
                         conversation_id, messages, body.prompt_slug, body.model_slug
                     )
                 except PromptTemplateError as e:
-                    raise HTTPException(status_code=400, detail=str(e))
+                    raise HTTPException(status_code=400, detail=str(e)) from e
                 except ValueError as e:
                     if str(e) == "conversation_ended":
-                        raise HTTPException(status_code=409, detail="Conversation has ended")
-                    raise HTTPException(status_code=404, detail=str(e))
+                        raise HTTPException(status_code=409, detail="Conversation has ended") from e
+                    raise HTTPException(status_code=404, detail=str(e)) from e
 
             conv_id, events, used_prompt_slug, resolved_model, uow = await asyncio.to_thread(
                 _stream_setup
@@ -1444,11 +1573,21 @@ async def admin_append_conversation_turn_stream(
                     }
                     yield _sse_event("done", done_payload)
         except CapExceeded as exc:
-            yield _sse_event("done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}})
+            yield _sse_event(
+                "done", {"error": {"type": "usage_cap_exceeded", "message": cap_message(exc.scope)}}
+            )
         except HTTPException as exc:
             yield _sse_http_error(exc)
         except Exception:
-            yield _sse_event("done", {"error": {"type": "internal_error", "message": "An unexpected error occurred during streaming"}})
+            yield _sse_event(
+                "done",
+                {
+                    "error": {
+                        "type": "internal_error",
+                        "message": "An unexpected error occurred during streaming",
+                    }
+                },
+            )
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -1466,11 +1605,12 @@ async def render_prompt_preview(
     Pass ?conversation_id= to anchor time:conversation-start and
     time:lesson-time-spent to a specific conversation's start time.
     """
+
     def _run() -> dict:
         try:
             return service.preview_prompt(slug, conversation_id)
         except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
+            raise HTTPException(status_code=404, detail=str(e)) from e
 
     result = await asyncio.to_thread(_run)
     return PromptRenderResponse(**result)
@@ -1488,7 +1628,7 @@ async def update_prompt(
     try:
         validate_template(body.system_prompt)
     except PromptTemplateError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     updated = await asyncio.to_thread(
         prompt_repo.update, slug, body.name, body.system_prompt, body.model
     )
@@ -1559,9 +1699,7 @@ async def delete_prompt(
     """Hard-delete a prompt. Returns 409 if the prompt has been used in any conversation."""
     used = await asyncio.to_thread(prompt_repo.is_used_in_runs, slug)
     if used:
-        raise HTTPException(
-            status_code=409, detail="Prompt has been used in conversations"
-        )
+        raise HTTPException(status_code=409, detail="Prompt has been used in conversations")
     deleted = await asyncio.to_thread(prompt_repo.delete, slug)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Prompt '{slug}' not found")

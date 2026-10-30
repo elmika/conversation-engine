@@ -10,15 +10,15 @@ from sqlalchemy.pool import StaticPool
 
 from app.application.ports import LLMResult
 from app.application.services import ConversationService
+from app.infra.persistence.db import Base
+from app.infra.persistence.models import Conversation, Message, Run  # noqa: F401 - register models
+from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from app.learning.flow_orchestrator import LearningFlowOrchestrator
 from app.learning.objective_guard import (
     OBJECTIVE_GUARD_MIN_TURNS,
     objective_guard_min_turns,
     parse_objective_result,
 )
-from app.infra.persistence.db import Base
-from app.infra.persistence.models import Conversation, Message, Run  # noqa: F401 - register models
-from app.infra.persistence.unit_of_work import SQLAlchemyUnitOfWork
 
 TEST_USER = "test-user"
 CID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
@@ -35,7 +35,12 @@ class TestParseObjectiveResult:
 
 
 _PROMPTS = {
-    "lesson-objective-complete": {"slug": "lesson-objective-complete", "system_prompt": "GUARD", "model": "gpt-5.4-nano", "name": "guard"},
+    "lesson-objective-complete": {
+        "slug": "lesson-objective-complete",
+        "system_prompt": "GUARD",
+        "model": "gpt-5.4-nano",
+        "name": "guard",
+    },
 }
 
 
@@ -54,7 +59,14 @@ class RecordingLLM:
 
     def complete(self, instructions, messages, model=None) -> LLMResult:
         self.calls.append((instructions, messages, model))
-        return LLMResult(text=self.text, model=model or "fake", ttfb_ms=0, total_ms=0, input_tokens=0, output_tokens=0)
+        return LLMResult(
+            text=self.text,
+            model=model or "fake",
+            ttfb_ms=0,
+            total_ms=0,
+            input_tokens=0,
+            output_tokens=0,
+        )
 
     def stream(self, *a, **k):
         yield from ()
@@ -96,7 +108,10 @@ def _seed(uow_factory, *, user_turns: int, session_length=8) -> None:
     # don't need to know about the dynamic scaling — see TestObjectiveGuardMinTurns for that.
     with uow_factory() as uow:
         uow.repo.create_conversation_with_id(
-            CID, user_id=TEST_USER, prompt_slug="course-session-init", session_length_minutes=session_length
+            CID,
+            user_id=TEST_USER,
+            prompt_slug="course-session-init",
+            session_length_minutes=session_length,
         )
         uow.repo.append_message(CID, "assistant", "opening")
         for i in range(user_turns):
@@ -157,7 +172,10 @@ class TestObjectiveGuardMinTurns:
 def _seed_with_id(uow_factory, cid: str, *, user_turns: int, session_length: int) -> None:
     with uow_factory() as uow:
         uow.repo.create_conversation_with_id(
-            cid, user_id=TEST_USER, prompt_slug="course-session-init", session_length_minutes=session_length
+            cid,
+            user_id=TEST_USER,
+            prompt_slug="course-session-init",
+            session_length_minutes=session_length,
         )
         uow.repo.append_message(cid, "assistant", "opening")
         for i in range(user_turns):

@@ -45,7 +45,10 @@ logger = logging.getLogger(__name__)
 
 
 class LearningFlowOrchestrator:
-    """Learning-specific (Layer 2) turn logic, reached from ConversationService via LearningFlowPort."""
+    """Learning-specific (Layer 2) turn logic.
+
+    Reached from ConversationService via LearningFlowPort.
+    """
 
     def __init__(
         self,
@@ -71,17 +74,18 @@ class LearningFlowOrchestrator:
         uow: Optional[UnitOfWork] = None,
     ) -> Optional[str]:
         """Pick the phase for this turn from code-owned state, never inferred by the model:
-          - lesson flow  → CLOSURE once the session's time is up (see
-            session_length.is_time_over) or the objective guard latched, else CORE.
-          - setup flow   → OUTLINE once the learner has answered all framing
-            questions (a fixed turn count), else FRAMING.
-          - flat prompts → identity (setup/admin conversations unaffected).
+        - lesson flow  → CLOSURE once the session's time is up (see
+          session_length.is_time_over) or the objective guard latched, else CORE.
+        - setup flow   → OUTLINE once the learner has answered all framing
+          questions (a fixed turn count), else FRAMING.
+        - flat prompts → identity (setup/admin conversations unaffected).
         """
         if flow_slug and is_lesson_flow(flow_slug):
             phase = phase_for_turn(is_opening_turn=False)
             session_len = (conv_meta or {}).get("session_length_minutes")
             time_over = bool(
-                session_len and created_at
+                session_len
+                and created_at
                 and is_time_over(self._elapsed_minutes(created_at), session_len)
             )
             # Closure fires on either trigger: the session's time is up, or the
@@ -143,7 +147,8 @@ class LearningFlowOrchestrator:
                         logger.info(
                             "Setup turn for %s didn't answer the pending framing question "
                             "at the threshold turn — framing now requires %d turns",
-                            conversation_id, new_required,
+                            conversation_id,
+                            new_required,
                         )
                     phase = SetupPhase.FRAMING
 
@@ -216,7 +221,9 @@ class LearningFlowOrchestrator:
                 uow.commit()
             logger.info(
                 "Session length for %s adjusted %s → %s min",
-                conversation_id, current, new_minutes,
+                conversation_id,
+                current,
+                new_minutes,
             )
         except Exception:
             logger.exception("Session-length extraction failed; keeping current value")
@@ -235,14 +242,20 @@ class LearningFlowOrchestrator:
         try:
             with self._uow_factory() as uow:
                 conv = uow.repo.get_conversation(conversation_id, self._user_id)
-                if not conv or conv.get("session_length_minutes") is None or conv.get("objective_met"):
+                if (
+                    not conv
+                    or conv.get("session_length_minutes") is None
+                    or conv.get("objective_met")
+                ):
                     return
                 created_at = uow.repo.get_conversation_created_at(conversation_id)
                 messages = uow.repo.get_messages(conversation_id, self._user_id)
 
             session_len = conv.get("session_length_minutes")
-            if created_at and session_len and is_time_over(
-                self._elapsed_minutes(created_at), session_len
+            if (
+                created_at
+                and session_len
+                and is_time_over(self._elapsed_minutes(created_at), session_len)
             ):
                 return  # already closing on time — don't spend the guard call
             min_turns = objective_guard_min_turns(session_len)
@@ -290,7 +303,8 @@ class LearningFlowOrchestrator:
 
             session_len = conv.get("session_length_minutes")
             time_over = bool(
-                created_at and session_len
+                created_at
+                and session_len
                 and is_time_over(self._elapsed_minutes(created_at), session_len)
             )
             if not (time_over or conv.get("objective_met")):
@@ -326,7 +340,9 @@ class LearningFlowOrchestrator:
                 uow.commit()
             logger.info(
                 "Learner asked to continue past closure for %s — resuming core, length %s -> %s",
-                conversation_id, session_len, new_length,
+                conversation_id,
+                session_len,
+                new_length,
             )
         except Exception:
             logger.exception("Closure-continuation check failed; staying in closure")
@@ -385,7 +401,8 @@ class LearningFlowOrchestrator:
             logger.info(
                 "Learner reply for %s didn't answer the pending framing question — "
                 "framing now requires %d turns",
-                conversation_id, new_required,
+                conversation_id,
+                new_required,
             )
         except Exception:
             logger.exception("Framing-answer check failed; leaving framing turn count unchanged")
@@ -405,7 +422,11 @@ class LearningFlowOrchestrator:
             return "", ""
         answer = messages[last_user]["content"]
         question = next(
-            (messages[j]["content"] for j in range(last_user - 1, -1, -1) if messages[j]["role"] == "assistant"),
+            (
+                messages[j]["content"]
+                for j in range(last_user - 1, -1, -1)
+                if messages[j]["role"] == "assistant"
+            ),
             "",
         )
         return question, answer

@@ -65,7 +65,13 @@ class TestSetupPhaseForTurnWithExtendedRequirement:
         assert setup_phase_for_turn(FRAMING_TURNS) is SetupPhase.OUTLINE  # default param
 
     def test_stays_framing_below_an_extended_requirement(self):
-        assert setup_phase_for_turn(FRAMING_TURNS, framing_turns_required=FRAMING_TURNS + 1) is SetupPhase.FRAMING
+        assert (
+            setup_phase_for_turn(FRAMING_TURNS, framing_turns_required=FRAMING_TURNS + 1)
+            is SetupPhase.FRAMING
+        )
 
     def test_switches_to_outline_once_the_extended_requirement_is_met(self):
-        assert setup_phase_for_turn(FRAMING_TURNS + 1, framing_turns_required=FRAMING_TURNS + 1) is SetupPhase.OUTLINE
+        assert (
+            setup_phase_for_turn(FRAMING_TURNS + 1, framing_turns_required=FRAMING_TURNS + 1)
+            is SetupPhase.OUTLINE
+        )

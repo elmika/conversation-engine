@@ -176,38 +176,56 @@ class Smoke:
         self.check(self.cid is not None, "init created an addressable conversation")
         self.check(
             self.session_length() == PROFILE_MINUTES,
-            f"session_length seeded from profile == {PROFILE_MINUTES} (got {self.session_length()})",
+            f"session_length seeded from profile == {PROFILE_MINUTES} "
+            f"(got {self.session_length()})",
         )
 
         # 2. core turn (no duration mention) -> core, length unchanged
         slug, _ = self._turn("Can you explain Module One in a bit more detail?")
-        self.check(slug == "course-session-core", f"core turn uses course-session-core (got {slug})")
-        self.check(self.session_length() == PROFILE_MINUTES, "length unchanged after non-duration turn")
+        self.check(
+            slug == "course-session-core", f"core turn uses course-session-core (got {slug})"
+        )
+        self.check(
+            self.session_length() == PROFILE_MINUTES, "length unchanged after non-duration turn"
+        )
 
         # 3. in-chat adjustment captured (3b)
         self._turn("Actually, can we do 30 minutes today instead?")
         time.sleep(1)
-        self.check(self.session_length() == 30, f"duration change captured == 30 (got {self.session_length()})")
+        self.check(
+            self.session_length() == 30,
+            f"duration change captured == 30 (got {self.session_length()})",
+        )
 
         # 4. force time over -> closure (3c)
         self.age_conversation(40)  # 40 > 30 - buffer(3) => time over
         slug, _ = self._turn("ok, what next?")
-        self.check(slug == "course-session-closure", f"time-over turn uses course-session-closure (got {slug})")
+        self.check(
+            slug == "course-session-closure",
+            f"time-over turn uses course-session-closure (got {slug})",
+        )
 
         # 5. extend during wind-down, then resume core (isolate the TIME dimension)
         self._turn("Actually I have more time — let's make it 60 minutes today.")
         time.sleep(1)
-        self.check(self.session_length() == 60, f"extension captured == 60 (got {self.session_length()})")
+        self.check(
+            self.session_length() == 60, f"extension captured == 60 (got {self.session_length()})"
+        )
         # Clear any objective latch the real guard may have set, so this checks the
         # time dimension alone (60 min length vs ~40 min elapsed → back to core).
         self.set_objective_met_db(0)
         slug, _ = self._turn("great, let's keep going then")
-        self.check(slug == "course-session-core", f"next turn resumes course-session-core (got {slug})")
+        self.check(
+            slug == "course-session-core", f"next turn resumes course-session-core (got {slug})"
+        )
 
         # 6. objective met (poked) -> closure even with time remaining (3d)
         self.set_objective_met_db(1)
         slug, _ = self._turn("makes sense — anything else?")
-        self.check(slug == "course-session-closure", f"objective-met turn uses course-session-closure (got {slug})")
+        self.check(
+            slug == "course-session-closure",
+            f"objective-met turn uses course-session-closure (got {slug})",
+        )
 
         return all(ok for ok, _ in self.results)
 
@@ -235,8 +253,10 @@ def main() -> int:
     ap.add_argument("--sections", default="sections", help="path to the sections/ dir (host side)")
     args = ap.parse_args()
     if not ADMIN_TOKEN:
-        print("No ADMIN_TOKEN found (checked env and .env). Step 1's init-stream call needs "
-              "the admin-only /admin/u/{user_id}/... route and will fail with 401 without it.")
+        print(
+            "No ADMIN_TOKEN found (checked env and .env). Step 1's init-stream call needs "
+            "the admin-only /admin/u/{user_id}/... route and will fail with 401 without it."
+        )
         return 2
 
     try:
