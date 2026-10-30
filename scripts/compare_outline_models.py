@@ -281,7 +281,7 @@ def main() -> int:
 
     try:
         health = _req("GET", f"{args.base_url}/healthz", timeout=5)
-    except urllib.error.URLError as e:
+    except OSError as e:  # URLError, but also a timeout from a hung server
         print(f"Stack not reachable at {args.base_url} ({e}). Start it with `make up`.")
         return 2
     print(f"stack healthy: {health.strip()}\ncomparing models: {models}\n")
