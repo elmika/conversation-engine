@@ -32,11 +32,18 @@ def load_admin_token() -> str:
 ADMIN_TOKEN = load_admin_token()
 
 
-def req(method: str, url: str, body: dict | None = None, timeout: int = 180) -> str:
-    # --base-url comes from the command line and requests carry the admin token: refuse anything
-    # that isn't plain HTTP(S) (file://, ftp://, a typo'd scheme) rather than let urllib open it.
+def check_http_url(url: str) -> None:
+    """Refuse anything but plain HTTP(S) before a request is sent.
+
+    --base-url comes from the command line and requests carry the admin token, so a file://,
+    ftp:// or typo'd scheme must fail loudly rather than be opened by urllib.
+    """
     if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
         raise ValueError(f"Refusing non-HTTP(S) URL: {url!r}")
+
+
+def req(method: str, url: str, body: dict | None = None, timeout: int = 180) -> str:
+    check_http_url(url)
     data = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(url, data=data, method=method)
     if data is not None:

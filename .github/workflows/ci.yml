@@ -33,24 +33,26 @@ jobs:
           version: "0.13.1"
           python-version: "3.11"
           enable-cache: true
+          activate-environment: true
 
-      # Same install as the Dockerfile's builder stage: exact versions from uv.lock, and
-      # --locked fails if uv.lock is out of date with pyproject.toml.
+      # Same install as the Dockerfile's builder stage: exact versions from uv.lock (--locked
+      # fails if it's out of date), prebuilt wheels only (--no-build). The venv is activated
+      # above, so the steps below call ruff/python directly.
       - name: Install dependencies
         id: install
-        run: uv sync --locked
+        run: uv sync --locked --no-build
 
       - name: Ruff lint
-        run: uv run --no-sync ruff check .
+        run: ruff check .
 
       - name: Ruff format
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: uv run --no-sync ruff format --check .
+        run: ruff format --check .
 
       # Includes tests/test_architecture.py (the `make check-layers` layer rules).
       - name: Pytest
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: uv run --no-sync python -m pytest
+        run: python -m pytest
 
   frontend:
     name: Frontend (typecheck + vitest + build)

@@ -25,6 +25,12 @@ dev = [
     "ruff==0.17.3",
 ]
 
+[tool.uv]
+# Install dependencies only, never the project itself: uvicorn and pytest import app/ from the
+# working directory. With nothing of ours to build, every install can use --no-build (prebuilt
+# wheels only, no setup scripts run at install time).
+package = false
+
 [tool.setuptools]
 packages = ["app"]
 

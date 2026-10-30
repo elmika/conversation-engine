@@ -44,14 +44,13 @@ import os
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from model_compare_results import ResultsLog, read_prompts  # noqa: E402
-from session_test_utils import turn_models  # noqa: E402
+from session_test_utils import check_http_url, turn_models  # noqa: E402
 
 TARGET = "course-outline-proposal"
 # The outline prompt itself, plus the framing prompt that drives the 3 turns before it
@@ -168,10 +167,7 @@ PROFILES = [
 
 
 def _req(method: str, url: str, body: dict | None = None, timeout: int = 180) -> str:
-    # --base-url comes from the command line and requests carry the admin token: refuse anything
-    # that isn't plain HTTP(S) (file://, ftp://, a typo'd scheme) rather than let urllib open it.
-    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
-        raise ValueError(f"Refusing non-HTTP(S) URL: {url!r}")
+    check_http_url(url)
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
