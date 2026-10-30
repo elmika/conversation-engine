@@ -81,7 +81,9 @@ frontend via `frontend/pnpm-lock.yaml`. Docker and CI install with `uv sync --lo
 must commit the updated lockfile. To add a Python package without local uv, use the dev image
 (it ships uv): `docker run --rm -v "$PWD":/src -w /src conversation-engine uv add --no-sync <pkg>`,
 then `make build`. GitHub Actions are pinned to
-commit SHAs (tag in a trailing comment). SonarCloud flagged all three gaps (2026-10-30).
+commit SHAs (tag in a trailing comment). SonarCloud flagged all three gaps (2026-10-30). Updates come
+from Dependabot (`.github/dependabot.yml`): weekly grouped PRs for actions, uv and npm, 14-day cooldown.
+Docker base images aren't covered. Bump those by hand, in sync with CI.
 
 **Merging into `main`:** `main` is protected on GitHub. It only changes through a PR whose Backend,
 Frontend and SonarCloud checks passed, the branch must be up to date with `main`, merges are merge commits
