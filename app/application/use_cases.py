@@ -16,7 +16,8 @@ def chat(
     """Run non-streaming chat over the provided message history.
 
     `messages` should already contain any prior turns plus the new user message(s).
-    Returns (conversation_id, assistant_message, model, ttfb_ms, total_ms, input_tokens, output_tokens).
+    Returns (conversation_id, assistant_message, model, ttfb_ms, total_ms,
+    input_tokens, output_tokens).
     """
     cid = (
         ConversationId.from_string(conversation_id)

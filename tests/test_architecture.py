@@ -33,6 +33,7 @@ APP = ROOT / "app"
 
 # ── Layer assignment ─────────────────────────────────────────────────────────
 
+
 def _file_layer(path: Path) -> str | None:
     """Return the layer label for a source file, or None if unconstrained."""
     try:
@@ -108,12 +109,13 @@ def _module_layer(module: str) -> str | None:
 ALLOWED: dict[str, set[str]] = {
     "L1a": {"L1a"},
     "L1b": {"L1a", "L1b"},
-    "L2":  {"L1a", "L1b", "L2"},
+    "L2": {"L1a", "L1b", "L2"},
     "API": {"L1a", "L1b", "L2", "API"},
 }
 
 
 # ── Import extraction ────────────────────────────────────────────────────────
+
 
 def _app_imports(path: Path) -> list[tuple[int, str]]:
     """Return (line_no, module_path) for every app.* import in a file."""
@@ -135,6 +137,7 @@ def _app_imports(path: Path) -> list[tuple[int, str]]:
 
 
 # ── Test ─────────────────────────────────────────────────────────────────────
+
 
 def test_layer_dependencies() -> None:
     """No lower layer may import from a higher layer."""

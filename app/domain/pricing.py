@@ -21,7 +21,6 @@ PRICE_PER_MILLION_USD: dict[str, dict[str, float]] = {
     "gpt-5.6-terra": {"input": 2.00, "output": 12.00},
     "gpt-5.6-sol": {"input": 4.00, "output": 20.00},
     "gpt-6-astra": {"input": 10.00, "output": 50.00},
-
     # Anthropic — https://www.anthropic.com/pricing, confirmed 2026-09-29.
     "claude-sonnet-5": {"input": 2.00, "output": 10.00},
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
@@ -31,7 +30,6 @@ PRICE_PER_MILLION_USD: dict[str, dict[str, float]] = {
     # actually *cheaper* than opus-5, not a straight successor-at-same-price.
     "claude-opus-5-5": {"input": 4.00, "output": 20.00},
     "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},
-
     # Added 2026-10-29 via scripts/check_new_models.py. Anthropic API prices are now at
     # https://platform.claude.com/docs/en/about-claude/pricing (anthropic.com/pricing only
     # lists consumer plans). haiku-5.5's price is for prompts up to 100k tokens; above that

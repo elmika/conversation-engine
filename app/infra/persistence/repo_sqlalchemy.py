@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Optional
-
-from datetime import timezone
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -27,8 +25,18 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         self.create_conversation_with_id(conv_id, user_id=user_id)
         return conv_id
 
-    def create_conversation_with_id(self, conversation_id: str, name: Optional[str] = None, user_id: str = "default", prompt_slug: Optional[str] = None, session_length_minutes: Optional[int] = None) -> None:
-        """Create a new conversation with a specific ID, optional name, user_id, prompt_slug, and session length."""
+    def create_conversation_with_id(
+        self,
+        conversation_id: str,
+        name: Optional[str] = None,
+        user_id: str = "default",
+        prompt_slug: Optional[str] = None,
+        session_length_minutes: Optional[int] = None,
+    ) -> None:
+        """Create a new conversation with a specific ID.
+
+        Optionally sets name, user_id, prompt_slug, and session length.
+        """
         conv = Conversation(
             id=conversation_id,
             name=name,
@@ -96,7 +104,9 @@ class SQLAlchemyConversationRepo(ConversationRepo):
                 "created_at": r.Conversation.created_at.isoformat(),
                 "last_activity": (r.last_activity or r.Conversation.created_at).isoformat(),
                 "first_message": (r.first_message or "")[:120],
-                "ended_at": r.Conversation.ended_at.isoformat() if r.Conversation.ended_at else None,
+                "ended_at": r.Conversation.ended_at.isoformat()
+                if r.Conversation.ended_at
+                else None,
             }
             for r in rows
         ], total
@@ -108,14 +118,18 @@ class SQLAlchemyConversationRepo(ConversationRepo):
 
     def count_conversations_named(self, base_name: str) -> int:
         from sqlalchemy import func, or_
-        return self._session.scalar(
-            select(func.count()).where(
-                or_(
-                    Conversation.name == base_name,
-                    Conversation.name.like(f"{base_name} (%)"),
+
+        return (
+            self._session.scalar(
+                select(func.count()).where(
+                    or_(
+                        Conversation.name == base_name,
+                        Conversation.name.like(f"{base_name} (%)"),
+                    )
                 )
             )
-        ) or 0
+            or 0
+        )
 
     def delete_conversation(self, conversation_id: str, user_id: str) -> None:
         conv = self._session.get(Conversation, conversation_id)
@@ -163,7 +177,10 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         ]
 
     def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
-        """Return {id, name, created_at, ended_at, prompt_slug, session_length_minutes} for the conversation, or None if not found or not owned by user_id."""
+        """Return conversation metadata, or None if not found or not owned by user_id.
+
+        Keys: id, name, created_at, ended_at, prompt_slug, session_length_minutes.
+        """
         row = self._session.get(Conversation, conversation_id)
         if row is None or row.user_id != user_id:
             return None
@@ -217,7 +234,9 @@ class SQLAlchemyConversationRepo(ConversationRepo):
                 "created_at": r.Conversation.created_at.isoformat(),
                 "last_activity": (r.last_activity or r.Conversation.created_at).isoformat(),
                 "first_message": (r.first_message or "")[:120],
-                "ended_at": r.Conversation.ended_at.isoformat() if r.Conversation.ended_at else None,
+                "ended_at": r.Conversation.ended_at.isoformat()
+                if r.Conversation.ended_at
+                else None,
             }
             for r in rows
         ], total
@@ -370,4 +389,3 @@ class SQLAlchemyConversationRepo(ConversationRepo):
         )
         self._session.add(run)
         # No commit - UnitOfWork handles transaction boundaries
-

@@ -22,14 +22,14 @@ class MessageRole(str, Enum):
             return cls(role.lower())
         except ValueError:
             valid = ", ".join(r.value for r in cls)
-            raise ValueError(f"Invalid role '{role}'. Must be one of: {valid}")
+            raise ValueError(f"Invalid role '{role}'. Must be one of: {valid}") from None
 
 
 @dataclass(frozen=True)
 class ConversationId:
     """
     Conversation identifier value object.
-    
+
     Encapsulates generation and validation logic for conversation IDs.
     """
 
@@ -44,7 +44,7 @@ class ConversationId:
     def from_string(cls, value: str) -> ConversationId:
         """
         Create ConversationId from a string.
-        
+
         Validates that the string is a valid UUID format.
         Raises ValueError if invalid.
         """
@@ -62,7 +62,7 @@ class ConversationId:
 class PromptSlug:
     """
     Prompt slug value object.
-    
+
     Encapsulates validation logic for prompt slugs.
     """
 
@@ -72,7 +72,7 @@ class PromptSlug:
     def from_string(cls, value: str, registry: dict[str, object]) -> PromptSlug:
         """
         Create PromptSlug from a string.
-        
+
         Validates that the slug exists in the provided registry.
         Raises ValueError if the slug is not registered.
         """
@@ -87,7 +87,7 @@ class PromptSlug:
     ) -> PromptSlug:
         """
         Create PromptSlug from an optional string, falling back to default.
-        
+
         If value is None, uses the default slug.
         Validates that the resulting slug exists in the registry.
         """

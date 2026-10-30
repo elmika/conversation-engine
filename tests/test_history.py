@@ -38,7 +38,7 @@ def test_trim_history_by_turns():
         {"role": "user", "content": "Turn 3"},
         {"role": "assistant", "content": "Response 3"},
     ]
-    
+
     # Keep only last turn
     result = trim_history(messages, max_turns=1)
     assert len(result["messages"]) == 2
@@ -47,7 +47,7 @@ def test_trim_history_by_turns():
     assert result["was_trimmed"] is True
     assert result["original_turns"] == 3
     assert result["trimmed_turns"] == 1
-    
+
     # Keep last 2 turns
     result = trim_history(messages, max_turns=2)
     assert len(result["messages"]) == 4
@@ -65,7 +65,7 @@ def test_trim_history_by_tokens():
         {"role": "user", "content": "c" * 100},  # ~26 tokens
         {"role": "assistant", "content": "d" * 100},  # ~26 tokens
     ]
-    
+
     # Keep only messages that fit in ~60 tokens (should keep last turn = 2 messages)
     result = trim_history(messages, max_tokens=60)
     assert len(result["messages"]) == 2
@@ -83,7 +83,7 @@ def test_trim_history_preserves_turn_pairs():
         {"role": "user", "content": "c" * 100},
         {"role": "assistant", "content": "d" * 100},
     ]
-    
+
     # With reasonable token limit, should keep complete turn
     result = trim_history(messages, max_tokens=60)
     # Should keep the last turn (user + assistant)
@@ -112,7 +112,7 @@ def test_trim_history_both_limits():
         {"role": "user", "content": "e" * 100},  # ~26 tokens
         {"role": "assistant", "content": "f" * 100},  # ~26 tokens
     ]
-    
+
     # Turn limit would allow 2 turns (4 messages), but token limit only allows 1 turn
     result = trim_history(messages, max_turns=2, max_tokens=60)
     assert len(result["messages"]) == 2  # Token limit is more restrictive
@@ -128,7 +128,7 @@ def test_get_history_stats():
         {"role": "user", "content": "How are you?"},
         {"role": "assistant", "content": "I'm good"},
     ]
-    
+
     stats = get_history_stats(messages)
     assert stats["message_count"] == 4
     assert stats["turn_count"] == 2  # 2 user messages = 2 turns
@@ -148,9 +148,9 @@ def test_trim_history_realistic_conversation():
     # Simulate 15 turns (30 messages)
     messages = []
     for i in range(15):
-        messages.append({"role": "user", "content": f"User message {i+1}" * 10})
-        messages.append({"role": "assistant", "content": f"Assistant response {i+1}" * 10})
-    
+        messages.append({"role": "user", "content": f"User message {i + 1}" * 10})
+        messages.append({"role": "assistant", "content": f"Assistant response {i + 1}" * 10})
+
     # Trim to last 5 turns
     result = trim_history(messages, max_turns=5)
     assert len(result["messages"]) == 10  # 5 turns = 10 messages
@@ -172,10 +172,10 @@ def test_trim_history_logs_when_trimmed(caplog):
         {"role": "user", "content": "Turn 3"},
         {"role": "assistant", "content": "Response 3"},
     ]
-    
+
     with caplog.at_level(logging.WARNING):
-        result = trim_history(messages, max_turns=1, conversation_id="test-conv-123")
-    
+        trim_history(messages, max_turns=1, conversation_id="test-conv-123")
+
     # Should have logged the trimming event
     assert len(caplog.records) == 1
     log_record = caplog.records[0]
@@ -183,7 +183,7 @@ def test_trim_history_logs_when_trimmed(caplog):
     assert "History trimmed" in log_record.message
     assert "6 → 2 messages" in log_record.message
     assert "3 → 1 turns" in log_record.message
-    
+
     # Check structured log fields
     assert log_record.conversation_id == "test-conv-123"
     assert log_record.original_messages == 6
@@ -198,10 +198,10 @@ def test_trim_history_no_log_when_not_trimmed(caplog):
         {"role": "user", "content": "Hi"},
         {"role": "assistant", "content": "Hello"},
     ]
-    
+
     with caplog.at_level(logging.WARNING):
         result = trim_history(messages, max_turns=10, max_tokens=10000)
-    
+
     # Should not log anything when no trimming occurred
     assert len(caplog.records) == 0
     assert result["was_trimmed"] is False

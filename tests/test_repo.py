@@ -41,7 +41,10 @@ def test_session_length_minutes_round_trips() -> None:
     try:
         repo = SQLAlchemyConversationRepo(session)
         repo.create_conversation_with_id(
-            "conv-1", user_id=TEST_USER, prompt_slug="course-session-init", session_length_minutes=30
+            "conv-1",
+            user_id=TEST_USER,
+            prompt_slug="course-session-init",
+            session_length_minutes=30,
         )
         session.commit()
         conv = repo.get_conversation("conv-1", TEST_USER)
@@ -56,7 +59,9 @@ def test_session_length_minutes_defaults_to_none() -> None:
     session = _make_session()
     try:
         repo = SQLAlchemyConversationRepo(session)
-        repo.create_conversation_with_id("conv-2", user_id=TEST_USER, prompt_slug="user-profile-collection")
+        repo.create_conversation_with_id(
+            "conv-2", user_id=TEST_USER, prompt_slug="user-profile-collection"
+        )
         session.commit()
         conv = repo.get_conversation("conv-2", TEST_USER)
         assert conv is not None

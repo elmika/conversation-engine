@@ -18,7 +18,9 @@ class Prompt(Base):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -46,9 +48,7 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    ended_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True, default="default")
     prompt_slug: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     # Per-session length in minutes; defaulted from the learner profile at session
@@ -56,7 +56,9 @@ class Conversation(Base):
     session_length_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Latched once the objective guard judges the current module's objective met;
     # makes subsequent turns resolve to the closure phase. Code-owned lesson state.
-    objective_met: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    objective_met: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     # How many raw learner turns the setup flow's framing phase requires before
     # advancing to the outline phase. Starts at FRAMING_TURNS (app/learning/
     # setup_flow.py) and is bumped by 1 whenever a learner's reply doesn't
@@ -114,4 +116,3 @@ class Run(Base):
 
     conversation: Mapped[Conversation] = relationship("Conversation", back_populates="runs")
     assistant_message: Mapped[Message] = relationship("Message", back_populates="runs")
-

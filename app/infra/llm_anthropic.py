@@ -142,11 +142,11 @@ class AnthropicLLMAdapter:
                         )
                         time.sleep(delay)
                     else:
-                        raise _map_anthropic_error(exc)
+                        raise _map_anthropic_error(exc) from exc
         except APIError as exc:
             # Non-retryable Anthropic API errors (e.g. BadRequestError) should be
             # mapped to HTTP errors rather than bubbling up as 500s.
-            raise _map_anthropic_error(exc)
+            raise _map_anthropic_error(exc) from exc
         # Should never be reached, but keep mypy happy.
         raise _map_anthropic_error(last_exc or Exception("Unknown Anthropic error"))
 
@@ -186,11 +186,11 @@ class AnthropicLLMAdapter:
                         )
                         time.sleep(delay)
                     else:
-                        raise _map_anthropic_error(exc)
+                        raise _map_anthropic_error(exc) from exc
         except APIError as exc:
             # Non-retryable Anthropic API errors during streaming should also be
             # mapped consistently to HTTP errors.
-            raise _map_anthropic_error(exc)
+            raise _map_anthropic_error(exc) from exc
         # Should never be reached, but keep mypy happy.
         raise _map_anthropic_error(last_exc or Exception("Unknown Anthropic error"))
 

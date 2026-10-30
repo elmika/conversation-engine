@@ -5,12 +5,9 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Optional
 
-logger = logging.getLogger(__name__)
-
 from app.application.ports import (
     LearningFlowPort,
     LLMPort,
-    LLMResult,
     PromptRepo,
     SlotResolver,
     StreamEvent,
@@ -22,6 +19,8 @@ from app.domain.model_registry import validate_model_slug
 from app.domain.prompt_template import render_instructions
 from app.domain.usage_ceiling import CapExceeded, cap_message, check_caps
 from app.domain.value_objects import ConversationId
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationService:
@@ -84,12 +83,23 @@ class ConversationService:
         )
 
     def _resolve_prompt(self, slug: Optional[str]) -> tuple[str, str, Optional[str], str]:
-        """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name). Falls back to default."""
+        """Resolve prompt slug to (used_slug, system_prompt, prompt_model, prompt_name).
+
+        Falls back to the default prompt.
+        """
         record = self._prompt_repo.get_prompt_or_default(slug, self._default_prompt_slug)
-        return record["slug"], record["system_prompt"], record.get("model"), record.get("name", record["slug"])
+        return (
+            record["slug"],
+            record["system_prompt"],
+            record.get("model"),
+            record.get("name", record["slug"]),
+        )
 
     def _make_conversation_name(self, prompt_name: str) -> str:
-        """Build conversation name from the prompt name. Module enrichment is a Layer 2 hook concern."""
+        """Build conversation name from the prompt name.
+
+        Module enrichment is a Layer 2 hook concern.
+        """
         return prompt_name
 
     def _render_instructions(
@@ -174,7 +184,9 @@ class ConversationService:
         Transaction boundary: all operations commit atomically.
         Returns: (conversation_id, assistant_message, model, ttfb_ms, total_ms)
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(
+            prompt_slug
+        )
         instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
 
@@ -187,7 +199,9 @@ class ConversationService:
             base_name = self._make_conversation_name(prompt_name)
             count = uow.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug)
+            uow.repo.create_conversation_with_id(
+                cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug
+            )
             for msg in messages:
                 uow.repo.append_message(cid_str, msg["role"], msg["content"])
 
@@ -200,10 +214,20 @@ class ConversationService:
                 return cid_str, friendly, resolved_model, 0, 0
 
             # Call LLM with resolved model
-            conversation_id, assistant_message, model, ttfb_ms, total_ms, input_tokens, output_tokens = chat(
+            (
+                conversation_id,
+                assistant_message,
+                model,
+                ttfb_ms,
+                total_ms,
+                input_tokens,
+                output_tokens,
+            ) = chat(
                 messages=messages,
                 instructions=instructions,
-                llm_complete=lambda instr, msgs: self._llm.complete(instr, msgs, model=resolved_model),
+                llm_complete=lambda instr, msgs: self._llm.complete(
+                    instr, msgs, model=resolved_model
+                ),
                 conversation_id=conv_id,
             )
 
@@ -255,8 +279,12 @@ class ConversationService:
             self._guard_not_ended(uow, conversation_id)
 
             used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
-                uow, conversation_id, prompt_slug, model_slug,
-                history=history, pending_messages=messages,
+                uow,
+                conversation_id,
+                prompt_slug,
+                model_slug,
+                history=history,
+                pending_messages=messages,
             )
 
             # Persist user messages for this turn
@@ -283,17 +311,19 @@ class ConversationService:
                 return conversation_id, friendly, resolved_model, 0, 0
 
             # Call LLM with trimmed history and resolved model
-            conv_id, assistant_message, model, ttfb_ms, total_ms, input_tokens, output_tokens = chat(
-                messages=combined_messages,
-                instructions=instructions,
-                llm_complete=lambda instr, msgs: self._llm.complete(instr, msgs, model=resolved_model),
-                conversation_id=conversation_id,
+            conv_id, assistant_message, model, ttfb_ms, total_ms, input_tokens, output_tokens = (
+                chat(
+                    messages=combined_messages,
+                    instructions=instructions,
+                    llm_complete=lambda instr, msgs: self._llm.complete(
+                        instr, msgs, model=resolved_model
+                    ),
+                    conversation_id=conversation_id,
+                )
             )
 
             # Persist assistant message and run metadata
-            assistant_message_id = uow.repo.append_message(
-                conv_id, "assistant", assistant_message
-            )
+            assistant_message_id = uow.repo.append_message(conv_id, "assistant", assistant_message)
             uow.repo.record_run(
                 conversation_id=conv_id,
                 assistant_message_id=assistant_message_id,
@@ -324,7 +354,9 @@ class ConversationService:
 
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(
+            prompt_slug
+        )
         instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
         conv_id = ConversationId.generate()
@@ -337,7 +369,9 @@ class ConversationService:
             base_name = self._make_conversation_name(prompt_name)
             count = uow_setup.repo.count_conversations_named(base_name)
             name = base_name if count == 0 else f"{base_name} ({count + 1})"
-            uow_setup.repo.create_conversation_with_id(cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug)
+            uow_setup.repo.create_conversation_with_id(
+                cid_str, name=name, user_id=self._user_id, prompt_slug=used_prompt_slug
+            )
             for msg in messages:
                 uow_setup.repo.append_message(cid_str, msg["role"], msg["content"])
             self._enforce_usage_cap(uow_setup, cid_str)
@@ -372,7 +406,9 @@ class ConversationService:
 
         Returns: (conversation_id, event_iterator, used_prompt_slug, resolved_model, uow)
         """
-        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(prompt_slug)
+        used_prompt_slug, instructions, prompt_model, prompt_name = self._resolve_prompt(
+            prompt_slug
+        )
         instructions = self._render_instructions(instructions)
         resolved_model = self._resolve_model(model_slug, prompt_model)
         conv_id = ConversationId.generate()
@@ -437,8 +473,12 @@ class ConversationService:
             self._guard_not_ended(uow_setup, conversation_id)
 
             used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
-                uow_setup, conversation_id, prompt_slug, model_slug,
-                history=history, pending_messages=messages,
+                uow_setup,
+                conversation_id,
+                prompt_slug,
+                model_slug,
+                history=history,
+                pending_messages=messages,
             )
 
             for msg in messages:
@@ -499,7 +539,10 @@ class ConversationService:
             # imprecision for this rare edit path (rewind is not part of the setup
             # UI flow); worst case is one turn's phase misjudged.
             used_prompt_slug, instructions, resolved_model = self._resolve_effective_prompt(
-                uow_setup, conversation_id, prompt_slug, model_slug,
+                uow_setup,
+                conversation_id,
+                prompt_slug,
+                model_slug,
                 history=history,
                 pending_messages=[{"role": "user", "content": new_content}],
             )

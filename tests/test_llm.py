@@ -117,9 +117,7 @@ def _make_adapter_with_exception(exc: Exception) -> OpenAILLMAdapter:
         ),
     ],
 )
-def test_adapter_maps_openai_errors_to_http_exception(
-    exc: Exception, expected_status: int
-) -> None:
+def test_adapter_maps_openai_errors_to_http_exception(exc: Exception, expected_status: int) -> None:
     adapter = _make_adapter_with_exception(exc)
     with pytest.raises(HTTPException) as ctx:
         adapter.complete("instructions", [{"role": "user", "content": "hi"}])

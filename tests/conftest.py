@@ -41,16 +41,25 @@ class FakeLLM:
         self, instructions: str, messages: list[dict[str, str]], model: Optional[str] = None
     ) -> LLMResult:
         return LLMResult(
-            text="", model=model or "fake", ttfb_ms=0, total_ms=0,
-            input_tokens=0, output_tokens=0,
+            text="",
+            model=model or "fake",
+            ttfb_ms=0,
+            total_ms=0,
+            input_tokens=0,
+            output_tokens=0,
         )
 
     def stream(
         self, instructions: str, messages: list[dict[str, str]], model: Optional[str] = None
     ) -> Iterable[StreamEvent]:
         yield StreamEvent(
-            type="final", text="", model=model or "fake", ttfb_ms=0, total_ms=0,
-            input_tokens=0, output_tokens=0,
+            type="final",
+            text="",
+            model=model or "fake",
+            ttfb_ms=0,
+            total_ms=0,
+            input_tokens=0,
+            output_tokens=0,
         )
 
 
@@ -66,8 +75,9 @@ def _no_real_llm_in_tests():
         yield
 
 
-from app.api.routes import require_consent
-from app.main import app
+# Imported after the env defaults above, so they are set before any app module loads.
+from app.api.routes import require_consent  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -92,6 +102,7 @@ def reset_conversations():
     yield
     try:
         from app.infra.persistence.db import get_engine
+
         engine = get_engine()
         with engine.connect() as conn:
             conn.execute(text("DELETE FROM runs"))

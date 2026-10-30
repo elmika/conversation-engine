@@ -16,13 +16,20 @@ from app.learning.lesson_flow import (
 class TestResolvePhasePrompt:
     def test_intro_resolves_to_init_prompt(self):
         # The flow id is also the intro prompt slug.
-        assert resolve_phase_prompt("course-session-init", LessonPhase.INTRO) == "course-session-init"
+        assert (
+            resolve_phase_prompt("course-session-init", LessonPhase.INTRO) == "course-session-init"
+        )
 
     def test_core_resolves_to_core_prompt(self):
-        assert resolve_phase_prompt("course-session-init", LessonPhase.CORE) == "course-session-core"
+        assert (
+            resolve_phase_prompt("course-session-init", LessonPhase.CORE) == "course-session-core"
+        )
 
     def test_closure_resolves_to_closure_prompt(self):
-        assert resolve_phase_prompt("course-session-init", LessonPhase.CLOSURE) == "course-session-closure"
+        assert (
+            resolve_phase_prompt("course-session-init", LessonPhase.CLOSURE)
+            == "course-session-closure"
+        )
 
     @pytest.mark.parametrize("phase", list(LessonPhase))
     def test_flat_prompt_resolves_every_phase_to_itself(self, phase):

@@ -14,7 +14,7 @@ from app.infra.persistence.repo_sqlalchemy import SQLAlchemyConversationRepo
 class SQLAlchemyUnitOfWork(UnitOfWork):
     """
     SQLAlchemy implementation of Unit of Work pattern.
-    
+
     Manages the session lifecycle and transaction boundaries.
     The repository does NOT commit; only the UoW commits or rolls back.
     """
@@ -43,7 +43,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
     ) -> None:
         """
         Exit context manager.
-        
+
         Automatically rollback on exception, otherwise do nothing.
         The caller must explicitly call commit() if they want to persist changes.
         """

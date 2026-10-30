@@ -22,7 +22,9 @@ _PROMPTS = {
 
 
 def _make_llm_result(text: str = "Reply", model: str = "gpt-4.1") -> LLMResult:
-    return LLMResult(text=text, model=model, ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0)
+    return LLMResult(
+        text=text, model=model, ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0
+    )
 
 
 @pytest.fixture

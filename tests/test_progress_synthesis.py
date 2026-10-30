@@ -33,8 +33,12 @@ class RecordingLLM:
     def complete(self, instructions, messages, model=None) -> LLMResult:
         self.calls.append((instructions, messages, model))
         return LLMResult(
-            text=self.text, model=model or "fake", ttfb_ms=0, total_ms=0,
-            input_tokens=0, output_tokens=0,
+            text=self.text,
+            model=model or "fake",
+            ttfb_ms=0,
+            total_ms=0,
+            input_tokens=0,
+            output_tokens=0,
         )
 
 
@@ -49,13 +53,15 @@ class FakeSlotResolver:
 
 
 def test_writes_new_progress_when_prompt_is_registered(tmp_path: Path) -> None:
-    prompt_repo = FakePromptRepo({
-        "progress-wrap-up": {
-            "slug": "progress-wrap-up",
-            "system_prompt": "Update the progress: {{progress}}",
-            "model": "gpt-5.6-luna",
-        },
-    })
+    prompt_repo = FakePromptRepo(
+        {
+            "progress-wrap-up": {
+                "slug": "progress-wrap-up",
+                "system_prompt": "Update the progress: {{progress}}",
+                "model": "gpt-5.6-luna",
+            },
+        }
+    )
     llm = RecordingLLM("## Progress - Current state\nNext, we'll move on to Module 2.")
     sections_dir = str(tmp_path)
     (tmp_path / "progress").mkdir()
@@ -80,17 +86,23 @@ def test_writes_new_progress_when_prompt_is_registered(tmp_path: Path) -> None:
 
 
 def test_archives_previous_version_before_overwriting(tmp_path: Path) -> None:
-    prompt_repo = FakePromptRepo({
-        "progress-wrap-up": {"slug": "progress-wrap-up", "system_prompt": "go", "model": None},
-    })
+    prompt_repo = FakePromptRepo(
+        {
+            "progress-wrap-up": {"slug": "progress-wrap-up", "system_prompt": "go", "model": None},
+        }
+    )
     llm = RecordingLLM("new progress content")
     (tmp_path / "progress").mkdir()
     (tmp_path / "progress" / "user-1.md").write_text("original", encoding="utf-8")
 
     synthesise_progress(
-        messages=[], slot_resolver=FakeSlotResolver("original"), llm=llm,
-        prompt_repo=prompt_repo, sections_dir=str(tmp_path),
-        wrap_up_model="gpt-5.6-luna", user_id="user-1",
+        messages=[],
+        slot_resolver=FakeSlotResolver("original"),
+        llm=llm,
+        prompt_repo=prompt_repo,
+        sections_dir=str(tmp_path),
+        wrap_up_model="gpt-5.6-luna",
+        user_id="user-1",
     )
 
     archived = list((tmp_path / "progress").glob("user-1-*.md"))
@@ -110,9 +122,13 @@ def test_missing_prompt_leaves_progress_file_unchanged(tmp_path: Path) -> None:
     (tmp_path / "progress" / "user-1.md").write_text("seeded placeholder", encoding="utf-8")
 
     synthesise_progress(
-        messages=[], slot_resolver=FakeSlotResolver("seeded placeholder"), llm=llm,
-        prompt_repo=prompt_repo, sections_dir=str(tmp_path),
-        wrap_up_model="gpt-5.6-luna", user_id="user-1",
+        messages=[],
+        slot_resolver=FakeSlotResolver("seeded placeholder"),
+        llm=llm,
+        prompt_repo=prompt_repo,
+        sections_dir=str(tmp_path),
+        wrap_up_model="gpt-5.6-luna",
+        user_id="user-1",
     )
 
     assert llm.calls == []

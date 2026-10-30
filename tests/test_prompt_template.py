@@ -2,7 +2,12 @@
 
 import pytest
 
-from app.domain.prompt_template import PromptTemplateError, render_prompt, resolve_file_sections, validate_template
+from app.domain.prompt_template import (
+    PromptTemplateError,
+    render_prompt,
+    resolve_file_sections,
+    validate_template,
+)
 
 CONTEXT = {
     "time:current": "2026-03-26 21:42 UTC",
@@ -12,6 +17,7 @@ CONTEXT = {
 
 
 # --- validate_template ---
+
 
 def test_validate_no_tags():
     validate_template("You are a helpful assistant.")
@@ -64,6 +70,7 @@ def test_validate_valid_and_invalid_raises():
 
 # --- render_prompt ---
 
+
 def test_render_no_tags():
     result = render_prompt("Hello world.", CONTEXT)
     assert result == "Hello world."
@@ -80,9 +87,7 @@ def test_render_conversation_start():
 
 
 def test_render_multiple_tags():
-    result = render_prompt(
-        "Now: {{time:current}}, start: {{time:conversation-start}}.", CONTEXT
-    )
+    result = render_prompt("Now: {{time:current}}, start: {{time:conversation-start}}.", CONTEXT)
     assert result == "Now: 2026-03-26 21:42 UTC, start: 2026-03-26 10:00 UTC."
 
 
@@ -126,17 +131,23 @@ def test_validate_lesson_time_spent():
 
 def test_render_all_three_time_tags():
     result = render_prompt(
-        "Start: {{time:conversation-start}}. Now: {{time:current}}. Spent: {{time:lesson-time-spent}}.",
+        "Start: {{time:conversation-start}}. Now: {{time:current}}. "
+        "Spent: {{time:lesson-time-spent}}.",
         CONTEXT,
     )
-    assert result == "Start: 2026-03-26 10:00 UTC. Now: 2026-03-26 21:42 UTC. Spent: 5 minutes 30 seconds."
+    assert (
+        result
+        == "Start: 2026-03-26 10:00 UTC. Now: 2026-03-26 21:42 UTC. Spent: 5 minutes 30 seconds."
+    )
 
 
 # --- resolve_file_sections ---
 
+
 def _make_loader(files: dict) -> object:
     def loader(tag: str):
         return files.get(tag)
+
     return loader
 
 

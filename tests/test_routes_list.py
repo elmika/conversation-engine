@@ -11,7 +11,9 @@ from tests.conftest import TEST_USER
 
 
 def _make_llm_result(text: str = "Reply") -> LLMResult:
-    return LLMResult(text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0)
+    return LLMResult(
+        text=text, model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0
+    )
 
 
 @pytest.fixture
@@ -49,7 +51,9 @@ def test_list_conversations_response_shape(client) -> None:
     assert data["page"] == 1
     assert data["page_size"] == 20
     assert isinstance(data["conversations"], list)
-    assert data["total"] == len(data["conversations"])  # default page_size >= conversations in test DB
+    assert data["total"] == len(
+        data["conversations"]
+    )  # default page_size >= conversations in test DB
 
 
 def test_list_conversations_returns_created(client) -> None:
@@ -70,9 +74,10 @@ def test_list_conversations_returns_created(client) -> None:
 
 def test_list_conversations_pagination(client) -> None:
     """Verify page_size limits results and page/page_size fields are echoed back."""
+    from sqlalchemy import text
+
     from app.api import routes as api_routes
     from app.infra.persistence.db import get_engine
-    from sqlalchemy import text
 
     mock_llm = main_app.dependency_overrides.get(api_routes.get_llm)
     if mock_llm:
@@ -149,9 +154,7 @@ def test_other_user_cannot_read_messages(client) -> None:
 def test_other_user_cannot_rename(client) -> None:
     """Renaming another user's conversation returns 404 and does not change the name."""
     cid = _create_conversation(client)
-    r = client.patch(
-        f"/u/{OTHER_USER}/conversations/{cid}", json={"name": "hijacked"}
-    )
+    r = client.patch(f"/u/{OTHER_USER}/conversations/{cid}", json={"name": "hijacked"})
     assert r.status_code == 404
     # Owner still sees the conversation (rename did not apply).
     owner = client.get(f"/u/{TEST_USER}/conversations?page_size=100").json()

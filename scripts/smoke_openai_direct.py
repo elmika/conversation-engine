@@ -71,7 +71,7 @@ def main() -> int:
     try:
         from openai import OpenAI
     except ImportError:
-        print("The `openai` package is not installed locally. Run: pip install \"openai>=1.0\"")
+        print('The `openai` package is not installed locally. Run: pip install "openai>=1.0"')
         return 2
 
     client = OpenAI(api_key=api_key)

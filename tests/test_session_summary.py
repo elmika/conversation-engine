@@ -207,4 +207,7 @@ def test_module_titles_keep_markdown_bold_for_frontend_rendering(tmp_path) -> No
     resolver = _resolver(tmp_path, course=course)
     summary = build_session_summary(resolver)
 
-    assert summary["modules"][0]["title"] == "**Pandas for a Backend Engineer** — Build a practical mental model"
+    assert (
+        summary["modules"][0]["title"]
+        == "**Pandas for a Backend Engineer** — Build a practical mental model"
+    )

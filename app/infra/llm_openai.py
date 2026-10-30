@@ -8,8 +8,8 @@ from typing import Any
 from fastapi import HTTPException, status
 from openai import (
     APIConnectionError,
-    APITimeoutError,
     APIError,
+    APITimeoutError,
     InternalServerError,
     OpenAI,
     RateLimitError,
@@ -146,11 +146,11 @@ class OpenAILLMAdapter:
                         )
                         time.sleep(delay)
                     else:
-                        raise _map_openai_error(exc)
+                        raise _map_openai_error(exc) from exc
         except APIError as exc:
             # Non-retryable OpenAI API errors (e.g. BadRequestError) should be
             # mapped to HTTP errors rather than bubbling up as 500s.
-            raise _map_openai_error(exc)
+            raise _map_openai_error(exc) from exc
         # Should never be reached, but keep mypy happy.
         raise _map_openai_error(last_exc or Exception("Unknown OpenAI error"))
 
@@ -190,11 +190,11 @@ class OpenAILLMAdapter:
                         )
                         time.sleep(delay)
                     else:
-                        raise _map_openai_error(exc)
+                        raise _map_openai_error(exc) from exc
         except APIError as exc:
             # Non-retryable OpenAI API errors during streaming should also be
             # mapped consistently to HTTP errors.
-            raise _map_openai_error(exc)
+            raise _map_openai_error(exc) from exc
         # Should never be reached, but keep mypy happy.
         raise _map_openai_error(last_exc or Exception("Unknown OpenAI error"))
 

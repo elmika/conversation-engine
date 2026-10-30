@@ -12,7 +12,6 @@ import logging
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from app.application.ports import LLMPort, PromptRepo, SlotResolver
 from app.domain.prompt_template import resolve_file_sections

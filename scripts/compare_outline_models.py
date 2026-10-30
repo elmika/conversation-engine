@@ -248,13 +248,16 @@ def run_profile(base: str, db: str, profile: dict, model: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Compare candidate models on course-outline-proposal.")
     ap.add_argument("--base-url", default="http://localhost:8000")
-    ap.add_argument("--models", default=",".join(DEFAULT_MODELS), help="comma-separated model_slugs")
+    ap.add_argument(
+        "--models", default=",".join(DEFAULT_MODELS), help="comma-separated model_slugs"
+    )
     ap.add_argument(
         "--profiles", default=None, help="comma-separated profile labels to run (default: all)"
     )
     ap.add_argument("--db", default="data/chat.db", help="path to the SQLite DB (host side)")
     ap.add_argument(
-        "--refresh", action="store_true",
+        "--refresh",
+        action="store_true",
         help="re-run even when a matching record exists, and append the newer record",
     )
     ap.add_argument(
@@ -263,8 +266,10 @@ def main() -> int:
     ap.add_argument("--label", default=None, help='tag recorded runs, e.g. "Test 8"')
     args = ap.parse_args()
     if not ADMIN_TOKEN:
-        print("No ADMIN_TOKEN found (checked env and .env). This script drives the admin-only "
-              "/admin/u/{user_id}/... routes and will fail with 401 without it.")
+        print(
+            "No ADMIN_TOKEN found (checked env and .env). This script drives the admin-only "
+            "/admin/u/{user_id}/... routes and will fail with 401 without it."
+        )
         return 2
     models = [m.strip() for m in args.models.split(",") if m.strip()]
     if args.profiles:
@@ -292,30 +297,41 @@ def main() -> int:
         for model in models:
             print(f"\n--- {model} ---")
             key = log.make_key(
-                target=TARGET, profile_answers=profile["answers"], model=model,
+                target=TARGET,
+                profile_answers=profile["answers"],
+                model=model,
                 prompts=prompt_texts,
             )
             record = None if (args.no_record or args.refresh) else log.latest(key)
             if record is not None:
                 result = record["result"]
                 reused += 1
-                print(f"  (recorded {record['recorded_at']}" + (
-                    f", {record['label']})" if record.get("label") else ")"
-                ))
+                print(
+                    f"  (recorded {record['recorded_at']}"
+                    + (f", {record['label']})" if record.get("label") else ")")
+                )
             else:
                 result = run_profile(args.base_url, args.db, profile, model)
                 served_by = result.pop("turn_models", None)
                 live += 1
                 if "error" not in result and not args.no_record:
                     log.append(
-                        key=key, target=TARGET, profile=profile["label"], model=model,
-                        prompts=prompt_texts, result=result, turn_models=served_by,
+                        key=key,
+                        target=TARGET,
+                        profile=profile["label"],
+                        model=model,
+                        prompts=prompt_texts,
+                        result=result,
+                        turn_models=served_by,
                         label=args.label,
                     )
             if "error" in result:
                 print(f"  ERROR: {result['error']}")
                 continue
-            print(f"  ttfb={result['ttfb_ms']}ms total={result['total_ms']}ms wall={result['wall_s']}s")
+            print(
+                f"  ttfb={result['ttfb_ms']}ms total={result['total_ms']}ms"
+                f" wall={result['wall_s']}s"
+            )
             print(f"  {result['outline']}\n")
 
     print("=" * 100)

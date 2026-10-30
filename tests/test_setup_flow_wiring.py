@@ -33,23 +33,56 @@ from tests.conftest import ADMIN_HEADERS, TEST_USER
 def mock_llm():
     mock = MagicMock()
     mock.complete.side_effect = [
-        LLMResult(text="welcome, what's your name?", model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0),
-        LLMResult(text="and your industry?", model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0),
-        LLMResult(text="what's your motivation?", model="gpt-4.1", ttfb_ms=10, total_ms=50, input_tokens=0, output_tokens=0),
+        LLMResult(
+            text="welcome, what's your name?",
+            model="gpt-4.1",
+            ttfb_ms=10,
+            total_ms=50,
+            input_tokens=0,
+            output_tokens=0,
+        ),
+        LLMResult(
+            text="and your industry?",
+            model="gpt-4.1",
+            ttfb_ms=10,
+            total_ms=50,
+            input_tokens=0,
+            output_tokens=0,
+        ),
+        LLMResult(
+            text="what's your motivation?",
+            model="gpt-4.1",
+            ttfb_ms=10,
+            total_ms=50,
+            input_tokens=0,
+            output_tokens=0,
+        ),
         # The turn that crosses the framing threshold (call 4 below) is checked
         # synchronously first — see LearningFlowOrchestrator.resolve_effective_prompt
         # — via a cheap-model YES/NO classifier call before the real turn runs.
         LLMResult(
-            text="YES", model="gpt-5.4-nano", ttfb_ms=5, total_ms=20,
-            input_tokens=0, output_tokens=0,
+            text="YES",
+            model="gpt-5.4-nano",
+            ttfb_ms=5,
+            total_ms=20,
+            input_tokens=0,
+            output_tokens=0,
         ),
         LLMResult(
-            text="here's your course outline...", model="gpt-5.6-luna", ttfb_ms=10, total_ms=50,
-            input_tokens=0, output_tokens=0,
+            text="here's your course outline...",
+            model="gpt-5.6-luna",
+            ttfb_ms=10,
+            total_ms=50,
+            input_tokens=0,
+            output_tokens=0,
         ),
         LLMResult(
-            text="sure, here's the revised outline...", model="gpt-5.6-luna", ttfb_ms=10, total_ms=50,
-            input_tokens=0, output_tokens=0,
+            text="sure, here's the revised outline...",
+            model="gpt-5.6-luna",
+            ttfb_ms=10,
+            total_ms=50,
+            input_tokens=0,
+            output_tokens=0,
         ),
     ]
     return mock
@@ -65,9 +98,7 @@ def client(mock_llm):
     main_app.dependency_overrides.clear()
 
 
-def test_framing_turns_use_profile_prompt_then_switches_to_outline_prompt(
-    client, mock_llm
-) -> None:
+def test_framing_turns_use_profile_prompt_then_switches_to_outline_prompt(client, mock_llm) -> None:
     # Call 1 (index 0): opens the flow. Persists "start" as user turn #1 in this
     # harness (see module docstring) — always FRAMING regardless of counting,
     # since create_and_chat resolves the prompt directly from prompt_slug.

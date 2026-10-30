@@ -17,7 +17,9 @@ def _make_llm_result(
     ttfb_ms: int = 50,
     total_ms: int = 100,
 ) -> LLMResult:
-    return LLMResult(text=text, model=model, ttfb_ms=ttfb_ms, total_ms=total_ms, input_tokens=0, output_tokens=0)
+    return LLMResult(
+        text=text, model=model, ttfb_ms=ttfb_ms, total_ms=total_ms, input_tokens=0, output_tokens=0
+    )
 
 
 @pytest.fixture
@@ -178,7 +180,10 @@ def client_with_bad_request_error_on_append():
             response=MagicMock(),
             body={
                 "error": {
-                    "message": "Invalid value: 'input_text'. Supported values are: 'output_text' and 'refusal'.",
+                    "message": (
+                        "Invalid value: 'input_text'. "
+                        "Supported values are: 'output_text' and 'refusal'."
+                    ),
                     "type": "invalid_request_error",
                     "param": "input[1].content[0]",
                     "code": "invalid_value",
