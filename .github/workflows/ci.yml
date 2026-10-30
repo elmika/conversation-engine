@@ -1,4 +1,5 @@
 # CI: lint + tests for backend and frontend on every push.
+# Checks after install run even if an earlier one fails, so every failure shows at once.
 # Runs Python/Node directly on the runner (no Docker), with versions pinned to match
 # Dockerfile (python:3.11-slim) and frontend/Dockerfile (node:22). No secrets needed:
 # backend tests use in-memory SQLite and a fake LLM (tests/conftest.py).
@@ -32,6 +33,7 @@ jobs:
 
       # Same install as the Dockerfile's builder stage.
       - name: Install dependencies
+        id: install
         run: |
           pip install -r requirements.txt pytest pytest-asyncio ruff
           pip install -e . --no-deps
@@ -41,6 +43,7 @@ jobs:
 
       # Includes tests/test_architecture.py (the `make check-layers` layer rules).
       - name: Pytest
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: python -m pytest
 
   frontend:
@@ -65,15 +68,18 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
+        id: install
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm exec tsc --noEmit
 
       - name: Vitest
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm test
 
       - name: Build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm build
         env:
           NEXT_TELEMETRY_DISABLED: "1"

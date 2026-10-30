@@ -105,7 +105,6 @@ describe("useStreamingChat", () => {
     act(() => {
       result.current.sendMessage({
         messages: [{ role: "user", content: "Hi" }],
-        prompt_slug: "default",
       });
     });
 
