@@ -633,9 +633,12 @@ paths:
       operationId: getSessionSummary
       summary: Get session summary
       description: |
-        Returns the session summary (course name, modules, next step) for an ended
-        conversation. Returns 404 if not found / not owned, or 409 if the conversation
-        has not ended yet.
+        Returns the session summary (course name, modules, next step) saved when this
+        conversation ended. It's a snapshot of that moment, not rebuilt from the learner's
+        current course/progress, so a past session keeps showing its own state.
+        Returns 404 if not found / not owned, or if no summary was saved for it (a setup
+        conversation, or one ended before summaries were saved per session), and 409 if
+        the conversation has not ended yet.
       tags: [conversations]
       parameters:
         - $ref: "#/components/parameters/userId"

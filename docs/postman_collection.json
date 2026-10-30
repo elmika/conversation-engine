@@ -793,7 +793,7 @@
                 "summary"
               ]
             },
-            "description": "Returns the session summary for an ended conversation. Returns 404 if not found/owned, or 409 if the conversation has not ended."
+            "description": "Returns the session summary saved when this conversation ended (a snapshot, not rebuilt from the learner's current course/progress). Returns 404 if not found/owned or if no summary was saved for it (setup conversations, or ones ended before per-session summaries), and 409 if the conversation has not ended."
           },
           "response": [
             {
@@ -821,6 +821,19 @@
               ],
               "_postman_previewlanguage": "json",
               "body": "{\n  \"detail\": \"Conversation has not ended\"\n}"
+            },
+            {
+              "name": "404 Not Found — no summary saved",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"detail\": \"No summary was saved for this conversation\"\n}"
             }
           ]
         },
