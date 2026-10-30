@@ -39,6 +39,7 @@ import sqlite3
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -63,6 +64,10 @@ ADMIN_TOKEN = _load_admin_token()
 
 
 def _req(method: str, url: str, body: dict | None = None, timeout: int = 90) -> str:
+    # --base-url comes from the command line and requests carry the admin token: refuse anything
+    # that isn't plain HTTP(S) (file://, ftp://, a typo'd scheme) rather than let urllib open it.
+    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+        raise ValueError(f"Refusing non-HTTP(S) URL: {url!r}")
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:

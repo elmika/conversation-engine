@@ -31,10 +31,25 @@ PROMPTS_DIR = REPO_ROOT / "prompts"
 
 _MODEL_LINE_RE = re.compile(r"^model:\s*.*$", re.MULTILINE)
 _NAME_LINE_RE = re.compile(r"^name:\s*.*$", re.MULTILINE)
+_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9._-]*")
+
+
+def _file_in(directory: Path, name: str, suffix: str) -> Path:
+    """Return directory/<name><suffix>, refusing names that could escape `directory`.
+
+    Preset names come from the command line and prompt slugs from the preset's JSON, and this
+    script writes files: a name like `../../app/main` must not reach outside the directory.
+    """
+    if not _SLUG_RE.fullmatch(name):
+        raise SystemExit(f"Invalid name {name!r}: expected a slug like 'course-session-core'.")
+    path = (directory / f"{name}{suffix}").resolve()
+    if path.parent != directory.resolve():
+        raise SystemExit(f"Refusing {name!r}: resolves outside {directory}.")
+    return path
 
 
 def load_preset(name: str, presets_dir: Path) -> dict:
-    path = presets_dir / f"{name}.json"
+    path = _file_in(presets_dir, name, ".json")
     if not path.exists():
         available = sorted(p.stem for p in presets_dir.glob("*.json"))
         raise SystemExit(
@@ -120,7 +135,7 @@ def main() -> int:
         print(f"  {preset['description']}\n")
 
     for slug, model in preset.get("prompts", {}).items():
-        print(apply_model_to_prompt(prompts_dir / f"{slug}.md", model, args.dry_run))
+        print(apply_model_to_prompt(_file_in(prompts_dir, slug, ".md"), model, args.dry_run))
 
     settings = preset.get("settings", {})
     if settings:
