@@ -335,6 +335,75 @@ first step. Ties to the accountability / "reason to come back" thread in the vau
 
 ---
 
+## From: planning, 2026-10-30
+
+### 17. Accounts: optional login on top of the open profile (priority: high, needs design) — 🔴 Open
+
+Deferred long enough. Today a learner *is* a UUID: generated in the browser, kept in `localStorage`
+(`frontend/lib/user-id.ts`) and carried in the URL (`/u/{uuid}/...`). There is no login, and the
+UUID is the only credential. Whoever holds the link owns the profile. Clearing storage or switching
+devices loses it (the item 7 failure mode).
+
+**Goal:** offer a real account (profile + login) while keeping the no-signup experience open. A
+learner starts anonymously exactly as today and can *claim* that profile later.
+
+**Flows to get right:**
+- **Anonymous → account (claim).** Signing up while holding a UUID attaches that UUID's data
+  (sections, conversations, progress) to the new account. No data moves; the account just gains a
+  mapping to the existing `user_id`. This has to work from any point: mid-setup, after the outline,
+  between sessions.
+- **Log in on a new device.** Gets the account's profile back, instead of minting a fresh UUID.
+- **Log in while holding a different anonymous UUID.** This is the merge case below. Never silently
+  discard the anonymous profile.
+- **After a claim, the bare UUID link must stop granting access.** Otherwise a shared or leaked
+  link still opens the account. Claimed profiles require a session; unclaimed ones keep working as
+  today.
+
+**Merging two profiles: what we accept, what we don't (proposed, to confirm):**
+- ✅ Anonymous profile with **no course yet** (setup unfinished) + account: drop or archive the
+  anonymous one, keep the account's.
+- ✅ Account with no course + anonymous profile **with** a course: the course moves to the account
+  (same as a claim).
+- ⚠️ **Both have a course:** one `user_id` holds exactly one `sections/course/<id>.md` and one
+  progress file today, so these can't be merged into one course. The learner picks which course stays
+  active. The other's conversations stay readable as history. No automatic merge of `progress`
+  (it's LLM-synthesised prose, not mergeable data). Multi-course per account is its own feature.
+- ❌ Merging two **formal accounts**: out of scope. ❌ Claiming a profile that another account has
+  already claimed: rejected.
+
+**Constraints and open questions:**
+- Keep `user_id` an opaque, PII-free string at L1a (an existing design decision). Email and login
+  live in a separate accounts table at L2 or above that maps account → `user_id`(s).
+- An email address is new personal data. Update the consent screen and `docs/features.md`, and
+  revisit the deferred GDPR items (deletion, export), since an account makes them askable.
+- Auth method: email magic link vs. OAuth (Google) vs. passkeys. Prefer a library in the Next.js
+  BFF over building our own. Decide before building.
+- Item 13 (separate admin from learner identity) likely rides on the same auth layer. Design them
+  together.
+- **Smallest first version:** magic-link login + anonymous → account claim + login on a new device.
+  Merge comes later, with the "both have a course" case handled as "pick one".
+
+### 18. CI on GitHub Actions, free tier (priority: medium) — 🔴 Open
+
+Nothing runs on push today (see the Infra & ops backlog below). The repo is public on GitHub, so
+Actions minutes on standard hosted runners are free and unlimited. No new service or account needed.
+
+**Steps:**
+1. **Backend job:** `make lint` (ruff), `make check-layers`, and the pytest suite. Tests already
+   run on `sqlite:///:memory:` with a fake LLM, so no secrets are needed.
+2. **Frontend job:** `pnpm install` (cached), typecheck/lint, and Vitest.
+3. Run both on every push and PR to `main`. Add a status badge, and make the checks required for
+   merging into `main` (branch protection).
+4. **Later:** add Playwright Tier 1 (the E2E track below) as a third job once it exists. Tier 2 (real
+   model, real key) runs as a manual/nightly workflow with the key in Actions secrets.
+5. **Not in scope: CD.** Deploys stay a manual `fly deploy`: prod is offline by choice, and the
+   deploy is a deliberate decision. Revisit a deploy-on-tag workflow when prod comes back.
+
+Keep the jobs runnable without Docker-in-Docker where possible: run Python/Node directly on the
+runner, with versions pinned to match the Dockerfiles, so CI stays fast.
+
+---
+
 ## Not yet triaged
 
 - **Audit SkillForge's agent harness against the 8-component framework (surfaced 2026-09-22,
@@ -623,7 +692,7 @@ still genuinely open. File deleted, content folded in here so it stays visible.
 
 **Deployment & operability — the biggest gaps, nothing here today:**
 - No deployment pipeline: no CI/CD, no automated tests on push, no staging environment. Everything
-  runs locally.
+  runs locally. CI is now planned as item 18.
 - No dedicated monitoring/metrics (e.g. Prometheus, tracing/APM). Only structured request logs
   (`request_id`, endpoint, status, latency) exist — fine for reasoning about one request after the
   fact, not for noticing degradation before a learner reports it.
