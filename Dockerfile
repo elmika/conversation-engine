@@ -31,6 +31,8 @@ RUN uv sync --locked --no-build --no-cache
 COPY app/ app/
 COPY tests/ tests/
 COPY prompts/ prompts/
+# tests/test_script_guards.py imports from scripts/ (builder/runner only, not prod).
+COPY scripts/ scripts/
 
 # ---- Prod (optional): runtime deps only, smaller image ----
 FROM base AS prod
