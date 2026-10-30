@@ -16,11 +16,13 @@ dependencies = [
     "httpx>=0.28.0",
 ]
 
-[project.optional-dependencies]
+# Exact versions of everything (dev group included) are locked in uv.lock: change dependencies
+# with `uv add` / `uv remove`, or edit here and run `uv lock`. CI fails if uv.lock is out of date.
+[dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24.0",
-    "ruff==0.17.3",  # keep in sync with Dockerfile and .github/workflows/ci.yml
+    "ruff==0.17.3",
 ]
 
 [tool.setuptools]

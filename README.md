@@ -71,15 +71,17 @@ Test gate: fix any failing tests before considering a change complete.
 
 ## Run locally (optional)
 
-If you have Python and pip:
+With [uv](https://docs.astral.sh/uv/) installed (it fetches a matching Python if needed):
 
 ```bash
 cp .env.example .env   # then set OPENAI_API_KEY in .env
-pip install -e ".[dev]"
-uvicorn app.main:app --reload
+uv sync                # exact versions from uv.lock, dev tools included
+uv run uvicorn app.main:app --reload
 ```
 
-Tests: `pytest` or `pytest -v`.
+Tests: `uv run pytest`. Change dependencies with `uv add <pkg>` / `uv remove <pkg>`, which update
+`pyproject.toml` and `uv.lock` together. Commit both: Docker and CI install with `--locked` and fail
+if `uv.lock` is out of date.
 
 ## Light load testing & TTFB
 

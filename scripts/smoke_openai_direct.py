@@ -15,7 +15,7 @@ This bypasses Docker and the app entirely, so it needs:
   - `OPENAI_API_KEY` in your *local* shell env (not `.env`/Docker) -- e.g.
     `export OPENAI_API_KEY=sk-...` before running.
   - the `openai` package installed locally: `pip install "openai>=1.0"`
-    (matches requirements.txt's pin; not installed in your host Python by
+    (matches pyproject.toml's pin; not installed in your host Python by
     default since everything else in this repo runs in Docker).
 
 Makes one real, small OpenAI API call (small cost). Run by hand right before

@@ -31,7 +31,7 @@ make up
 # UI   → http://localhost:3000
 ```
 
-Both `app/` and `prompts/` are volume-mounted and uvicorn runs with `--reload`, so backend changes take effect immediately without a rebuild. A rebuild (`make build`) is only needed when dependencies change (`requirements.txt`) or the Dockerfile itself changes.
+Both `app/` and `prompts/` are volume-mounted and uvicorn runs with `--reload`, so backend changes take effect immediately without a rebuild. A rebuild (`make build`) is only needed when dependencies change (`pyproject.toml` + `uv.lock`) or the Dockerfile itself changes.
 
 **Backend tests:**
 ```bash
@@ -72,8 +72,16 @@ make format
 
 **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs on every push. Backend: `ruff check`,
 `ruff format --check`, pytest. Frontend: `tsc --noEmit`, Vitest, `next build`. It runs Python/Node
-directly on the runner, not Docker, so keep its Python/Node versions and the ruff pin in sync with
-the Dockerfiles (ruff is also pinned in `pyproject.toml`'s dev extra). Run `make format` before pushing: unformatted code fails CI.
+directly on the runner, not Docker, so keep its Python/Node/uv versions in sync with the Dockerfiles.
+Run `make format` before pushing: unformatted code fails CI.
+
+**Dependencies are locked:** Python via `uv.lock` (uv; `[dependency-groups] dev` holds pytest/ruff),
+frontend via `frontend/pnpm-lock.yaml`. Docker and CI install with `uv sync --locked` /
+`pnpm install --frozen-lockfile --ignore-scripts` and fail on a stale lock, so a dependency change
+must commit the updated lockfile. To add a Python package without local uv, use the dev image
+(it ships uv): `docker run --rm -v "$PWD":/src -w /src conversation-engine uv add --no-sync <pkg>`,
+then `make build`. GitHub Actions are pinned to
+commit SHAs (tag in a trailing comment). SonarCloud flagged all three gaps (2026-10-30).
 
 **Merging into `main`:** `main` is protected on GitHub. It only changes through a PR whose Backend
 and Frontend checks passed, the branch must be up to date with `main`, merges are merge commits
