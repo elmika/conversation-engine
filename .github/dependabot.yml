@@ -1,9 +1,12 @@
 # Dependabot: everything is pinned (uv.lock, pnpm-lock.yaml, actions by commit SHA), so nothing
-# updates by itself. This opens weekly grouped PRs that go through the same required checks
+# updates by itself. This opens weekly PRs that go through the same required checks
 # (CI + SonarCloud) as any other change. Security updates are opened as soon as a fix exists.
 #
 # cooldown: wait until a release is 14 days old before proposing it (doesn't apply to security
 # updates), so a compromised or broken release has time to be pulled first.
+#
+# Groups hold minor and patch updates only. A major version comes as its own PR, since it can
+# need code changes (one bundle of 31 updates with majors in it could never pass CI).
 #
 # Not covered: Docker base images (python:3.11-slim, node:22-alpine, the uv image digest).
 # Their versions are kept in sync with CI by hand (see the comments in the Dockerfiles).
@@ -19,6 +22,7 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: uv
     directory: /
@@ -29,6 +33,7 @@ updates:
     groups:
       python:
         patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /frontend
@@ -39,3 +44,4 @@ updates:
     groups:
       frontend:
         patterns: ["*"]
+        update-types: [minor, patch]
