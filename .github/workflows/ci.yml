@@ -31,15 +31,19 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      # Same install as the Dockerfile's builder stage.
+      # Same install as the Dockerfile's builder stage (keep the ruff pin in sync with it).
       - name: Install dependencies
         id: install
         run: |
-          pip install -r requirements.txt pytest pytest-asyncio ruff
+          pip install -r requirements.txt pytest pytest-asyncio ruff==0.17.3
           pip install -e . --no-deps
 
-      - name: Ruff
+      - name: Ruff lint
         run: ruff check .
+
+      - name: Ruff format
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: ruff format --check .
 
       # Includes tests/test_architecture.py (the `make check-layers` layer rules).
       - name: Pytest
