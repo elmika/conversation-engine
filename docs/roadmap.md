@@ -458,6 +458,38 @@ Why it's worth it: no wait before the first input, no four-turn coupling, simple
 on mobile. Why keep the chat at all: the product is a tutor you talk to, and the goal and outline
 refinement are naturally conversational. A form-only onboarding sets the wrong first impression.
 
+### 20. Full redesign: one design track for the learner app and admin (priority: high, needs design) — 🔴 Open
+
+Five open items reshape the same screens. Built one at a time, they'd redesign the learner's first
+minutes three times. Treat them as one track: design once, then build in slices.
+
+| Item | What it decides |
+|---|---|
+| #19 Onboarding | Hybrid: short form for the facts, chat from the goal on |
+| #17 Accounts | Optional login, claiming an open profile, where sign-in lives |
+| #12 Learner panel | One task on screen (the ongoing lesson), not a general chat-app layout |
+| #16 Journey | Objective, path and what to expect, visible throughout |
+| #13 Admin | A separate entity, outside the learner app |
+
+**Admin, decided 2026-10-30:** an admin is not a learner. Today `/admin` runs inside the learner shell:
+NavBar mints a learner id on every page (`getOrCreateUserId()`), shows Chat and History tabs for it,
+and the Admin tab only exists in the desktop bar. Admin becomes its own area with its own layout, no
+learner id and no learner tabs. The static token gate stays for now; tracking individual admin users
+comes later, with or after #17.
+
+**The track:**
+1. **Brief** (Claude drafts, you decide): who the learner is, the jobs per screen, the flows end to
+   end (first visit → onboarding → outline → lessons → coming back → claiming an account), the
+   constraints (streaming chat, mobile first, consent, no dead ends), and real content samples (an
+   actual outline, a lesson exchange, a session summary) so the design isn't built on lorem ipsum.
+2. **Prototype** in Lovable from a clean session fed only the brief, on mock data. Its stack
+   (React, Tailwind, shadcn/ui) matches ours, so components can be carried over. Its backend and
+   auth (Supabase) are not adopted: #17 is designed against this app.
+3. **Test the prototype** with 2–3 people before building anything, ideally demo testers.
+4. **Spec**: screens, states and components, mapped to what exists; backend changes listed.
+5. **Build in slices**, each through the normal gates: admin separation (independent, can go first),
+   onboarding, learner panel + journey, accounts.
+
 ---
 
 ## Not yet triaged
