@@ -306,11 +306,15 @@ Redesign the learner UI so it focuses on a single task, the ongoing conversation
 general-purpose chat-app layout. Design first, not a direct build. Should be done with the
 learn-with-claude reference-experience work, not separately from it.
 
-### 13. Separate admin from learner identity (priority: medium) — 🔴 Open
+### 13. Separate admin from learner identity (priority: medium) — ✅ Shipped 2026-10-30
 
 Today the admin view sits inside the learner app and goes through a learner `user_id` route. The
 admin shouldn't need a learner id at all. Give admin its own entry point that doesn't depend on
 learner identity. Related residual gap: NavBar's admin tab visibility (see Not yet triaged).
+
+**Shipped (2026-10-30):** `/admin*` no longer mounts the learner nav, so it doesn't create a learner
+id or show Chat/History, and the learner app's Admin tab is gone (which also retires the tab-visibility
+gap below). Admin is reached at `/admin`, behind the same token gate. Admin user accounts: later, see #20.
 
 ### 14. Consent: people share personal things (priority: high) — 🟡 Gate shipped 2026-09-23
 
@@ -471,9 +475,9 @@ minutes three times. Treat them as one track: design once, then build in slices.
 | #16 Journey | Objective, path and what to expect, visible throughout |
 | #13 Admin | A separate entity, outside the learner app |
 
-**Admin, decided 2026-10-30:** an admin is not a learner. Today `/admin` runs inside the learner shell:
-NavBar mints a learner id on every page (`getOrCreateUserId()`), shows Chat and History tabs for it,
-and the Admin tab only exists in the desktop bar. Admin becomes its own area with its own layout, no
+**Admin, decided 2026-10-30:** an admin is not a learner. Until #13 shipped, `/admin` ran inside the learner shell:
+NavBar minted a learner id on every page (`getOrCreateUserId()`), showed Chat and History tabs for it,
+and an Admin tab when a token is present. Admin becomes its own area with its own layout, no
 learner id and no learner tabs. The static token gate stays for now; tracking individual admin users
 comes later, with or after #17.
 
@@ -697,7 +701,7 @@ comes later, with or after #17.
   anyone who can reach the API. Acceptable for the pilot's threat model (no sensitive data in
   prompt text today) but worth closing before this becomes a general-purpose multi-tenant
   product.
-- **NavBar's "Admin" tab visibility is presence-only, not live-revalidated** — accepted residual
+- ✅ *Moot since 2026-10-30: the Admin tab was removed (#13).* **NavBar's "Admin" tab visibility is presence-only, not live-revalidated** — accepted residual
   gap from Piece C2 (2026-09-16). It checks `getAdminToken()` presence in `sessionStorage`, not
   a real backend check, for performance/simplicity (a live check would mean an extra request on
   every page navigation for every learner). A stale/rotated token can show the tab briefly to
