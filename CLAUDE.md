@@ -70,6 +70,11 @@ make lint
 make format
 ```
 
+**CI:** `.github/workflows/ci.yml` (GitHub Actions) runs on every push. Backend: `ruff check`,
+`ruff format --check`, pytest. Frontend: `tsc --noEmit`, Vitest, `next build`. It runs Python/Node
+directly on the runner, not Docker, so keep its Python/Node versions and the ruff pin in sync with
+the Dockerfiles. Run `make format` before pushing: unformatted code fails CI.
+
 **Production build (both images):**
 ```bash
 make build

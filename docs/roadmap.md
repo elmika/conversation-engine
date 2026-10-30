@@ -383,9 +383,16 @@ learner starts anonymously exactly as today and can *claim* that profile later.
 - **Smallest first version:** magic-link login + anonymous → account claim + login on a new device.
   Merge comes later, with the "both have a course" case handled as "pick one".
 
-### 18. CI on GitHub Actions, free tier (priority: medium) — 🔴 Open
+### 18. CI on GitHub Actions, free tier (priority: medium) — 🟡 Workflow shipped 2026-10-30
 
-Nothing runs on push today (see the Infra & ops backlog below). The repo is public on GitHub, so
+**Shipped:** `.github/workflows/ci.yml` runs on every push, on any branch. Backend: ruff lint +
+format check, then pytest (314 tests, including the layer rules). Frontend: `tsc --noEmit`, Vitest
+and `next build`. Getting it green meant clearing a 189-error ruff backlog and a stale test type
+error. ruff is pinned (`0.17.3`) in both CI and the Dockerfile so a new release can't break CI by
+itself. `next lint` is not run: the frontend has no ESLint config. **Still open:** branch protection
+(require the two checks before merging into `main`, a GitHub settings change), plus steps 4–5.
+
+Before this, nothing ran on push (see the Infra & ops backlog below). The repo is public on GitHub, so
 Actions minutes on standard hosted runners are free and unlimited. No new service or account needed.
 
 **Steps:**
@@ -692,7 +699,7 @@ still genuinely open. File deleted, content folded in here so it stays visible.
 
 **Deployment & operability — the biggest gaps, nothing here today:**
 - No deployment pipeline: no CI/CD, no automated tests on push, no staging environment. Everything
-  runs locally. CI is now planned as item 18.
+  runs locally. CI shipped 2026-10-30 (item 18). No CD or staging yet.
 - No dedicated monitoring/metrics (e.g. Prometheus, tracing/APM). Only structured request logs
   (`request_id`, endpoint, status, latency) exist — fine for reasoning about one request after the
   fact, not for noticing degradation before a learner reports it.
