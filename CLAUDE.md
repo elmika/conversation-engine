@@ -74,6 +74,10 @@ make format
 `ruff format --check`, pytest. Frontend: `tsc --noEmit`, Vitest, `next build`. It runs Python/Node
 directly on the runner, not Docker, so keep its Python/Node/uv versions in sync with the Dockerfiles.
 Run `make format` before pushing: unformatted code fails CI.
+Branch protection requires checks by their exact job `name:` ("Backend (ruff + pytest)",
+"Frontend (typecheck + vitest + build)", "SonarCloud Code Analysis"). Renaming or splitting a CI job
+leaves the old required name unreported, so every PR waits forever, and admins aren't exempt. Update
+the required checks in the same change: `gh api -X PATCH repos/elmika/conversation-engine/branches/main/protection/required_status_checks`.
 
 **Dependencies are locked:** Python via `uv.lock` (uv; `[dependency-groups] dev` holds pytest/ruff),
 frontend via `frontend/pnpm-lock.yaml`. Docker and CI install with `uv sync --locked` /
@@ -108,6 +112,14 @@ make build
 endpoint and flags a running `api` container still holding an old key (`.env` edits need
 `docker compose up -d api`). Run it before any live script below — the app reports a rejected
 key only as a generic "502 Upstream … API error".
+
+**A hung stack is often an OOM kill, not an app bug:** if `/healthz` accepts the connection but never
+answers and the API logs simply stop, check `docker inspect learning-platform-api-1 --format '{{.State.OOMKilled}}'`.
+Docker Desktop's VM is ~6 GB. Image builds or the full test suite in extra containers next to a
+running `make up` can get the uvicorn worker killed by the kernel. Uvicorn's `--reload` parent survives
+and keeps port 8000 open, so nothing errors and nothing restarts. Fix: `docker compose restart api`.
+Avoid heavy Docker jobs while a `make smoke` run or a live comparison is using the stack. Confirmed
+2026-10-30, when it surfaced as a `make smoke` health-check timeout.
 
 **Check for new models:** `make check-models` (`scripts/check_new_models.py`) diffs both
 providers' live model lists against `model_registry.py`/`pricing.py` and reports NEW (released
