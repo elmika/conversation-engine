@@ -61,4 +61,31 @@ describe("ChatInput", () => {
     await userEvent.type(screen.getByRole("textbox"), "   {Enter}");
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  it("while streaming: stays typeable, Enter doesn't send, and the button stops", async () => {
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    render(<ChatInput onSend={onSend} isStreaming onStop={onStop} />);
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).not.toBeDisabled();
+    await userEvent.type(textarea, "next question{Enter}");
+    expect(onSend).not.toHaveBeenCalled();
+    expect((textarea as HTMLTextAreaElement).value).toBe("next question");
+
+    expect(screen.queryByRole("button", { name: /send/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /stop/i }));
+    expect(onStop).toHaveBeenCalledOnce();
+  });
+
+  it("keeps what was typed during streaming and sends it once the reply is done", async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(<ChatInput onSend={onSend} isStreaming onStop={vi.fn()} />);
+    await userEvent.type(screen.getByRole("textbox"), "next question");
+
+    rerender(<ChatInput onSend={onSend} isStreaming={false} onStop={vi.fn()} />);
+    await userEvent.type(screen.getByRole("textbox"), "{Enter}");
+
+    expect(onSend).toHaveBeenCalledWith("next question");
+  });
 });

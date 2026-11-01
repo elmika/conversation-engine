@@ -43,6 +43,9 @@ export function MessageList({
   const hasOverflowedThisMessage = useRef(false);
   const wasStreaming = useRef(false);
   const isStreaming = streamStatus === "connecting" || streamStatus === "streaming";
+  // The scroll container only exists once the loading skeleton is gone: effects that
+  // attach to it re-run when it mounts.
+  const showSkeleton = isLoading && messages.length === 0;
 
   const isNearBottom = () => {
     const el = scrollRef.current;
@@ -98,7 +101,24 @@ export function MessageList({
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("scroll", onScroll);
     };
-  }, []);
+  }, [showSkeleton]);
+
+  // Keep the bottom edge in place when the list gets shorter: something appeared below it
+  // (the outline's "Let's start" bar, an error banner, a phone keyboard opening). Without
+  // this the scroll position holds the top, and the lines the reader was looking at at the
+  // bottom slide under the new element.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let lastHeight = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const shrunkBy = lastHeight - el.clientHeight;
+      lastHeight = el.clientHeight;
+      if (shrunkBy > 0) el.scrollTop += shrunkBy;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [showSkeleton]);
 
   // New user message: always scroll to bottom and re-engage following. An
   // instant jump (not smooth) — see the streaming-scroll rule below; a smooth
@@ -135,7 +155,7 @@ export function MessageList({
     }
   }, [partialText]);
 
-  if (isLoading && messages.length === 0) {
+  if (showSkeleton) {
     return (
       <div className="flex-1 space-y-4 p-4">
         {[...Array(3)].map((_, i) => (

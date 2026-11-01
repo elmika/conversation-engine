@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useNavTabs } from "@/components/NavBar";
+import { isAdminPath, useNavTabs } from "@/components/NavBar";
 
 export function BottomNav() {
+  return isAdminPath(usePathname()) ? null : <LearnerBottomNav />;
+}
+
+function LearnerBottomNav() {
   const { tabs } = useNavTabs();
 
   return (

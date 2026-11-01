@@ -346,8 +346,11 @@ export async function appendConversationTurnStream(
 export async function fetchSessionSummary(
   userId: string,
   conversationId: string
-): Promise<SessionSummary> {
+): Promise<SessionSummary | null> {
   const res = await fetch(`/api/u/${userId}/conversations/${conversationId}/summary`);
+  // 404: no summary was saved for this conversation (a setup conversation, or one
+  // ended before summaries were saved per session). Normal, not an error.
+  if (res.status === 404) return null;
   return handleResponse<SessionSummary>(res);
 }
 

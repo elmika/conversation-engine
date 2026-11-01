@@ -3,10 +3,16 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, History, Settings } from "lucide-react";
+import { MessageSquare, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getOrCreateUserId } from "@/lib/user-id";
-import { getAdminToken, ADMIN_TOKEN_EVENT } from "@/lib/adminToken";
+
+// Admin is a separate area, not a learner: /admin has its own header (AdminHeader) and
+// must not mount the learner nav, whose useNavTabs() would mint a learner id for the
+// admin's browser and offer Chat/History for it. The learner app doesn't link to /admin.
+export function isAdminPath(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
 
 // Shared by the top NavBar (desktop) and BottomNav (mobile) so both surfaces
 // stay in sync on labels/hrefs/icons/active-state logic.
@@ -25,24 +31,9 @@ export function useNavTabs() {
   }, [pathUserId]);
   const userId = pathUserId ?? storedUserId;
 
-  // Cosmetic only, not a security boundary — /admin's real gate (AdminTokenGate)
-  // fully re-validates the token against the backend on every mount regardless
-  // of what this tab shows. A stale token would show this tab briefly; that's
-  // harmless and self-corrects the moment it's clicked into.
-  const [hasAdminToken, setHasAdminToken] = useState(false);
-  useEffect(() => {
-    setHasAdminToken(!!getAdminToken());
-    function onTokenChange() {
-      setHasAdminToken(!!getAdminToken());
-    }
-    window.addEventListener(ADMIN_TOKEN_EVENT, onTokenChange);
-    return () => window.removeEventListener(ADMIN_TOKEN_EVENT, onTokenChange);
-  }, []);
-
   const tabs = [
     { label: "Chat", href: userId ? `/u/${userId}/chat` : "/", icon: MessageSquare },
     { label: "History", href: userId ? `/u/${userId}/history` : "/", icon: History },
-    ...(hasAdminToken ? [{ label: "Admin", href: "/admin", icon: Settings }] : []),
   ];
 
   return {
@@ -54,6 +45,10 @@ export function useNavTabs() {
 }
 
 export function NavBar() {
+  return isAdminPath(usePathname()) ? null : <LearnerNavBar />;
+}
+
+function LearnerNavBar() {
   const { tabs } = useNavTabs();
 
   return (

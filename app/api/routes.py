@@ -54,6 +54,7 @@ from app.learning.progress_synthesis import synthesise_progress
 from app.learning.session_summary import build_session_summary
 from app.learning.setup_completion import SetupCompletionError, complete_setup
 from app.learning.setup_flow import FRAMING_TURNS, SetupPhase, setup_phase_for_turn
+from app.learning.summary_snapshot import load_summary_snapshot, save_summary_snapshot
 from app.settings import Settings
 
 # Root router — healthz, models, prompts (no user prefix).
@@ -1025,6 +1026,10 @@ async def end_session(
     summary_data = await asyncio.to_thread(
         build_session_summary, FileSlotResolver(settings.sections_dir, user_id)
     )
+    # Freeze it: the course/progress files it's built from change with every later session.
+    await asyncio.to_thread(
+        save_summary_snapshot, settings.sections_dir, user_id, conversation_id, summary_data
+    )
     return EndSessionResponse(status="ended", summary=SessionSummarySchema(**summary_data))
 
 
@@ -1113,7 +1118,11 @@ async def get_session_summary(
     uow_factory=Depends(get_uow_factory),
     settings: Settings = Depends(get_settings),
 ) -> SessionSummarySchema:
-    """Return the session summary for an ended conversation."""
+    """Return the session summary saved when this conversation ended.
+
+    404 if none was saved (a setup conversation, or one ended before snapshots existed):
+    rebuilding it now would show the learner's current state, not this session's.
+    """
 
     def _check() -> None:
         with uow_factory() as uow:
@@ -1124,9 +1133,14 @@ async def get_session_summary(
                 raise HTTPException(status_code=409, detail="Conversation has not ended")
 
     await asyncio.to_thread(_check)
-    summary_data = await asyncio.to_thread(
-        build_session_summary, FileSlotResolver(settings.sections_dir, user_id)
-    )
+    try:
+        summary_data = await asyncio.to_thread(
+            load_summary_snapshot, settings.sections_dir, user_id, conversation_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail="Conversation not found") from e
+    if summary_data is None:
+        raise HTTPException(status_code=404, detail="No summary was saved for this conversation")
     return SessionSummarySchema(**summary_data)
 
 
